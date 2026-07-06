@@ -1,0 +1,51 @@
+{
+  "name": "ada-scan",
+  "version": "1.0.0",
+  "description": "On-demand WCAG/ADA accessibility + performance scanner and interactive auto-fixer for Liquid/Vite sites and live URLs.",
+  "type": "module",
+  "bin": {
+    "ada-scan": "bin/ada-scan.js"
+  },
+  "exports": {
+    ".": "./src/index.js",
+    "./vite": {
+      "types": "./vite/index.d.ts",
+      "default": "./vite/scan-instrumentation.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "vite/",
+    "templates/",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=20.18.1"
+  },
+  "scripts": {
+    "test": "node --test test/**/*.test.js"
+  },
+  "dependencies": {
+    "@axe-core/playwright": "4.11.2",
+    "dotenv": "^16.5.0",
+    "fast-glob": "^3.3.3",
+    "playwright": "1.59.1"
+  },
+  "optionalDependencies": {
+    "@anthropic-ai/sdk": "^0.92.0",
+    "chrome-launcher": "^1.2.1",
+    "lighthouse": "^13.1.0",
+    "openai": "^6.35.0"
+  },
+  "peerDependencies": {
+    "vite": ">=5"
+  },
+  "peerDependenciesMeta": {
+    "vite": {
+      "optional": true
+    }
+  }
+}

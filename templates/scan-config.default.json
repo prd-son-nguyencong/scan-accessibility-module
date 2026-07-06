@@ -1,0 +1,42 @@
+{
+  "baseUrl": "http://localhost:1234",
+  "devCommand": "pnpm dev",
+  "buildCommand": "pnpm build:vite",
+  "buildEnv": { "SCAN_MODE": "true", "MINIFY": "true" },
+  "outDir": "dist",
+  "source": {
+    "roots": ["src/partials", "src/pages", "src/components"],
+    "pagesRoot": "src/pages",
+    "extension": ".liquid"
+  },
+  "distMap": [
+    { "dist": "dist/partials/", "src": "src/partials/", "ext": ".liquid" },
+    { "dist": "dist/pages/", "src": "src/pages/", "ext": ".liquid" },
+    { "dist": "dist/layouts/", "src": "src/layouts/", "ext": ".liquid" },
+    { "dist": "dist/components/", "src": "src/components/", "ext": ".liquid" }
+  ],
+  "thirdParty": {
+    "selectors": [".d3afa4", "._72cec8", ".apply-", "[data-testid^=\"olivia\"]"],
+    "devArtifactTokens": ["{{", "}}", "{%", "%}"],
+    "chatbotSelector": ".oliviaButton"
+  },
+  "pages": [],
+  "concurrency": 2,
+  "thresholds": { "wcag": 0, "performance": 90, "bestPractices": 90 },
+  "layers": {
+    "axe": true,
+    "accessScan": true,
+    "w3c": true,
+    "links": true,
+    "lighthouse": true,
+    "keyboard": true,
+    "ariaLive": true,
+    "focusTrap": true,
+    "dynamicContent": true,
+    "screenReader": true
+  },
+  "usePSI": true,
+  "customRules": [],
+  "skipRules": [],
+  "suppress": []
+}
