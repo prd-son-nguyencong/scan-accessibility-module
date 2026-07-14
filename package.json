@@ -1,6 +1,6 @@
 {
   "name": "ada-scan",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "On-demand WCAG/ADA accessibility + performance scanner and interactive auto-fixer for Liquid/Vite sites and live URLs.",
   "type": "module",
   "bin": {
@@ -29,7 +29,7 @@
     "test": "node --test test/**/*.test.js"
   },
   "dependencies": {
-    "@axe-core/playwright": "4.11.2",
+    "@axe-core/playwright": "4.12.1",
     "dotenv": "^16.5.0",
     "fast-glob": "^3.3.3",
     "playwright": "1.59.1"

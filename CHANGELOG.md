@@ -1,11 +1,17 @@
 # Changelog
 
 All notable changes to `ada-scan`. Versions are released as Git tags
-(`git+https://…#v1.0.0`). Follows SemVer.
+(`git+https://…#vX.Y.Z`). Follows SemVer.
 
 **accessScan `ruleId`s are a public contract** — a ruleId rename/removal is a
 breaking change and must be documented here so `scan:baseline` / ROI diffs stay
 comparable across upgrades.
+
+## [1.0.1] - 2026-07-14
+
+### Changed
+- Align `@axe-core/playwright` to **4.12.1** (axe-core 4.12.1) to match axe DevTools
+  engine parity for comparable rule results across manual and automated scans.
 
 ## [1.0.0] - 2026-07-06
 

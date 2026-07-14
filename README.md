@@ -16,7 +16,7 @@ deterministic rules or six AI/IDE fix modes.
 ## Install
 
 ```bash
-pnpm add -D git+https://<your-git-host>/ada-scan.git#v1.0.0
+pnpm add -D git+https://<your-git-host>/ada-scan.git#v1.0.1
 npx ada-scan init
 ```
 
@@ -89,6 +89,7 @@ ADA_SCAN_ROOT=…        # explicit host root override (useful in monorepos)
 
 - HTML reports embed source snippets + `outerHTML`; review before sharing
   externally.
-- Report metadata records the effective axe-core + rule-set versions; keep them
-  stable to compare baselines across upgrades.
+- This package pins Playwright and `@axe-core/playwright` for stable scan
+  results; benchmark and release evidence should record the effective versions
+  externally when comparing baselines across upgrades.
 - Requires Node ≥ 20.18.1, ESM host.
