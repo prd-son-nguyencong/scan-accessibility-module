@@ -565,6 +565,39 @@ test('strong mismatch excludes interactive and heading-style spans while retaini
   );
 });
 
+test('semantic emphasis flags visual i text but not semantic em text', async () => {
+  await withPage(
+    `
+      <i id="visual-emphasis">Fortune</i>
+      <em id="semantic-emphasis">Fortune</em>
+    `,
+    async (page) => {
+      const { result } = await runComplexRules(page, ['EmphasisMismatch']);
+      const emphasis = findingsForRule(result, 'EmphasisMismatch');
+
+      assert.equal(emphasis.length, 1);
+      assert.match(emphasis[0].element.outerHTML, /visual-emphasis/);
+    },
+  );
+});
+
+test('strong mismatch excludes bold text referenced as a control label', async () => {
+  await withPage(
+    `
+      <span id="query-label" style="font-weight: 700">I'm Looking For</span>
+      <input aria-labelledby="query-label">
+      <span id="result-total" style="font-weight: 700">1198</span>
+    `,
+    async (page) => {
+      const { result } = await runComplexRules(page, ['StrongMismatch']);
+      const strong = findingsForRule(result, 'StrongMismatch');
+
+      assert.equal(strong.length, 1);
+      assert.match(strong[0].element.outerHTML, /result-total/);
+    },
+  );
+});
+
 test('navigation misuse checks whether each navigation link participates in list structure', async () => {
   await withPage(
     `
@@ -634,6 +667,42 @@ test('LinkCurrentPage resolves href against scanned URL pathname', async () => {
   }
 });
 
+test('link ambiguity uses unique list-item context for repeated job actions', async () => {
+  await withPage(
+    `
+      <ul>
+        <li>
+          <h3><a href="/jobs/one">Class A Driver</a></h3>
+          <span>Richmond, Virginia</span>
+          <a href="/jobs/one" aria-label="Apply Now, Class A Driver">Apply Now</a>
+        </li>
+        <li>
+          <h3><a href="/jobs/two">Class A Driver</a></h3>
+          <span>Richmond, Virginia</span>
+          <a href="/jobs/two" aria-label="Apply Now, Class A Driver">Apply Now</a>
+        </li>
+      </ul>
+      <div>
+        <h3>Restaurant careers</h3>
+        <a id="context-card-a" href="/restaurant">Learn more</a>
+      </div>
+      <div>
+        <h3>Service careers</h3>
+        <a id="context-card-b" href="/service">Learn more</a>
+      </div>
+      <a id="ambiguous-a" href="/benefits">Learn more</a>
+      <a id="ambiguous-b" href="/culture">Learn more</a>
+    `,
+    async (page) => {
+      const { result } = await runComplexRules(page, ['LinkNavigationAmbiguous']);
+      const findings = findingsForRule(result, 'LinkNavigationAmbiguous');
+
+      assert.equal(findings.length, 2);
+      assert.ok(findings.every((finding) => /ambiguous-[ab]/.test(finding.element.outerHTML)));
+    },
+  );
+});
+
 test('RegionMainContentMismatch flags substantial body content outside main and supports no-main pages', async () => {
   await withPage(
     `
@@ -665,6 +734,29 @@ test('RegionFooterSingle emits every duplicate footer landmark after the first',
     async (page) => {
       const { result } = await runComplexRules(page, ['RegionFooterSingle']);
       assert.equal(findingsForRule(result, 'RegionFooterSingle').length, 1);
+    },
+  );
+});
+
+test('single-landmark rules count duplicates within each DOM scope', async () => {
+  await withPage(
+    `
+      <main id="document-main">Document content</main>
+      <footer id="document-footer">Document footer</footer>
+      <div id="landmark-host"></div>
+      <script>
+        document.getElementById('landmark-host').attachShadow({ mode: 'open' }).innerHTML =
+          '<main id="shadow-main">Widget content</main><div role="contentinfo" id="shadow-footer">Widget footer</div>';
+      </script>
+    `,
+    async (page) => {
+      const { result } = await runComplexRules(page, [
+        'RegionMainContentSingle',
+        'RegionFooterSingle',
+      ]);
+
+      assert.equal(findingsForRule(result, 'RegionMainContentSingle').length, 0);
+      assert.equal(findingsForRule(result, 'RegionFooterSingle').length, 0);
     },
   );
 });
@@ -773,6 +865,132 @@ test('VisibilityMisuse ignores hidden display none and visibility hidden control
     async (page) => {
       const { result } = await runComplexRules(page, ['VisibilityMisuse']);
       assert.equal(findingsForRule(result, 'VisibilityMisuse').length, 0);
+    },
+  );
+});
+
+test('VisibilityMisuse ignores zero-box inline wrappers around visible content', async () => {
+  await withPage(
+    `
+      <span id="inline-wrapper">
+        <div style="position: fixed; right: 10px; bottom: 10px; width: 60px; height: 60px">
+          Visible launcher
+        </div>
+      </span>
+      <p id="actually-hidden" style="opacity: 0">Screen reader-only message</p>
+    `,
+    async (page) => {
+      const { result } = await runComplexRules(page, ['VisibilityMisuse']);
+      const findings = findingsForRule(result, 'VisibilityMisuse');
+
+      assert.equal(findings.length, 1);
+      assert.match(findings[0].element.outerHTML, /actually-hidden/);
+      assert.ok(!findings.some((finding) => /inline-wrapper/.test(finding.element.outerHTML)));
+    },
+  );
+});
+
+test('EmphasisMismatch ignores typographic footnote copy while retaining ordinary visual emphasis', async () => {
+  await withPage(
+    `
+      <span id="footnote-copy" style="font-style:italic">
+        *Benefits and eligibility may vary by location and role.
+      </span>
+      <span id="ordinary-emphasis" style="font-style:italic">Important deadline</span>
+    `,
+    async (page) => {
+      const { result } = await runComplexRules(page, ['EmphasisMismatch']);
+      const findings = findingsForRule(result, 'EmphasisMismatch');
+
+      assert.equal(findings.length, 1);
+      assert.match(findings[0].element.outerHTML, /ordinary-emphasis/);
+    },
+  );
+});
+
+test('StrongMismatch ignores bold text that labels an adjacent list section', async () => {
+  await withPage(
+    `
+      <div>
+        <span id="list-label" style="font-weight:700">Regional notices</span>
+        <ul><li><a href="/notice">Notice</a></li></ul>
+      </div>
+      <p><span id="standalone-strong" style="font-weight:700">Paul Edmunds</span> Manager</p>
+    `,
+    async (page) => {
+      const { result } = await runComplexRules(page, ['StrongMismatch']);
+      const findings = findingsForRule(result, 'StrongMismatch');
+
+      assert.equal(findings.length, 1);
+      assert.match(findings[0].element.outerHTML, /standalone-strong/);
+    },
+  );
+});
+
+test('VisibilityMismatch requires aria-hidden content to remain visually exposed', async () => {
+  await withPage(
+    `
+      <img id="transparent-logo" aria-hidden="true" alt="Alternate logo"
+        src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
+        style="width:80px;height:24px;opacity:0">
+      <p id="visually-exposed" aria-hidden="true">Visible status message</p>
+    `,
+    async (page) => {
+      const { result } = await runComplexRules(page, ['VisibilityMismatch']);
+      const findings = findingsForRule(result, 'VisibilityMismatch');
+
+      assert.equal(findings.length, 1);
+      assert.match(findings[0].element.outerHTML, /visually-exposed/);
+    },
+  );
+});
+
+test('VisibilityMismatch ignores a visible alternate graphic with an equivalent AT-exposed sibling', async () => {
+  await withPage(
+    `
+      <a href="/">
+        <img alt="Brand home" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
+          style="width:80px;height:24px;opacity:0">
+        <img id="alternate-brand" alt="Brand home" aria-hidden="true"
+          src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
+          style="width:80px;height:24px">
+      </a>
+      <img id="lone-hidden-graphic" alt="Visible status" aria-hidden="true"
+        src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
+        style="width:80px;height:24px">
+    `,
+    async (page) => {
+      const { result } = await runComplexRules(page, ['VisibilityMismatch']);
+      const findings = findingsForRule(result, 'VisibilityMismatch');
+
+      assert.equal(findings.length, 1);
+      assert.match(findings[0].element.outerHTML, /lone-hidden-graphic/);
+    },
+  );
+});
+
+test('MainNavigationMismatch ignores mostly external utility links in a page banner', async () => {
+  await withPage(
+    `
+      <header>
+        <ul id="utility-links">
+          <li><a href="/global">Global careers</a></li>
+          <li><a href="https://accounts.example/one" target="_blank">Associate login</a></li>
+          <li><a href="https://accounts.example/two" target="_blank">Applicant login</a></li>
+        </ul>
+        <ul id="primary-links">
+          <li><a href="/one">One</a></li>
+          <li><a href="/two">Two</a></li>
+          <li><a href="/three">Three</a></li>
+        </ul>
+      </header>
+    `,
+    async (page) => {
+      const { result } = await runComplexRules(page, ['MainNavigationMismatch']);
+      const findings = findingsForRule(result, 'MainNavigationMismatch');
+
+      assert.equal(findings.length, 1);
+      assert.match(findings[0].element.outerHTML, /primary-links/);
     },
   );
 });

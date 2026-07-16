@@ -3,6 +3,7 @@ import {
   getDescendants,
   hasAncestor,
   sameScope,
+  scopeKey,
 } from '../runtime/graph-relationships.js';
 import {
   elementFinding,
@@ -144,6 +145,39 @@ export default {
       return { status: 'complete', candidatesScanned: candidates.length, findings };
     }
 
+    if (mode === 'navigation-multi-list-parity') {
+      for (const navigation of candidates) {
+        if (
+          navigation.attributes['aria-label']?.trim()
+          || navigation.attributes['aria-labelledby']?.trim()
+        ) {
+          continue;
+        }
+
+        const lists = getDescendants(snapshot, indexes, navigation, (child) => (
+          child.tag === 'ul' || child.tag === 'ol'
+        )).filter((list) => (
+          getDescendants(snapshot, indexes, list, (child) => (
+            child.tag === 'a' && Boolean(child.attributes.href)
+          )).length > 0
+        ));
+        if (lists.length < 2) continue;
+
+        const sectionIds = new Set(lists.map((list) => {
+          const section = getAncestors(snapshot, indexes, list)
+            .find((ancestor) => ancestor.parentId === navigation.id);
+          return section?.id;
+        }).filter(Boolean));
+        if (sectionIds.size < 2) continue;
+
+        findings.push(elementFinding(navigation, {
+          structuralPattern: 'unlabelled-multi-list-navigation',
+          listCount: lists.length,
+        }));
+      }
+      return { status: 'complete', candidatesScanned: candidates.length, findings };
+    }
+
     if (mode === 'search-form-mismatch') {
       for (const element of candidates) {
         if (element.tag === 'search' || element.attributes.role === 'search') continue;
@@ -171,8 +205,10 @@ export default {
 
     if (mode === 'region-footer-single') {
       const footers = snapshot.elements.filter(isFooterLandmark);
-      for (let index = 1; index < footers.length; index += 1) {
-        findings.push(elementFinding(footers[index], { duplicateCount: footers.length }));
+      for (const duplicate of getScopedLandmarkDuplicates(footers)) {
+        findings.push(elementFinding(duplicate.element, {
+          duplicateCount: duplicate.scopeCount,
+        }));
       }
       return { status: 'complete', candidatesScanned: footers.length, findings };
     }
@@ -207,6 +243,15 @@ export default {
       return { status: 'complete', candidatesScanned: candidates.length, findings };
     }
 
+    if (mode === 'article-region-parity') {
+      for (const element of candidates) {
+        findings.push(elementFinding(element, {
+          structuralPattern: 'rendered-article-region',
+        }));
+      }
+      return { status: 'complete', candidatesScanned: candidates.length, findings };
+    }
+
     if (mode === 'breadcrumbs-mismatch') {
       for (const element of candidates) {
         const hasBreadcrumbStructure = getDescendants(snapshot, indexes, element, (child) => (
@@ -222,8 +267,10 @@ export default {
 
     if (mode === 'region-main-single') {
       const mains = snapshot.elements.filter(isMainLandmark);
-      for (let index = 1; index < mains.length; index += 1) {
-        findings.push(elementFinding(mains[index], { duplicateCount: mains.length }));
+      for (const duplicate of getScopedLandmarkDuplicates(mains)) {
+        findings.push(elementFinding(duplicate.element, {
+          duplicateCount: duplicate.scopeCount,
+        }));
       }
       return { status: 'complete', candidatesScanned: mains.length, findings };
     }
@@ -270,6 +317,24 @@ export default {
     });
   },
 };
+
+/**
+ * @param {import('../runtime/types.js').SnapshotElement[]} landmarks
+ */
+function getScopedLandmarkDuplicates(landmarks) {
+  /** @type {Map<string, import('../runtime/types.js').SnapshotElement[]>} */
+  const landmarksByScope = new Map();
+  for (const landmark of landmarks) {
+    const key = scopeKey(landmark);
+    const scoped = landmarksByScope.get(key) || [];
+    scoped.push(landmark);
+    landmarksByScope.set(key, scoped);
+  }
+
+  return [...landmarksByScope.values()].flatMap((scoped) => (
+    scoped.slice(1).map((element) => ({ element, scopeCount: scoped.length }))
+  ));
+}
 
 /**
  * @param {string} value

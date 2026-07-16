@@ -17,7 +17,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadTrustedCaBundle, MAX_CA_BUNDLE_BYTES } from '../../src/fix/cis/ca.js';
-import { resolveTrustedCisConfig } from '../../src/fix/cis/config.js';
+import { resolveCisConfig, resolveTrustedCisConfig } from '../../src/fix/cis/config.js';
 import {
   fingerprintForCaPem,
   TEST_CA_PATH,
@@ -252,6 +252,22 @@ test('resolveTrustedCisConfig preserves existing host and HTTPS checks', () => {
   }));
   assert.equal(insecure.ok, false);
   assert.equal(insecure.reason, 'CIS_CONFIG_INSECURE');
+});
+
+test('resolveCisConfig defaults to trusted pinned-CA mode', () => {
+  const result = resolveCisConfig(trustedCisTestEnv());
+  assert.equal(result.ok, true);
+  assert.equal(result.transportSecurity, 'trusted');
+  assert.equal(result.devBypassAuth, false);
+  assert.match(result.caPem, /BEGIN CERTIFICATE/);
+});
+
+test('trusted mode rejects development auth bypass', () => {
+  const result = resolveCisConfig(trustedCisTestEnv({
+    CIS_DEV_BYPASS_AUTH: 'true',
+  }));
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'CIS_DEV_AUTH_BYPASS_DENIED');
 });
 
 test('loadTrustedCaBundle reads exact file bytes for fingerprinting', () => {

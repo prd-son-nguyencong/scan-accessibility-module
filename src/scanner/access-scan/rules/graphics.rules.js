@@ -97,6 +97,7 @@ export default [
         profiles: ['commercial-parity'],
         evaluator: 'graphics',
         target: { selector: 'svg' },
+        eligibility: { visibility: 'all' },
         options: { mode: 'symbol-icon-discernible-parity' },
         classification: 'commercial-parity',
       },

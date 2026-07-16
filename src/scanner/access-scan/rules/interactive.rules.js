@@ -356,6 +356,14 @@ export default [
         options: { mode: 'current-link-destination-ambiguous' },
         classification: 'commercial-parity',
       },
+      {
+        id: 'parity:repeated-link-destination-ambiguous',
+        profiles: ['commercial-parity'],
+        evaluator: 'link-destination',
+        target: { selector: 'a[href]' },
+        options: { mode: 'link-navigation-ambiguous-parity' },
+        classification: 'commercial-parity',
+      },
     ],
     reporting: {
       title: 'Link context should be exposed to assistive technology',

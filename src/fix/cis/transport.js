@@ -1,4 +1,4 @@
-import { CIS_POC_LIMITS, CIS_VALIDATION_LIMITS } from './limits.js';
+import { CIS_MODEL_DISCOVERY_LIMITS, CIS_POC_LIMITS, CIS_VALIDATION_LIMITS } from './limits.js';
 import { estimateMessagesTokenCount } from './parser.js';
 
 export class CisTransportError extends Error {
@@ -97,18 +97,28 @@ export function buildPredictionsEnvelope(provider, model, messages, maxCompletio
 
 /**
  * @param {string} baseUrl
+ * @param {{ devBypassAuth?: boolean }} [options]
  */
-export function buildPredictionsRequestUrl(baseUrl) {
+export function buildPredictionsRequestUrl(baseUrl, options = {}) {
   const normalized = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
-  return new URL('v1alpha1/predictions', normalized);
+  const url = new URL('v1alpha1/predictions', normalized);
+  if (options.devBypassAuth === true) {
+    url.searchParams.set('bypass_auth', 'true');
+  }
+  return url;
 }
 
 /**
  * @param {string} baseUrl
+ * @param {{ devBypassAuth?: boolean }} [options]
  */
-export function buildModelsRequestUrl(baseUrl) {
+export function buildModelsRequestUrl(baseUrl, options = {}) {
   const normalized = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
-  return new URL('v1alpha1/models', normalized);
+  const url = new URL('v1alpha1/models', normalized);
+  if (options.devBypassAuth === true) {
+    url.searchParams.set('bypass_auth', 'true');
+  }
+  return url;
 }
 
 /**
@@ -133,13 +143,24 @@ function extractModelInventoryRowId(row) {
  * @param {unknown} body
  */
 export function extractModelInventory(body) {
-  if (!body || typeof body !== 'object' || !Array.isArray(body.data) || body.data.length > 256) {
+  if (!body || typeof body !== 'object') {
+    throw new CisTransportError('TRANSPORT_INVALID_RESPONSE', 'CIS model inventory is invalid.');
+  }
+
+  const hasData = Array.isArray(body.data);
+  const hasModels = Array.isArray(body.models);
+  if (hasData === hasModels) {
+    throw new CisTransportError('TRANSPORT_INVALID_RESPONSE', 'CIS model inventory is invalid.');
+  }
+
+  const rows = hasData ? body.data : body.models;
+  if (rows.length > CIS_MODEL_DISCOVERY_LIMITS.maxRows) {
     throw new CisTransportError('TRANSPORT_INVALID_RESPONSE', 'CIS model inventory is invalid.');
   }
 
   const ids = [];
   const seen = new Set();
-  for (const row of body.data) {
+  for (const row of rows) {
     const id = extractModelInventoryRowId(row);
     if (id === undefined || typeof id !== 'string' || !MODEL_ID_PATTERN.test(id)) {
       throw new CisTransportError('TRANSPORT_INVALID_RESPONSE', 'CIS model ID is invalid.');
@@ -256,6 +277,9 @@ export function validateChatCompletionParams(params) {
  *   ownsDispatcher?: boolean,
  *   timeoutMs?: number,
  *   maxResponseBytes?: number,
+ *   modelInventoryMaxResponseBytes?: number,
+ *   devBypassAuth?: boolean,
+ *   transportSecurity?: 'trusted' | 'insecure-dev',
  * }} options
  */
 export function createCisTransport(options) {
@@ -270,6 +294,9 @@ export function createCisTransport(options) {
     ownsDispatcher = false,
     timeoutMs = CIS_POC_LIMITS.requestTimeoutMs,
     maxResponseBytes = CIS_VALIDATION_LIMITS.maxResponseBytes,
+    modelInventoryMaxResponseBytes = CIS_MODEL_DISCOVERY_LIMITS.maxResponseBytes,
+    devBypassAuth = false,
+    transportSecurity = 'trusted',
   } = options;
 
   if (!featureKey?.trim()) {
@@ -288,16 +315,19 @@ export function createCisTransport(options) {
     }
   }
 
+  const urlOptions = { devBypassAuth: devBypassAuth === true };
+
   return {
     provider,
+    transportSecurity,
     buildPredictionsEnvelope(messages, maxCompletionTokens, model) {
       return buildPredictionsEnvelope(provider, model, messages, maxCompletionTokens);
     },
     buildPredictionsRequestUrl() {
-      return buildPredictionsRequestUrl(baseUrl);
+      return buildPredictionsRequestUrl(baseUrl, urlOptions);
     },
     buildModelsRequestUrl() {
-      return buildModelsRequestUrl(baseUrl);
+      return buildModelsRequestUrl(baseUrl, urlOptions);
     },
     async close() {
       if (closeSucceeded) return;
@@ -337,7 +367,7 @@ export function createCisTransport(options) {
         maxResponseBytes,
       });
 
-      const url = buildPredictionsRequestUrl(baseUrl);
+      const url = buildPredictionsRequestUrl(baseUrl, urlOptions);
       const envelope = buildPredictionsEnvelope(provider, model, messages, maxCompletionTokens);
       return executeBoundedJsonRequest({
         url,
@@ -375,14 +405,14 @@ export function createCisTransport(options) {
     async listModels(params = {}) {
       const { signal } = params;
       return executeBoundedJsonRequest({
-        url: buildModelsRequestUrl(baseUrl),
+        url: buildModelsRequestUrl(baseUrl, urlOptions),
         method: 'GET',
         headers: {
           'Wd-PCA-Feature-Key': featureKey,
         },
         signal,
         timeoutMs,
-        maxResponseBytes,
+        maxResponseBytes: modelInventoryMaxResponseBytes,
         fetchImpl,
         dispatcher,
         messages: {

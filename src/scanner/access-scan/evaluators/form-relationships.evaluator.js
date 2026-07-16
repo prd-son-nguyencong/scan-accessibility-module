@@ -58,6 +58,7 @@ export default {
           child.tag === 'a' && Boolean(child.attributes.href)
         ));
         if (links.length < 3) continue;
+        if (!isLikelyPrimaryNavigationLinks(links)) continue;
         if (!hasAncestor(snapshot, indexes, element, (ancestor) => (
           ancestor.tag === 'header' || ancestor.attributes.role === 'banner'
         ))) continue;
@@ -66,6 +67,36 @@ export default {
         ))) continue;
         if (hasAncestor(snapshot, indexes, element, (ancestor) => ancestor.tag === 'footer')) continue;
         findings.push(elementFinding(element));
+      }
+      return { status: 'complete', candidatesScanned: candidates.length, findings };
+    }
+
+    if (mode === 'main-navigation-layout-parity') {
+      for (const navigation of candidates) {
+        const inBanner = (
+          navigation.tag === 'header'
+          || navigation.attributes.role === 'banner'
+          || hasAncestor(snapshot, indexes, navigation, (ancestor) => (
+            ancestor.tag === 'header' || ancestor.attributes.role === 'banner'
+          ))
+        );
+        if (!inBanner) continue;
+
+        const children = indexes.childrenByParentId.get(navigation.id) || [];
+        const layout = children.find((child) => {
+          if (child.tag !== 'div' || child.attributes.role) return false;
+          return getDescendants(snapshot, indexes, child, (descendant) => {
+            if (descendant.tag !== 'ul' && descendant.tag !== 'ol') return false;
+            const links = getDescendants(snapshot, indexes, descendant, (link) => (
+              link.tag === 'a' && Boolean(link.attributes.href)
+            ));
+            return links.length >= 3 && isLikelyPrimaryNavigationLinks(links);
+          }).length > 0;
+        });
+        if (!layout) continue;
+        findings.push(elementFinding(layout, {
+          structuralPattern: 'main-navigation-layout-wrapper',
+        }));
       }
       return { status: 'complete', candidatesScanned: candidates.length, findings };
     }
@@ -90,4 +121,18 @@ function getAncestorsForm(snapshot, indexes, element) {
     parentId = parent.parentId;
   }
   return null;
+}
+
+/**
+ * Primary navigation lists are dominated by links that remain in the current
+ * browsing context. Utility bars made mostly of new-window account links are
+ * not inferred as the site's main navigation.
+ *
+ * @param {import('../runtime/types.js').SnapshotElement[]} links
+ */
+function isLikelyPrimaryNavigationLinks(links) {
+  const inContext = links.filter((link) => (
+    (link.attributes.target || '').toLowerCase() !== '_blank'
+  ));
+  return inContext.length >= 2 && inContext.length / links.length >= 0.5;
 }

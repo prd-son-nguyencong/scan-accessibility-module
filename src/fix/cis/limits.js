@@ -13,6 +13,12 @@ export const CIS_POC_LIMITS = Object.freeze({
   sessionCallBudget: 2,
 });
 
+/** Immutable bounds for live CIS model discovery responses. */
+export const CIS_MODEL_DISCOVERY_LIMITS = Object.freeze({
+  maxRows: 4096,
+  maxResponseBytes: 4 * 1024 * 1024,
+});
+
 /** Immutable derived validation bounds for broker/parser/transport (Task 4). */
 export const CIS_VALIDATION_LIMITS = Object.freeze({
   maxEditsPerPatch: 8,

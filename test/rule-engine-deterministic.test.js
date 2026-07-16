@@ -355,6 +355,22 @@ test('wrapped link warning text uses visible descendant text', async () => {
   );
 });
 
+test('generic contact text does not count as a mail application warning', async () => {
+  await withPage(
+    `
+      <a id="contact-mail" href="mailto:recruiting@example.com">Contact Us</a>
+      <a id="warned-mail" href="mailto:careers@example.com">Email us (opens mail application)</a>
+    `,
+    async (page) => {
+      const { result } = await runMigratedRules(page, ['LinkMailtoWarning']);
+      const findings = result.findings.filter((finding) => finding.ruleId === 'LinkMailtoWarning');
+
+      assert.equal(findings.length, 1);
+      assert.match(findings[0].element.selector, /contact-mail/);
+    },
+  );
+});
+
 test('hidden and AT-hidden candidates are skipped by default eligibility', async () => {
   await withPage(
     `

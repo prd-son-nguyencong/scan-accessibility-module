@@ -39,8 +39,48 @@ function modelsSource(url = `${SENTINEL_BASE}/v1alpha1/models`, featureKey = SEN
   return `meta {\n  name: get-models\n}\n\nget {\n  url: ${url}\n}\n\nheaders {\n  Wd-PCA-Feature-Key: ${featureKey}\n}\n`;
 }
 
-function predictionsSource(body = `{"target":{"provider":"aws","model":"${SENTINEL_MODEL}"}}`) {
-  return `meta {\n  name: predictions\n}\n\npost {\n  url: https://example.test/predictions\n}\n\nbody:json {\n${body}\n}\n`;
+function predictionsSource(body = `{"target":{"provider":"aws","model":"${SENTINEL_MODEL}"}}`, { settings = false } = {}) {
+  const base = `meta {\n  name: predictions\n}\n\npost {\n  url: https://example.test/predictions\n}\n\nbody:json {\n${body}\n}\n`;
+  if (!settings) {
+    return base;
+  }
+  return `${base}\nsettings {\n  encodeUrl: true\n  timeout: 0\n}\n`;
+}
+
+function predictionsSourceRealShape() {
+  return `meta {
+  name: predictions
+  type: http
+  seq: 5
+}
+
+post {
+  url: https://example.test/predictions
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "target": {
+      "provider": "aws",
+      "model": "${SENTINEL_MODEL}"
+    },
+    "task": {
+      "type": "openai-chat-completion-v1",
+      "input": {
+        "messages": [{"role": "user", "content": "probe"}],
+        "max_completion_tokens": 100
+      }
+    }
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+`;
 }
 
 function brunoCollection(root, {
@@ -202,6 +242,48 @@ test('extractBrunoCisSettings rejects trailing non-whitespace inside body:json w
         predictionsSource: predictionsSource(`{"target":{"provider":"aws","model":"${SENTINEL_MODEL}"}}\ntrailing`),
       }),
     /ambiguous|exactly once/i,
+  );
+});
+
+test('extractBrunoCisSettings accepts trailing settings section after body:json wrapper', () => {
+  const extracted = extractBrunoCisSettings({
+    modelsSource: modelsSource(),
+    predictionsSource: predictionsSource(undefined, { settings: true }),
+  });
+  assert.equal(extracted.model, SENTINEL_MODEL);
+  assert.equal(extracted.provider, 'aws');
+});
+
+test('extractBrunoCisSettings accepts real Bruno structural shape with settings block', () => {
+  const extracted = extractBrunoCisSettings({
+    modelsSource: modelsSource(),
+    predictionsSource: predictionsSourceRealShape(),
+  });
+  assert.equal(extracted.baseUrl, SENTINEL_BASE);
+  assert.equal(extracted.model, SENTINEL_MODEL);
+});
+
+test('extractBrunoCisSettings rejects duplicate settings sections', () => {
+  const predictions = `${predictionsSource(undefined, { settings: true })}\nsettings {\n  timeout: 1\n}\n`;
+  assert.throws(
+    () =>
+      extractBrunoCisSettings({
+        modelsSource: modelsSource(),
+        predictionsSource: predictions,
+      }),
+    /ambiguous/i,
+  );
+});
+
+test('extractBrunoCisSettings rejects malformed settings sections', () => {
+  const predictions = `${predictionsSource()}\nsettings {\n  encodeUrl: true\n`;
+  assert.throws(
+    () =>
+      extractBrunoCisSettings({
+        modelsSource: modelsSource(),
+        predictionsSource: predictions,
+      }),
+    /ambiguous|incomplete/i,
   );
 });
 

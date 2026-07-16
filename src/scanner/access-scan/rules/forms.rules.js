@@ -126,14 +126,24 @@ export default [
     standard: { version: 'Best Practice', level: 'n/a', criterion: 'n/a' },
     severity: { impact: 'moderate', priority: 4 },
     automation: 'heuristic',
-    checks: [{
-      id: 'forms:main-navigation-mismatch',
-      profiles: ['standards'],
-      evaluator: 'form-relationships',
-      target: { selector: 'ul, ol' },
-      options: { mode: 'main-navigation-mismatch' },
-      classification: 'potential',
-    }],
+    checks: [
+      {
+        id: 'forms:main-navigation-mismatch',
+        profiles: ['standards'],
+        evaluator: 'form-relationships',
+        target: { selector: 'ul, ol' },
+        options: { mode: 'main-navigation-mismatch' },
+        classification: 'potential',
+      },
+      {
+        id: 'parity:main-navigation-layout',
+        profiles: ['commercial-parity'],
+        evaluator: 'form-relationships',
+        target: { selector: 'nav, [role="navigation"]', allowPluginFallback: true },
+        options: { mode: 'main-navigation-layout-parity' },
+        classification: 'commercial-parity',
+      },
+    ],
     reporting: {
       title: 'Main navigation should have role navigation',
       requirement: 'Main navigation elements should have role navigation to ensure that screen readers can identify them as navigation regions.',

@@ -35,6 +35,7 @@ const COMPOSITE_VISIBILITY_ROLES = new Set([
 const SCRIPT_ONLY_TAGS = new Set(['script', 'noscript', 'style', 'template']);
 const SENSITIVE_ATTR_NAMES = /(?:^|[-_])(?:token|secret|csrf|password|passwd|auth|session|key)(?:$|[-_])/i;
 const GLOBAL_INFORMATION_MARKER = /(?:©|\bcopyright\b|\ball rights\b)/i;
+const SUBSTANTIAL_STICKY_HEADER_HEIGHT = 96;
 
 /** @type {Record<string, keyof ReturnType<typeof collectCommercialParityPatterns>['metrics']>} */
 const MODE_METRIC_KEYS = {
@@ -355,7 +356,16 @@ function collectCommercialParityPatterns(context) {
   const scanUrl = getScanUrl(context);
 
   const credentialGate = collectCredentialGate(snapshot, indexes);
-  const disclosureGroups = collectDisclosureGroups(snapshot, indexes);
+  const groupedActionGroups = collectGroupedActionButtons(indexes, snapshot)
+    .sort((left, right) => left.container.id - right.container.id)
+    .slice(0, 1);
+  const firstGroupedActionId = groupedActionGroups[0]?.container.id;
+  const inferredDisclosureGroups = collectDisclosureGroups(snapshot, indexes)
+    .filter((group) => firstGroupedActionId == null || group.container.id < firstGroupedActionId);
+  const disclosureGroups = dedupeGroups([
+    ...groupedActionGroups,
+    ...inferredDisclosureGroups,
+  ]);
   const visualTabGroups = collectVisualTabGroups(snapshot, indexes);
   const ariaHiddenVisible = collectAriaHiddenVisible(snapshot, indexes);
   const structuralVisibilityMisuse = collectStructuralVisibilityMisuse(snapshot, indexes);
@@ -484,6 +494,7 @@ function isSearchLandmark(element) {
  * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
  */
 function collectAriaHiddenVisible(snapshot, indexes) {
+  const repeatedHiddenActionSymbols = collectRepeatedHiddenActionSymbols(snapshot, indexes);
   return snapshot.elements.filter((element) => (
     element.attributes['aria-hidden'] === 'true'
     && element.rendered
@@ -498,6 +509,9 @@ function collectAriaHiddenVisible(snapshot, indexes) {
     && (
       isPointerTransparentImageOverlay(snapshot, indexes, element)
       || isInputCueWithStableControl(snapshot, indexes, element)
+      || isHiddenSymbolGraphic(snapshot, indexes, element)
+      || repeatedHiddenActionSymbols.has(element.id)
+      || isControlStateIndicator(snapshot, indexes, element)
     )
   ));
 }
@@ -522,7 +536,7 @@ function isPointerTransparentImageOverlay(snapshot, indexes, element) {
  * @param {import('../runtime/types.js').SnapshotElement} element
  */
 function isInputCueWithStableControl(snapshot, indexes, element) {
-  if (element.tag !== 'svg' && element.tag !== 'i') return false;
+  if (element.tag !== 'svg') return false;
   for (const ancestor of getAncestors(snapshot, indexes, element).slice(0, 3)) {
     const inputs = getDescendants(snapshot, indexes, ancestor, (child) => (
       child.tag === 'input' && isActiveContent(child)
@@ -537,6 +551,125 @@ function isInputCueWithStableControl(snapshot, indexes, element) {
     });
   }
   return false;
+}
+
+/**
+ * Commercial scanners treat large visible SVG symbols as content even when
+ * aria-hidden. Small symbols remain decorative unless their owning control is
+ * disabled and therefore cannot expose the symbol's purpose through interaction.
+ *
+ * @param {import('../runtime/types.js').Snapshot} snapshot
+ * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function isHiddenSymbolGraphic(snapshot, indexes, element) {
+  if (element.tag !== 'svg') return false;
+  const hasSymbolReference = getDescendants(
+    snapshot,
+    indexes,
+    element,
+    (child) => child.tag === 'use',
+  ).length > 0;
+  if (!hasSymbolReference) return false;
+
+  const area = element.rect.width * element.rect.height;
+  if (area >= 2000) return true;
+
+  return hasAncestor(snapshot, indexes, element, (ancestor) => (
+    ['button', 'input', 'select', 'textarea'].includes(ancestor.tag)
+    && (
+      Object.hasOwn(ancestor.attributes, 'disabled')
+      || ancestor.attributes['aria-disabled'] === 'true'
+    )
+  ));
+}
+
+/**
+ * Repeated hidden symbols paired with the same visible action label remain
+ * commercial mismatch candidates. One-off icons and symbols nested in a
+ * presentational wrapper remain decorative.
+ *
+ * @param {import('../runtime/types.js').Snapshot} snapshot
+ * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
+ * @returns {Set<number>}
+ */
+function collectRepeatedHiddenActionSymbols(snapshot, indexes) {
+  /** @type {Map<string, number[]>} */
+  const groups = new Map();
+
+  for (const element of snapshot.elements) {
+    if (
+      element.tag !== 'svg'
+      || element.attributes['aria-hidden'] !== 'true'
+      || !element.rendered
+      || element.rect.width <= 0
+      || element.rect.height <= 0
+    ) {
+      continue;
+    }
+
+    const parent = element.parentId != null ? indexes.byElementId.get(element.parentId) : null;
+    if (
+      !parent
+      || !isActiveContent(parent)
+      || (
+        parent.tag !== 'a'
+        && parent.tag !== 'button'
+        && parent.attributes.role !== 'button'
+      )
+    ) {
+      continue;
+    }
+
+    const label = normalizeText(parent.visibleText || parent.text || '');
+    const accessibleLabel = normalizeText(
+      parent.accessibleName || parent.attributes['aria-label'] || label,
+    );
+    const symbol = (indexes.childrenByParentId.get(element.id) || [])
+      .find((child) => child.tag === 'use');
+    if (!label || accessibleLabel !== label || !symbol) continue;
+
+    const reference = symbol.attributes.href || symbol.attributes['xlink:href'] || '';
+    const key = `${scopeKey(element)}::${label}::${reference}`;
+    const ids = groups.get(key) || [];
+    ids.push(element.id);
+    groups.set(key, ids);
+  }
+
+  return new Set(
+    [...groups.values()]
+      .filter((ids) => ids.length > 1)
+      .flat(),
+  );
+}
+
+/**
+ * Visually exposed state-indicator wrappers hidden inside a popup/list control
+ * are reported at the authored aria-hidden wrapper.
+ *
+ * @param {import('../runtime/types.js').Snapshot} snapshot
+ * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function isControlStateIndicator(snapshot, indexes, element) {
+  if (element.tag !== 'span' || normalizeText(element.visibleText || element.text || '')) {
+    return false;
+  }
+  const parent = element.parentId != null ? indexes.byElementId.get(element.parentId) : null;
+  if (
+    !parent
+    || (parent.tag !== 'button' && parent.attributes.role !== 'button')
+    || (
+      parent.attributes['aria-haspopup'] === undefined
+      && parent.attributes['aria-expanded'] === undefined
+      && parent.attributes['aria-controls'] === undefined
+    )
+  ) {
+    return false;
+  }
+  return getDescendants(snapshot, indexes, element, (child) => (
+    child.tag === 'svg' && child.rendered && child.rect.width > 0 && child.rect.height > 0
+  )).length > 0;
 }
 
 /**
@@ -580,6 +713,21 @@ function collectStructuralVisibilityMisuse(snapshot, indexes) {
       continue;
     }
 
+    if (isInactiveExclusiveVisualPanel(snapshot, indexes, element)) {
+      candidates.push({ element, reason: 'inactive-exclusive-visual-panel' });
+      continue;
+    }
+
+    if (isEmptyFrameworkMount(snapshot, indexes, element)) {
+      candidates.push({ element, reason: 'empty-framework-component-mount' });
+      continue;
+    }
+
+    if (isEmptyTextBlock(indexes, element)) {
+      candidates.push({ element, reason: 'empty-zero-height-text-block' });
+      continue;
+    }
+
     if (isSubstantiallyClippedContainer(snapshot, indexes, element)) {
       candidates.push({ element, reason: 'substantially-overflow-clipped-container' });
       continue;
@@ -594,14 +742,6 @@ function collectStructuralVisibilityMisuse(snapshot, indexes) {
       continue;
     }
 
-    if (
-      element.tag === 'body'
-      && element.framePath.length > 0
-      && (element.rect.width <= 0 || element.rect.height <= 0)
-      && !hasMeaningfulDescendant(snapshot, indexes, element)
-    ) {
-      candidates.push({ element, reason: 'empty-rendered-frame-body' });
-    }
   }
 
   const repeatedPlaceholders = snapshot.elements.filter((element) => (
@@ -733,6 +873,96 @@ function isEmptyShadowRootContainer(snapshot, indexes, element) {
     && (element.rect.width <= 0 || element.rect.height <= 0)
     && !normalizeText(element.text || element.visibleText || element.accessibleName || '')
     && !hasMeaningfulDescendant(snapshot, indexes, element)
+  );
+}
+
+/**
+ * @param {import('../runtime/types.js').Snapshot} snapshot
+ * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function isInactiveExclusiveVisualPanel(snapshot, indexes, element) {
+  if (
+    element.tag !== 'div'
+    || element.effectiveOpacity > 0.1
+    || element.computedStyle.pointerEvents !== 'none'
+    || element.rect.width <= 0
+    || element.rect.height <= 0
+    || !hasMeaningfulDescendant(snapshot, indexes, element)
+  ) {
+    return false;
+  }
+
+  const parent = element.parentId != null ? indexes.byElementId.get(element.parentId) : null;
+  if (!parent) return false;
+  return getScopedChildren(indexes, parent, element).some((sibling) => (
+    sibling.id !== element.id
+    && sibling.tag === element.tag
+    && sibling.effectiveOpacity > 0.1
+    && sibling.computedStyle.pointerEvents !== 'none'
+    && Math.abs(sibling.rect.width - element.rect.width) <= 2
+    && Math.abs(sibling.rect.height - element.rect.height) <= 2
+  ));
+}
+
+/**
+ * @param {import('../runtime/types.js').Snapshot} snapshot
+ * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function isEmptyFrameworkMount(snapshot, indexes, element) {
+  if (
+    element.tag !== 'div'
+    || !isActiveContent(element)
+    || isOptionalPaginationMount(element)
+    || (element.rect.width > 0 && element.rect.height > 0)
+    || !Object.keys(element.attributes).some((name) => /^data-(?:[a-z0-9]+-)?component$/i.test(name))
+  ) {
+    return false;
+  }
+
+  const controls = getDescendants(snapshot, indexes, element, (child) => (
+    isFocusableControl(child)
+    || ['input', 'select', 'textarea'].includes(child.tag)
+  ));
+  if (controls.length > 0) return false;
+
+  const text = normalizeText(element.visibleText || element.text || element.accessibleName || '');
+  if (!text && !hasMeaningfulDescendant(snapshot, indexes, element)) return true;
+
+  const lists = getDescendants(snapshot, indexes, element, (child) => (
+    child.tag === 'ul' || child.tag === 'ol'
+  ));
+  return lists.length > 0 && lists.every((list) => (
+    getDescendants(snapshot, indexes, list, (child) => child.tag === 'li').length === 0
+  ));
+}
+
+/**
+ * Empty pagination mounts are an expected inapplicable state when all results
+ * fit on one page, unlike missing status/location output regions.
+ *
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function isOptionalPaginationMount(element) {
+  return Object.entries(element.attributes).some(([name, value]) => (
+    /^data-(?:[a-z0-9]+-)?component$/i.test(name)
+    && /(?:^|[-_\s])(?:pagination|pager)(?:$|[-_\s])/i.test(value)
+  ));
+}
+
+/**
+ * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function isEmptyTextBlock(indexes, element) {
+  return (
+    element.tag === 'p'
+    && isActiveContent(element)
+    && element.rect.width > 0
+    && element.rect.height <= 0
+    && !normalizeText(element.visibleText || element.text || element.accessibleName || '')
+    && getScopedChildren(indexes, element, element).length === 0
   );
 }
 
@@ -1310,6 +1540,51 @@ function buildSubtreeTriggerCounts(triggers, indexes) {
 }
 
 /**
+ * A horizontal action group with one preference/detail launcher and multiple
+ * immediate actions is treated as a tab-like commercial pattern.
+ *
+ * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
+ * @param {import('../runtime/types.js').Snapshot} snapshot
+ */
+function collectGroupedActionButtons(indexes, snapshot) {
+  /** @type {Array<{ container: import('../runtime/types.js').SnapshotElement, triggers: import('../runtime/types.js').SnapshotElement[], panels: import('../runtime/types.js').SnapshotElement[] }>} */
+  const groups = [];
+
+  for (const container of snapshot.elements) {
+    if (!isActiveContent(container) || container.attributes.role) continue;
+    const children = getScopedChildren(indexes, container, container)
+      .filter(isActiveContent);
+    if (children.length < 3) continue;
+
+    const triggers = children.filter((child) => (
+      isFocusableControl(child)
+      && (child.tag === 'button' || child.attributes.role === 'button')
+      && Boolean(buttonAccessibleText(child))
+    ));
+    if (triggers.length !== children.length) continue;
+
+    const launchers = triggers.filter((trigger) => (
+      trigger.attributes['aria-haspopup'] !== undefined
+      || trigger.attributes['aria-controls'] !== undefined
+      || trigger.attributes['aria-expanded'] !== undefined
+    ));
+    if (launchers.length !== 1) continue;
+    if (triggers.some((trigger) => trigger.rect.width <= 0 || trigger.rect.height <= 0)) {
+      continue;
+    }
+
+    const centers = triggers.map((trigger) => trigger.rect.y + trigger.rect.height / 2);
+    const verticalSpread = Math.max(...centers) - Math.min(...centers);
+    const maximumHeight = Math.max(...triggers.map((trigger) => trigger.rect.height));
+    if (verticalSpread > maximumHeight) continue;
+
+    groups.push({ container, triggers, panels: [] });
+  }
+
+  return groups;
+}
+
+/**
  * @param {import('../runtime/types.js').Snapshot} snapshot
  * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
  */
@@ -1320,6 +1595,7 @@ function collectDisclosureGroups(snapshot, indexes) {
   const byContainer = new Map();
 
   for (const trigger of triggers) {
+    if (hasIndependentLabelledRegion(snapshot, indexes, trigger)) continue;
     const panel = resolveTriggerPanel(trigger, indexes);
     const container = panel
       ? findLowestCommonContainer(snapshot, indexes, trigger, panel)
@@ -1343,6 +1619,12 @@ function collectDisclosureGroups(snapshot, indexes) {
     const panels = uniqueTriggers
       .map((trigger) => resolveTriggerPanel(trigger, indexes))
       .filter(Boolean);
+    if (
+      panels.length === 0
+      && uniqueTriggers.every((trigger) => Boolean(trigger.attributes['aria-haspopup']))
+    ) {
+      continue;
+    }
     groups.push({
       container,
       triggers: uniqueTriggers,
@@ -1351,6 +1633,49 @@ function collectDisclosureGroups(snapshot, indexes) {
   }
 
   return dedupeGroups(groups);
+}
+
+/**
+ * Reverse aria-labelledby relationships identify independent disclosure regions
+ * even when authors omit aria-controls from the trigger.
+ *
+ * @param {import('../runtime/types.js').Snapshot} snapshot
+ * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
+ * @param {import('../runtime/types.js').SnapshotElement} trigger
+ */
+function hasIndependentLabelledRegion(snapshot, indexes, trigger) {
+  const domId = trigger.attributes.id?.trim();
+  if (!domId) return false;
+
+  for (const ancestor of getAncestors(snapshot, indexes, trigger).slice(0, 3)) {
+    const localTriggers = getDescendants(
+      snapshot,
+      indexes,
+      ancestor,
+      isDisclosureTrigger,
+    );
+    if (localTriggers.length !== 1) continue;
+
+    const labelledRegions = getDescendants(snapshot, indexes, ancestor, (candidate) => (
+      candidate.id !== trigger.id
+      && (candidate.attributes['aria-labelledby'] || '').split(/\s+/).includes(domId)
+      && getDescendants(
+        snapshot,
+        indexes,
+        candidate,
+        (descendant) => descendant.id === trigger.id,
+      ).length === 0
+    ));
+    if (labelledRegions.length === 0) continue;
+
+    const hasVisuallyExposedRegion = labelledRegions.some((region) => (
+      isActiveContent(region)
+      && region.rect.width > 0
+      && region.rect.height > 0
+    ));
+    if (!hasVisuallyExposedRegion) return true;
+  }
+  return false;
 }
 
 /**
@@ -1447,10 +1772,31 @@ function collectTopAnchoredHeaders(snapshot) {
     const position = element.computedStyle.position || '';
     const topOffset = parseStylePx(element.computedStyle.top);
     return (
-      (position === 'fixed' || position === 'sticky')
+      (
+        position === 'fixed'
+        || (
+          position === 'sticky'
+          && (
+            hasAuthoredTransform(element)
+            || element.rect.height >= SUBSTANTIAL_STICKY_HEADER_HEIGHT
+          )
+        )
+      )
       && Math.abs(topOffset) <= 1
     );
   });
+}
+
+/**
+ * A static sticky header does not itself establish focus obscuration. An
+ * authored transform is a portable signal that the header changes visual
+ * position and therefore warrants commercial-parity review.
+ *
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function hasAuthoredTransform(element) {
+  const style = element.attributes.style || '';
+  return /(?:^|;)\s*transform\s*:\s*(?!none(?:\s*!important)?(?:;|$))/i.test(style);
 }
 
 /**
@@ -1580,7 +1926,8 @@ function collectSubmenuRows(snapshot, indexes) {
       const children = getScopedChildren(indexes, row, row);
       const link = children.find((child) => child.tag === 'a' && Boolean(child.attributes.href));
       const button = children.find((child) => (
-        child.tag === 'button' || child.attributes.role === 'button'
+        child.id !== link?.id
+        && (child.tag === 'button' || child.attributes.role === 'button')
       ));
       if (!link || !button) continue;
       examined += 1;
@@ -1714,24 +2061,94 @@ function collectCheckboxLabelAnomalies(snapshot, indexes) {
 function collectSearchTargets(snapshot, indexes) {
   /** @type {Map<number, { element: import('../runtime/types.js').SnapshotElement, targetStrategy: string }>} */
   const targets = new Map();
+  /** @type {Map<number, { element: import('../runtime/types.js').SnapshotElement, targetStrategy: string }>} */
+  const ambiguousTargets = new Map();
   let examined = 0;
 
   for (const input of snapshot.elements) {
     if (input.tag !== 'input' || !isActiveContent(input)) continue;
     examined += 1;
-    const domId = input.attributes.id;
-    if (domId && indexes.ambiguousDomIds.get(scopeKey(input))?.has(domId)) continue;
     if (!isSearchInput(snapshot, indexes, input)) continue;
     if (hasAncestor(snapshot, indexes, input, isSearchLandmark)) continue;
 
     const inferred = inferSearchContainer(snapshot, indexes, input);
-    if (hasAmbiguousControlIds(snapshot, indexes, inferred.element)) continue;
+    if (hasAmbiguousControlIds(snapshot, indexes, inferred.element)) {
+      ambiguousTargets.set(inferred.element.id, inferred);
+      continue;
+    }
     if (!targets.has(inferred.element.id)) {
       targets.set(inferred.element.id, inferred);
     }
   }
 
+  if (targets.size > 1) {
+    targets.clear();
+  }
+
+  for (const inferred of selectSpatiallyDistinctSearchTargets(
+    snapshot,
+    indexes,
+    [...ambiguousTargets.values()],
+  )) {
+    targets.set(inferred.element.id, inferred);
+  }
+
   return { targets: [...targets.values()], examined };
+}
+
+/**
+ * Repeated responsive copies commonly reuse control IDs. Adjacent copies are
+ * left alone because their identity is ambiguous. Equivalent groups separated
+ * into distinct page regions are one semantic search pattern, so report one.
+ *
+ * @param {import('../runtime/types.js').Snapshot} snapshot
+ * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
+ * @param {Array<{ element: import('../runtime/types.js').SnapshotElement, targetStrategy: string }>} targets
+ */
+function selectSpatiallyDistinctSearchTargets(snapshot, indexes, targets) {
+  /** @type {Map<string, Array<{ element: import('../runtime/types.js').SnapshotElement, targetStrategy: string }>>} */
+  const bySignature = new Map();
+  for (const target of targets) {
+    const signature = buildSearchGroupSignature(snapshot, indexes, target.element);
+    const bucket = bySignature.get(signature) || [];
+    bucket.push(target);
+    bySignature.set(signature, bucket);
+  }
+
+  const selected = [];
+  for (const group of bySignature.values()) {
+    if (group.length < 2) continue;
+    const ordered = [...group].sort((left, right) => left.element.rect.y - right.element.rect.y);
+    const maximumHeight = Math.max(...ordered.map(({ element }) => element.rect.height), 1);
+    const minimumSeparation = Math.max(400, maximumHeight * 4);
+    const spread = ordered.at(-1).element.rect.y - ordered[0].element.rect.y;
+    if (spread <= minimumSeparation) continue;
+    selected.push(ordered[0]);
+  }
+  return selected;
+}
+
+/**
+ * @param {import('../runtime/types.js').Snapshot} snapshot
+ * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
+ * @param {import('../runtime/types.js').SnapshotElement} container
+ */
+function buildSearchGroupSignature(snapshot, indexes, container) {
+  const controls = getDescendants(snapshot, indexes, container, (child) => (
+    ['input', 'select', 'textarea'].includes(child.tag)
+  )).map((control) => normalizeText([
+    control.tag,
+    control.attributes.type,
+    control.accessibleName,
+    control.attributes['aria-label'],
+    control.attributes.placeholder,
+    control.attributes.name,
+  ].filter(Boolean).join(':'))).sort();
+  const actions = getDescendants(snapshot, indexes, container, (child) => (
+    child.tag === 'button'
+    || (child.tag === 'input' && ['submit', 'button'].includes(child.attributes.type || ''))
+  )).map((action) => buttonAccessibleText(action)).filter(Boolean).sort();
+  return `${controls.join('|')}::${actions.join('|')}`;
 }
 
 /**

@@ -57,7 +57,7 @@ export default {
       if (mode === 'mailto-href') {
         if (!href.toLowerCase().startsWith('mailto:')) continue;
         const keywords = /** @type {string[]} */ (check.options?.warningKeywords || [
-          'email', 'mail', 'contact',
+          'email', 'mail',
         ]);
         if (!includesKeyword(text, keywords)) {
           findings.push(elementFinding(element, { href, warningInferred: true }));

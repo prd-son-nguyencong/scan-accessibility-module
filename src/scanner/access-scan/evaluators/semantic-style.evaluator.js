@@ -1,4 +1,9 @@
-import { getDescendants, hasAncestor, getAncestors } from '../runtime/graph-relationships.js';
+import {
+  getDescendants,
+  hasAncestor,
+  getAncestors,
+  sameScope,
+} from '../runtime/graph-relationships.js';
 import {
   elementFinding,
   getIndexes,
@@ -9,6 +14,7 @@ import {
   isBoldStyle,
   isFocusableControl,
   isItalicStyle,
+  normalizeText,
   parseStylePx,
   queryCandidates,
 } from './lib/runtime-context.js';
@@ -30,6 +36,8 @@ export default {
         if (!(element.text.trim() || element.visibleText.trim()) || !isBoldStyle(element)) continue;
         if (hasAncestor(snapshot, indexes, element, (ancestor) => /^h[1-6]$/.test(ancestor.tag))) continue;
         if (hasAncestor(snapshot, indexes, element, isInteractiveAncestor)) continue;
+        if (isReferencedAsControlLabel(snapshot, element)) continue;
+        if (isListSectionLabel(indexes, element)) continue;
         if (hasHeadingStyleToken(element)) continue;
         findings.push(elementFinding(element));
       }
@@ -38,8 +46,9 @@ export default {
 
     if (mode === 'emphasis-mismatch') {
       for (const element of candidates) {
-        if (element.tag !== 'span' || element.attributes.role) continue;
+        if (!['i', 'span'].includes(element.tag) || element.attributes.role) continue;
         if (!(element.text.trim() || element.visibleText.trim()) || !isItalicStyle(element)) continue;
+        if (isTypographicFootnote(element)) continue;
         findings.push(elementFinding(element));
       }
       return { status: 'complete', candidatesScanned: candidates.length, findings };
@@ -58,6 +67,12 @@ export default {
         if (style.display === 'none' || style.visibility === 'hidden') continue;
         const visibilityReason = getAuthorVisibilityHidingReason(element);
         if (!visibilityReason) continue;
+        if (
+          visibilityReason === 'zero-geometry'
+          && hasRenderedVisualDescendant(snapshot, indexes, element)
+        ) {
+          continue;
+        }
         const owner = getVisibilityHidingOwner(snapshot, indexes, element, visibilityReason);
         const text = getSemanticSubtreeText(snapshot, indexes, owner);
         if (!text || text.length < 3) continue;
@@ -82,9 +97,11 @@ export default {
       for (const element of candidates) {
         if (element.attributes['aria-hidden'] !== 'true') continue;
         if (!element.rendered || element.rect.width <= 0 || element.rect.height <= 0) continue;
+        if (element.effectiveOpacity <= 0.1) continue;
         if (hasAncestor(snapshot, indexes, element, (ancestor) => ancestor.attributes['aria-hidden'] === 'true')) {
           continue;
         }
+        if (hasEquivalentExposedGraphic(indexes, element)) continue;
         if (getAncestorsWithAccessibleName(snapshot, indexes, element)) continue;
         if (isDecorativeAriaHiddenContainer(snapshot, indexes, element)) continue;
         findings.push(elementFinding(element));
@@ -147,6 +164,33 @@ function isInteractiveAncestor(element) {
 }
 
 /**
+ * @param {import('../runtime/types.js').Snapshot} snapshot
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function isReferencedAsControlLabel(snapshot, element) {
+  const domId = element.attributes.id?.trim();
+  if (!domId) return false;
+
+  return snapshot.elements.some((candidate) => {
+    if (!sameScope(candidate, element) || !isFormControl(candidate)) return false;
+    const labelIds = (candidate.attributes['aria-labelledby'] || '').split(/\s+/);
+    return labelIds.includes(domId);
+  });
+}
+
+/**
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function isFormControl(element) {
+  return (
+    ['button', 'input', 'select', 'textarea'].includes(element.tag)
+    || ['button', 'checkbox', 'combobox', 'listbox', 'radio', 'searchbox', 'slider', 'spinbutton', 'textbox'].includes(
+      element.attributes.role || '',
+    )
+  );
+}
+
+/**
  * Visual heading utility tokens indicate heading semantics rather than strong
  * emphasis. This checks portable token shapes, not site-specific class names.
  *
@@ -155,6 +199,34 @@ function isInteractiveAncestor(element) {
 function hasHeadingStyleToken(element) {
   const className = element.attributes.class || '';
   return /(?:^|\s)(?:h[1-6]|heading(?:[-_][1-6])?)(?:\s|$)/i.test(className);
+}
+
+/**
+ * A bold inline node immediately followed by a list often labels that list
+ * section rather than emphasizing prose.
+ *
+ * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function isListSectionLabel(indexes, element) {
+  if (element.parentId == null) return false;
+  const siblings = indexes.childrenByParentId.get(element.parentId) || [];
+  const index = siblings.findIndex((sibling) => sibling.id === element.id);
+  if (index < 0) return false;
+  return siblings.slice(index + 1).some((sibling) => (
+    sameScope(sibling, element) && (sibling.tag === 'ul' || sibling.tag === 'ol')
+  ));
+}
+
+/**
+ * Long copy introduced by a conventional footnote marker uses italics as a
+ * typographic note treatment rather than stress emphasis.
+ *
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function isTypographicFootnote(element) {
+  const text = (element.visibleText || element.text || '').trim();
+  return text.length >= 20 && /^(?:\*+|[†‡])\s*\S/.test(text);
 }
 
 /**
@@ -218,6 +290,20 @@ function getVisibilityHidingOwner(snapshot, indexes, element, visibilityReason) 
 }
 
 /**
+ * @param {import('../runtime/types.js').Snapshot} snapshot
+ * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function hasRenderedVisualDescendant(snapshot, indexes, element) {
+  return getDescendants(snapshot, indexes, element, (descendant) => (
+    descendant.rendered
+    && descendant.effectiveOpacity > 0.1
+    && descendant.rect.width > 0
+    && descendant.rect.height > 0
+  )).length > 0;
+}
+
+/**
  * A clip path can crop decoration without hiding the element. Treat only
  * commonly collapsed shapes as visually hidden; arbitrary non-empty polygons
  * require manual visual review rather than a visibility finding.
@@ -256,6 +342,28 @@ function getAncestorsWithAccessibleName(snapshot, indexes, element) {
       && hasAccessibleName(parent)
     ),
   ) || null;
+}
+
+/**
+ * Theme and state variants often render two equivalent images in one control:
+ * one AT-exposed image supplies the name while the visible alternate is hidden.
+ *
+ * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function hasEquivalentExposedGraphic(indexes, element) {
+  if (element.tag !== 'img' || element.parentId == null) return false;
+  const alt = normalizeText(element.attributes.alt || '');
+  if (!alt) return false;
+
+  return (indexes.childrenByParentId.get(element.parentId) || []).some((sibling) => (
+    sibling.id !== element.id
+    && sibling.tag === 'img'
+    && sameScope(sibling, element)
+    && sibling.attributes['aria-hidden'] !== 'true'
+    && !sibling.hiddenFromAT
+    && normalizeText(sibling.attributes.alt || '') === alt
+  ));
 }
 
 /**

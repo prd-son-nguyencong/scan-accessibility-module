@@ -21,3 +21,18 @@ export function trustedCisTestEnv(overrides = {}) {
     ...overrides,
   };
 }
+
+export function insecureDevEnv(overrides = {}) {
+  return {
+    CIS_TLS_MODE: 'insecure-dev',
+    CIS_PROXY_URL: 'https://cis.example.test/ml/inference/cis',
+    CIS_AUTH_TOKEN: 'test-feature-key',
+    CIS_MODEL: 'anthropic.claude-sonnet-5',
+    CIS_PROVIDER: 'aws',
+    CIS_ALLOWED_HOSTS: 'cis.example.test',
+    CIS_INSECURE_DEV_ACK: 'ALLOW_UNVERIFIED_CIS_TLS',
+    CIS_TLS_MAX_VERSION: 'TLSv1.2',
+    CIS_DEV_BYPASS_AUTH: 'true',
+    ...overrides,
+  };
+}

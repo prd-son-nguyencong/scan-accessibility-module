@@ -1,4 +1,5 @@
 import { CisCaError, loadTrustedCaBundle } from './ca.js';
+import { resolveInsecureDevCisConfig } from './tls-mode.js';
 import { isLoopbackHost } from './transport.js';
 
 const DEFAULT_ALLOWED_HOSTS = Object.freeze(['127.0.0.1', 'localhost']);
@@ -78,8 +79,47 @@ export function resolveTrustedCisConfig(env = process.env, options = {}) {
   };
 }
 
+/**
+ * Resolve CIS configuration for trusted or guarded development transport modes.
+ */
+export function resolveCisConfig(env = process.env, options = {}) {
+  const mode = String(env.CIS_TLS_MODE || 'trusted').trim().toLowerCase();
+  if (mode === 'insecure-dev') {
+    return resolveInsecureDevCisConfig(env, options);
+  }
+  if (String(env.CIS_DEV_BYPASS_AUTH || '').trim()) {
+    return {
+      ok: false,
+      reason: 'CIS_DEV_AUTH_BYPASS_DENIED',
+      message: 'Development auth bypass is unavailable in trusted mode.',
+    };
+  }
+  const trusted = resolveTrustedCisConfig(env, options);
+  return trusted.ok
+    ? { ...trusted, transportSecurity: 'trusted', devBypassAuth: false }
+    : trusted;
+}
+
+export function createCisTransportFromConfig(config, fetchImpl = globalThis.fetch) {
+  if (!config?.ok) return null;
+  if (config.transportSecurity === 'insecure-dev') {
+    return createInsecureDevTransportBundle(config, fetchImpl);
+  }
+  if (!config.caPem) return null;
+  return createTrustedTransportBundle(config, fetchImpl);
+}
+
 export function createCisTransportFromTrustedConfig(config, fetchImpl = globalThis.fetch) {
   if (!config?.ok) return null;
+  if (config.transportSecurity === 'insecure-dev' || !config.caPem) return null;
+  return createTrustedTransportBundle(config, fetchImpl);
+}
+
+/**
+ * @param {NonNullable<ReturnType<typeof resolveCisConfig>> & { ok: true }} config
+ * @param {typeof fetch} fetchImpl
+ */
+function createTrustedTransportBundle(config, fetchImpl) {
   return {
     async importTransport() {
       const [{ createCisTransport }, { Agent, fetch: undiciFetch }] = await Promise.all([
@@ -101,6 +141,44 @@ export function createCisTransportFromTrustedConfig(config, fetchImpl = globalTh
         dispatcher,
         ownsDispatcher: true,
         fetch: undiciFetch,
+        transportSecurity: 'trusted',
+        devBypassAuth: config.devBypassAuth === true,
+      });
+    },
+    model: config.model,
+    provider: config.provider,
+  };
+}
+
+/**
+ * @param {NonNullable<ReturnType<typeof resolveCisConfig>> & { ok: true }} config
+ * @param {typeof fetch} fetchImpl
+ */
+function createInsecureDevTransportBundle(config, fetchImpl) {
+  return {
+    async importTransport() {
+      const [{ createCisTransport }, { Agent, fetch: undiciFetch }] = await Promise.all([
+        import('./transport.js'),
+        import('undici'),
+      ]);
+      const dispatcher = new Agent({
+        connect: {
+          rejectUnauthorized: false,
+          minVersion: 'TLSv1.2',
+          maxVersion: 'TLSv1.2',
+        },
+      });
+      return createCisTransport({
+        baseUrl: config.baseUrl,
+        featureKey: config.featureKey,
+        provider: config.provider,
+        allowedHosts: config.allowedHosts,
+        allowInsecureLoopback: config.allowInsecureLoopback,
+        dispatcher,
+        ownsDispatcher: true,
+        fetch: undiciFetch,
+        transportSecurity: 'insecure-dev',
+        devBypassAuth: config.devBypassAuth === true,
       });
     },
     model: config.model,

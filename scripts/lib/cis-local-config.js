@@ -18,6 +18,7 @@ const MODEL_ID_PATTERN = /^[a-z0-9][a-z0-9._:-]{0,199}$/i;
 const PROVIDER_ID_PATTERN = /^[a-z][a-z0-9._:-]{0,63}$/i;
 const MANAGED_ENV_LINE = /^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=\s*/;
 const BODY_JSON_MARKER = 'body:json';
+const SETTINGS_MARKER = 'settings';
 
 function oneMatch(source, pattern, label) {
   const matches = [...source.matchAll(pattern)];
@@ -80,6 +81,36 @@ function extractBalancedObject(source, start) {
   throw new Error('Bruno JSON body is incomplete.');
 }
 
+function startsWithWord(source, cursor, word) {
+  if (!source.startsWith(word, cursor)) {
+    return false;
+  }
+  const next = cursor + word.length;
+  if (next < source.length && /[A-Za-z0-9_-]/.test(source[next])) {
+    return false;
+  }
+  return true;
+}
+
+function parseOptionalSettingsSection(source, cursor) {
+  cursor = skipWhitespace(source, cursor);
+  if (cursor >= source.length) {
+    return cursor;
+  }
+
+  if (!startsWithWord(source, cursor, SETTINGS_MARKER)) {
+    throw new Error('Bruno JSON body is ambiguous.');
+  }
+
+  cursor = skipWhitespace(source, cursor + SETTINGS_MARKER.length);
+  if (source[cursor] !== '{') {
+    throw new Error('Bruno JSON body is ambiguous.');
+  }
+
+  const settingsBlock = extractBalancedObject(source, cursor);
+  return skipWhitespace(source, settingsBlock.end);
+}
+
 function extractBrunoJsonBody(source) {
   const markerMatches = [...source.matchAll(/body:json/g)];
   if (markerMatches.length !== 1) {
@@ -105,7 +136,8 @@ function extractBrunoJsonBody(source) {
   const jsonObject = extractBalancedObject(inner, jsonCursor);
   assertWhitespaceOnly(inner, jsonObject.end);
 
-  assertWhitespaceOnly(source, wrapper.end);
+  const trailingCursor = parseOptionalSettingsSection(source, wrapper.end);
+  assertWhitespaceOnly(source, trailingCursor);
   return jsonObject.text;
 }
 

@@ -78,24 +78,30 @@ export default {
       for (const element of candidates) {
         if (element.tag !== 'svg' || !element.rendered || element.hiddenFromAT) continue;
         if (element.rect.width <= 0 || element.rect.height <= 0) continue;
-        if (element.attributes.role || element.attributes['aria-hidden'] === 'true') continue;
+        if (element.attributes.role === 'presentation' || element.attributes['aria-hidden'] === 'true') {
+          continue;
+        }
         if (hasAccessibleName(element)) continue;
         if (getDescendants(snapshot, indexes, element, (child) => child.tag === 'title').length > 0) {
           continue;
         }
-        if (getDescendants(snapshot, indexes, element, (child) => child.tag === 'use').length === 0) {
-          continue;
-        }
+        if (isDecorativeVectorOverlay(snapshot, indexes, element)) continue;
 
         const interactive = getAncestors(snapshot, indexes, element).find((ancestor) => (
           ancestor.tag === 'a'
           || ancestor.tag === 'button'
           || ['button', 'link'].includes(ancestor.attributes.role || '')
         ));
-        if (interactive && !normalizeText(interactive.text || '')) continue;
+        if (
+          interactive
+          && isFragmentOnlyControl(interactive)
+          && normalizeText(interactive.visibleText || interactive.text || '')
+        ) {
+          continue;
+        }
 
         findings.push(elementFinding(element, {
-          structuralPattern: 'unlabelled-inline-symbol-instance',
+          structuralPattern: 'rendered-unnamed-svg-icon',
         }));
       }
       return { status: 'complete', candidatesScanned: candidates.length, findings };
@@ -146,3 +152,29 @@ export default {
     });
   },
 };
+
+/**
+ * Fragment-only controls commonly pair a decorative direction icon with a
+ * descriptive in-page action label.
+ *
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function isFragmentOnlyControl(element) {
+  return element.tag === 'a' && /\bhref\s*=\s*["']#/i.test(element.outerHTML || '');
+}
+
+/**
+ * Multi-layer SVGs intentionally stretched without preserving aspect ratio are
+ * visual transition/background surfaces, not discrete icons.
+ *
+ * @param {import('../runtime/types.js').Snapshot} snapshot
+ * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function isDecorativeVectorOverlay(snapshot, indexes, element) {
+  const preserveAspectRatio = Object.entries(element.attributes)
+    .find(([name]) => name.toLowerCase() === 'preserveaspectratio')?.[1];
+  if (normalizeText(preserveAspectRatio || '').toLowerCase() !== 'none') return false;
+
+  return getDescendants(snapshot, indexes, element, (child) => child.tag === 'path').length > 1;
+}

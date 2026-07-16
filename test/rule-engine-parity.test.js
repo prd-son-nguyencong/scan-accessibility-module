@@ -421,7 +421,7 @@ test('below-fold checkbox search and current-nav parity scan page-wide active co
   }
 });
 
-test('sticky header parity candidate uses semantic-only manual review evidence', async () => {
+test('static sticky header does not emit parity without an obscuration signal', async () => {
   await withPage(
     `
       <style>
@@ -433,11 +433,51 @@ test('sticky header parity candidate uses semantic-only manual review evidence',
     async (page) => {
       const { result } = await runParityRules(page, ['StickyHeaderObscuresFocus']);
       const findings = findingsForRule(result, 'StickyHeaderObscuresFocus');
+      assert.equal(findings.length, 0);
+    },
+  );
+});
+
+test('fixed and dynamically transformed sticky headers retain parity evidence', async () => {
+  await withPage(
+    `
+      <header id="fixed-header" style="position: fixed; top: 0; width: 100%; height: 48px">
+        Fixed navigation
+      </header>
+      <header id="transforming-header"
+        style="position: sticky; top: 0; height: 48px; transform: translateY(0px)">
+        Transforming navigation
+      </header>
+      <main style="margin-top: 120px">Content</main>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['StickyHeaderObscuresFocus']);
+      const findings = findingsForRule(result, 'StickyHeaderObscuresFocus')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+
+      assert.equal(findings.length, 2);
+      assert.ok(findings.every((finding) => finding.evidence.hitTestConfirmed === false));
+      assert.ok(findings.every((finding) => /manual review/i.test(finding.evidence.semanticAssessment)));
+    },
+  );
+});
+
+test('substantial static sticky headers retain parity evidence', async () => {
+  await withPage(
+    `
+      <header id="substantial-header"
+        style="position: sticky; top: 0; width: 100%; height: 120px">
+        <a href="/">Home</a>
+      </header>
+      <main>Content</main>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['StickyHeaderObscuresFocus']);
+      const findings = findingsForRule(result, 'StickyHeaderObscuresFocus')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+
       assert.equal(findings.length, 1);
-      assert.equal(findings[0].violationType, 'commercial-parity');
-      assert.equal(findings[0].evidence.classification, 'commercial-parity-heuristic');
-      assert.equal(findings[0].evidence.hitTestConfirmed, false);
-      assert.match(findings[0].evidence.semanticAssessment, /manual review/i);
+      assert.match(findings[0].element.outerHTML, /substantial-header/);
     },
   );
 });
@@ -855,6 +895,94 @@ test('search-entry disclosure containers do not emit tab parity but checkbox fil
   );
 });
 
+test('independent labelled checkbox disclosures do not synthesize tab parity', async () => {
+  await withPage(
+    `
+      <section id="independent-filters">
+        <div>
+          <div id="category-label" role="button" tabindex="0" aria-expanded="false">Category</div>
+          <div role="group" aria-labelledby="category-label" hidden>
+            <label><input type="checkbox"> Accounting</label>
+          </div>
+        </div>
+        <div>
+          <div id="state-label" role="button" tabindex="0" aria-expanded="false">State</div>
+          <div role="group" aria-labelledby="state-label" hidden>
+            <label><input type="checkbox"> Virginia</label>
+          </div>
+        </div>
+        <div>
+          <div id="city-label" role="button" tabindex="0" aria-expanded="false">City</div>
+          <div role="group" aria-labelledby="city-label" hidden>
+            <label><input type="checkbox"> Richmond</label>
+          </div>
+        </div>
+      </section>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['TablistRole', 'TabMismatch']);
+
+      assert.equal(findingsForRule(result, 'TablistRole').length, 0);
+      assert.equal(findingsForRule(result, 'TabMismatch').length, 0);
+    },
+  );
+});
+
+test('visually exposed collapsed checkbox regions preserve tab parity', async () => {
+  await withPage(
+    `
+      <section id="exposed-filters">
+        <div>
+          <div id="country-label" role="button" tabindex="0" aria-expanded="false">Country</div>
+          <div role="group" aria-labelledby="country-label">
+            <label><input type="checkbox"> Canada</label>
+          </div>
+        </div>
+        <div>
+          <div id="state-label" role="button" tabindex="0" aria-expanded="false">State</div>
+          <div role="group" aria-labelledby="state-label">
+            <label><input type="checkbox"> Ontario</label>
+          </div>
+        </div>
+        <div>
+          <div id="city-label" role="button" tabindex="0" aria-expanded="false">City</div>
+          <div role="group" aria-labelledby="city-label">
+            <label><input type="checkbox"> Toronto</label>
+          </div>
+        </div>
+      </section>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['TablistRole', 'TabMismatch']);
+
+      assert.equal(findingsForRule(result, 'TablistRole').length, 1);
+      assert.equal(findingsForRule(result, 'TabMismatch').length, 3);
+    },
+  );
+});
+
+test('co-located popup launchers do not synthesize tab parity', async () => {
+  await withPage(
+    `
+      <div id="assistant-launcher" aria-describedby="assistant-popover" tabindex="-1">
+        <span role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
+          Open recruiting assistant
+        </span>
+        <div role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
+          Chat with recruiting assistant
+        </div>
+      </div>
+      <div id="assistant-popover" role="dialog" hidden>Assistant</div>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['TablistRole', 'TabMismatch']);
+
+      assert.equal(findingsForRule(result, 'TablistRole').length, 0);
+      assert.equal(findingsForRule(result, 'TabMismatch').length, 0);
+    },
+  );
+});
+
 test('semantically equivalent responsive nav copies dedupe RequiredFormFieldAriaRequired parity', async () => {
   const server = createServer((request, response) => {
     response.writeHead(200, { 'Content-Type': 'text/html' });
@@ -968,6 +1096,37 @@ test('duplicated responsive search control ids are not synthesized as search-lan
   );
 });
 
+test('spatially distinct repeated search groups produce one semantic parity finding', async () => {
+  await withPage(
+    `
+      <section>
+        <label id="shared-query-label" for="shared-query">Search by keyword</label>
+        <input id="shared-query" type="text" aria-labelledby="shared-query-label">
+        <input type="text" aria-label="Location">
+        <button type="button">Search jobs</button>
+      </section>
+      <div style="height: 1200px"></div>
+      <section>
+        <label id="shared-query-label" for="shared-query">Search by keyword</label>
+        <input id="shared-query" type="text" aria-labelledby="shared-query-label">
+        <input type="text" aria-label="Location">
+        <button type="button">Search jobs</button>
+      </section>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['SearchFormMismatch']);
+      const parity = findingsForRule(result, 'SearchFormMismatch')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+
+      assert.equal(parity.length, 1);
+      assert.equal(
+        parity[0].evidence.structuralPattern,
+        'search-controls-without-search-landmark',
+      );
+    },
+  );
+});
+
 test('visual button and panel state infers generic tab parity without class selectors', async () => {
   await withPage(
     `
@@ -1032,13 +1191,53 @@ test('commercial visibility parity observes exposed hidden structures without ve
 
       assert.equal(mismatch.length, 1);
       assert.match(mismatch[0].element.outerHTML, /visible-but-hidden-from-at/);
-      assert.equal(misuse.length, 6);
+      assert.equal(misuse.length, 5);
       assert.ok(misuse.some((finding) => /substantially-clipped/.test(finding.element.outerHTML)));
       assert.ok(!misuse.some((finding) => /near-clipped/.test(finding.element.outerHTML)));
       assert.equal(misuse.filter((finding) => /empty-placeholder-/.test(finding.element.outerHTML)).length, 2);
       assert.ok(misuse.some((finding) => /sprite-root/.test(finding.element.outerHTML)));
       assert.ok(misuse.some((finding) => finding.element.framePath.length === 0 && /^<body/.test(finding.element.outerHTML)));
-      assert.ok(misuse.some((finding) => finding.element.framePath.length > 0 && /body/.test(finding.element.outerHTML)));
+      assert.ok(!misuse.some((finding) => finding.element.framePath.length > 0 && /body/.test(finding.element.outerHTML)));
+    },
+  );
+});
+
+test('commercial visibility parity identifies hidden symbol graphics by geometry and disabled context', async () => {
+  await withPage(
+    `
+      <svg width="0" height="0" aria-hidden="true">
+        <symbol id="decorative-symbol" viewBox="0 0 20 20"><path d="M0 0h20v20z"></path></symbol>
+      </svg>
+      <button aria-label="Previous item" disabled>
+        <svg id="disabled-control-symbol" aria-hidden="true" width="22" height="22">
+          <use href="#decorative-symbol"></use>
+        </svg>
+      </button>
+      <button aria-label="Next item">
+        <svg id="enabled-control-symbol" aria-hidden="true" width="22" height="22">
+          <use href="#decorative-symbol"></use>
+        </svg>
+      </button>
+      <div>
+        <svg id="large-standalone-symbol-a" aria-hidden="true" width="70" height="140">
+          <use href="#decorative-symbol"></use>
+        </svg>
+        <span>First recognition</span>
+        <svg id="large-standalone-symbol-b" aria-hidden="true" width="140" height="30">
+          <use href="#decorative-symbol"></use>
+        </svg>
+      </div>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['VisibilityMismatch']);
+      const findings = findingsForRule(result, 'VisibilityMismatch')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+
+      assert.equal(findings.length, 3);
+      assert.ok(findings.some((finding) => /disabled-control-symbol/.test(finding.element.outerHTML)));
+      assert.ok(findings.some((finding) => /large-standalone-symbol-a/.test(finding.element.outerHTML)));
+      assert.ok(findings.some((finding) => /large-standalone-symbol-b/.test(finding.element.outerHTML)));
+      assert.ok(!findings.some((finding) => /enabled-control-symbol/.test(finding.element.outerHTML)));
     },
   );
 });
@@ -1163,6 +1362,303 @@ test('commercial graphics parity derives inline symbol findings from semantics',
   );
 });
 
+test('commercial article parity reviews rendered article regions even when they have headings', async () => {
+  await withPage(
+    `
+      <article id="article-one">
+        <h2>Customer service</h2>
+        <p>Self-contained information with enough detail to satisfy the standards heuristic.</p>
+      </article>
+      <article id="article-two">
+        <h2>Operations</h2>
+        <p>Another self-contained card with a heading and substantial supporting copy.</p>
+      </article>
+      <article id="hidden-article" hidden><h2>Hidden</h2></article>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['ArticleMisuse']);
+      const parity = findingsForRule(result, 'ArticleMisuse')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+
+      assert.equal(parity.length, 2);
+      assert.ok(parity.some((finding) => /article-one/.test(finding.element.outerHTML)));
+      assert.ok(parity.some((finding) => /article-two/.test(finding.element.outerHTML)));
+      assert.ok(!parity.some((finding) => /hidden-article/.test(finding.element.outerHTML)));
+    },
+  );
+});
+
+test('commercial icon parity checks every rendered unnamed SVG but honors its own semantics', async () => {
+  await withPage(
+    `
+      <svg width="0" height="0" aria-hidden="true">
+        <symbol id="shape" viewBox="0 0 16 16"><path d="M0 0h16v16H0z"></path></symbol>
+      </svg>
+      <a href="/jobs">
+        <span>Search jobs</span>
+        <svg id="unnamed-symbol" width="16" height="16"><use href="#shape"></use></svg>
+      </a>
+      <button>
+        Sort
+        <span aria-hidden="true">
+          <svg id="hidden-by-parent" width="16" height="16"><path d="M0 0h16v16H0z"></path></svg>
+        </span>
+      </button>
+      <svg id="standalone-path" width="16" height="16"><path d="M0 0h16v16H0z"></path></svg>
+      <svg id="decorative-vector-overlay" width="100" height="100" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <path d="M0 0h100v50H0z"></path>
+        <path d="M0 50h100v50H0z"></path>
+      </svg>
+      <a href="/chat">
+        <svg id="presentational" role="presentation" width="16" height="16"><use href="#shape"></use></svg>
+        Chat
+      </a>
+      <svg id="named" aria-label="Status" width="16" height="16"><use href="#shape"></use></svg>
+      <svg id="self-hidden" aria-hidden="true" width="16" height="16"><use href="#shape"></use></svg>
+      <div hidden>
+        <svg id="not-rendered" width="16" height="16"><use href="#shape"></use></svg>
+      </div>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['IconDiscernible']);
+      const parity = findingsForRule(result, 'IconDiscernible')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+
+      assert.equal(parity.length, 2);
+      assert.ok(parity.some((finding) => /unnamed-symbol/.test(finding.element.outerHTML)));
+      assert.ok(parity.some((finding) => /standalone-path/.test(finding.element.outerHTML)));
+      assert.ok(!parity.some((finding) => /id="(?:hidden-by-parent|decorative-vector-overlay|presentational|named|self-hidden|not-rendered)"/.test(
+        finding.element.outerHTML,
+      )));
+    },
+  );
+});
+
+test('commercial link parity reports repeated active link text across card contexts', async () => {
+  await withPage(
+    `
+      <article>
+        <h2>Operations</h2>
+        <a id="learn-operations" href="/operations"><span>Learn more</span></a>
+      </article>
+      <article>
+        <h2>Maintenance</h2>
+        <a id="learn-maintenance" href="/maintenance"><span>Learn more</span></a>
+      </article>
+      <article>
+        <h2>Technology</h2>
+        <a href="/technology" aria-label="Learn more about technology">Learn more</a>
+      </article>
+      <a href="/job/one" aria-label="Apply now, Engineer">Engineer</a>
+      <a href="/job/two" aria-label="Apply now, Engineer">Engineer</a>
+      <a href="https://example.com/login" aria-label="Current associate login">Login</a>
+      <a href="https://example.org/login" aria-label="Current associate login">Login</a>
+      <a id="responsive-read-one" href="/story/one">Read more</a>
+      <a id="responsive-read-copy" href="/story/one">Read more</a>
+      <a id="responsive-read-two" href="/story/two">Read more</a>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['LinkNavigationAmbiguous']);
+      const parity = findingsForRule(result, 'LinkNavigationAmbiguous')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+
+      assert.equal(parity.length, 2);
+      assert.ok(parity.some((finding) => /learn-operations/.test(finding.element.outerHTML)));
+      assert.ok(parity.some((finding) => /learn-maintenance/.test(finding.element.outerHTML)));
+      assert.ok(!parity.some((finding) => /responsive-read/.test(finding.element.outerHTML)));
+    },
+  );
+});
+
+test('commercial visibility parity recognizes hidden action symbols and control state indicators', async () => {
+  await withPage(
+    `
+      <svg width="0" height="0" aria-hidden="true">
+        <symbol id="chevron" viewBox="0 0 8 12"><path d="M0 0l8 6-8 6z"></path></symbol>
+      </svg>
+      <a href="/one">Learn more <svg id="action-one" aria-hidden="true" width="8" height="12"><use href="#chevron"></use></svg></a>
+      <a href="/two">Learn more <svg id="action-two" aria-hidden="true" width="8" height="12"><use href="#chevron"></use></svg></a>
+      <a href="/one-off">Explore opportunities <svg id="one-off-action" aria-hidden="true" width="8" height="12"><use href="#chevron"></use></svg></a>
+      <a href="/described-one" aria-label="Learn more about benefits">Learn more <svg id="described-action-one" aria-hidden="true" width="8" height="12"><use href="#chevron"></use></svg></a>
+      <a href="/described-two" aria-label="Learn more about culture">Learn more <svg id="described-action-two" aria-hidden="true" width="8" height="12"><use href="#chevron"></use></svg></a>
+      <a href="/safe">
+        <span role="presentation">
+          <svg id="presentation-symbol" aria-hidden="true" width="8" height="12"><use href="#chevron"></use></svg>
+        </span>
+        Safe
+      </a>
+      <button aria-haspopup="listbox">
+        Date
+        <span id="state-indicator" aria-hidden="true">
+          <svg width="16" height="16"><path d="M0 0h16v16H0z"></path></svg>
+        </span>
+      </button>
+      <button aria-label="Use your location">
+        <svg id="labelled-control-cue" aria-hidden="true" width="16" height="16">
+          <text x="0" y="12">Use your location</text>
+        </svg>
+      </button>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['VisibilityMismatch']);
+      const parity = findingsForRule(result, 'VisibilityMismatch')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+
+      assert.equal(parity.length, 3);
+      assert.ok(parity.some((finding) => /action-one/.test(finding.element.outerHTML)));
+      assert.ok(parity.some((finding) => /action-two/.test(finding.element.outerHTML)));
+      assert.ok(parity.some((finding) => /state-indicator/.test(finding.element.outerHTML)));
+      assert.ok(!parity.some((finding) => /one-off-action|described-action|presentation-symbol|labelled-control-cue/.test(
+        finding.element.outerHTML,
+      )));
+    },
+  );
+});
+
+test('commercial visibility parity includes zero-height component mounts with only an empty list', async () => {
+  await withPage(
+    `
+      <div id="empty-status-mount" data-component="current-state" style="width: 300px; height: 0">
+        <span>Search filters</span>
+        <ul></ul>
+      </div>
+      <div id="populated-status-mount" data-component="current-state">
+        <span>Search filters</span>
+        <ul><li>Remote</li></ul>
+      </div>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['VisibilityMisuse']);
+      const parity = findingsForRule(result, 'VisibilityMisuse')
+        .filter((finding) => (
+          finding.violationType === 'commercial-parity'
+          && finding.evidence.structuralPattern === 'empty-framework-component-mount'
+        ));
+
+      assert.equal(parity.length, 1);
+      assert.match(parity[0].element.outerHTML, /empty-status-mount/);
+    },
+  );
+});
+
+test('commercial tab parity prefers the first grouped action buttons over later disclosures', async () => {
+  await withPage(
+    `
+      <section aria-label="Privacy notice">
+        <div id="notice-actions" style="display:flex; gap:8px">
+          <button aria-haspopup="dialog">Customise</button>
+          <button>Reject all</button>
+          <button>Accept all</button>
+        </div>
+      </section>
+      <div style="height: 800px"></div>
+      <section id="later-disclosures">
+        <button aria-expanded="false">Career path</button>
+        <button aria-expanded="false">Country</button>
+        <button aria-expanded="false">Workplace</button>
+      </section>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['TablistRole', 'TabMismatch']);
+      const tablists = findingsForRule(result, 'TablistRole')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+      const tabs = findingsForRule(result, 'TabMismatch')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+
+      assert.equal(tablists.length, 1);
+      assert.match(tablists[0].element.outerHTML, /notice-actions/);
+      assert.equal(tabs.length, 3);
+      assert.ok(tabs.every((finding) => /Customise|Reject all|Accept all/.test(
+        finding.element.outerHTML,
+      )));
+    },
+  );
+});
+
+test('commercial navigation parity preserves layout-wrapper and multi-list landmark targets', async () => {
+  await withPage(
+    `
+      <header>
+        <nav aria-label="Primary">
+          <div id="main-layout">
+            <ul>
+              <li><a href="/one">One</a></li>
+              <li><a href="/two">Two</a></li>
+              <li><a href="/three">Three</a></li>
+            </ul>
+            <a href="/search">Search</a>
+          </div>
+        </nav>
+      </header>
+      <footer>
+        <nav id="multi-list-nav">
+          <section><span>Regional notices</span><ul><li><a href="/a">A</a></li></ul></section>
+          <section><span>Global notices</span><ul><li><a href="/b">B</a></li></ul></section>
+        </nav>
+      </footer>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['MainNavigationMismatch', 'NavigationMisuse']);
+      const mainLayout = findingsForRule(result, 'MainNavigationMismatch')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+      const navigation = findingsForRule(result, 'NavigationMisuse');
+
+      assert.equal(mainLayout.length, 1);
+      assert.match(mainLayout[0].element.outerHTML, /main-layout/);
+      assert.equal(navigation.length, 2);
+      assert.ok(navigation.some((finding) => /aria-label="Primary"/.test(finding.element.outerHTML)));
+      assert.ok(navigation.some((finding) => /multi-list-nav/.test(finding.element.outerHTML)));
+    },
+  );
+});
+
+test('commercial search parity suppresses multiple stable unlandmarked search widgets', async () => {
+  await withPage(
+    `
+      <section>
+        <label for="query-one">Search by keyword</label>
+        <input id="query-one" type="text">
+        <input id="place-one" type="text" aria-label="Location">
+        <button type="button">Search jobs</button>
+      </section>
+      <div style="height: 900px"></div>
+      <section>
+        <label for="query-two">Search by keyword</label>
+        <input id="query-two" type="text">
+        <input id="place-two" type="text" aria-label="Location">
+        <button type="button">Search jobs</button>
+      </section>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['SearchFormMismatch']);
+      const parity = findingsForRule(result, 'SearchFormMismatch')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+      assert.equal(parity.length, 0);
+    },
+  );
+});
+
+test('commercial submenu parity requires separate link and disclosure controls', async () => {
+  await withPage(
+    `
+      <nav aria-label="Primary">
+        <ul>
+          <li id="single-control-row">
+            <a href="/careers" role="button">Careers</a>
+            <div><ul><li><a href="/careers/one">Career one</a></li></ul></div>
+          </li>
+        </ul>
+      </nav>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['BreadcrumbsMismatch']);
+      const parity = findingsForRule(result, 'BreadcrumbsMismatch')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+      assert.equal(parity.length, 0);
+    },
+  );
+});
+
 test('commercial visibility parity derives generic lazy, scroll, script, and custom-root structures', async () => {
   await withPage(
     `
@@ -1232,9 +1728,88 @@ test('commercial visibility parity derives generic lazy, scroll, script, and cus
           `missing ${marker}`,
         );
       }
-      assert.ok(findings.some((finding) => /^<body/.test(finding.element.outerHTML)));
+      assert.ok(findings.some((finding) => (
+        finding.element.framePath.length === 0
+        && /^<body/.test(finding.element.outerHTML)
+      )));
       assert.ok(!findings.some((finding) => /carousel-track|carousel-slide/.test(finding.element.outerHTML)));
       assert.ok(!findings.some((finding) => /animated-reveal|positionless-parallax/.test(finding.element.outerHTML)));
+    },
+  );
+});
+
+test('commercial visibility parity includes every inactive panel in an exclusive visual set', async () => {
+  await withPage(
+    `
+      <div style="width: 300px; height: 180px; overflow: hidden">
+        <div style="display: flex">
+          <div id="active-visual-panel" style="width: 300px; height: 180px; flex: 0 0 auto">
+            <img src="/active.jpg" alt="Active scene">
+          </div>
+          <div id="inactive-visual-panel-1" style="width: 300px; height: 180px; flex: 0 0 auto; opacity: 0; pointer-events: none">
+            <img src="/one.jpg" alt="First inactive scene">
+          </div>
+          <div id="inactive-visual-panel-2" style="width: 300px; height: 180px; flex: 0 0 auto; opacity: 0; pointer-events: none">
+            <img src="/two.jpg" alt="Second inactive scene">
+          </div>
+          <div id="inactive-visual-panel-3" style="width: 300px; height: 180px; flex: 0 0 auto; opacity: 0; pointer-events: none">
+            <img src="/three.jpg" alt="Third inactive scene">
+          </div>
+          <div id="inactive-visual-panel-4" style="width: 300px; height: 180px; flex: 0 0 auto; opacity: 0; pointer-events: none">
+            <img src="/four.jpg" alt="Fourth inactive scene">
+          </div>
+          <div id="inactive-visual-panel-5" style="width: 300px; height: 180px; flex: 0 0 auto; opacity: 0; pointer-events: none">
+            <img src="/five.jpg" alt="Fifth inactive scene">
+          </div>
+        </div>
+      </div>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['VisibilityMisuse']);
+      const inactivePanels = findingsForRule(result, 'VisibilityMisuse').filter(
+        (finding) => /inactive-visual-panel-/.test(finding.element.outerHTML),
+      );
+
+      assert.equal(inactivePanels.length, 5);
+    },
+  );
+});
+
+test('commercial visibility parity recognizes empty framework mounts and text blocks', async () => {
+  await withPage(
+    `
+      <p id="empty-text-block"> </p>
+      <div id="empty-component-a" data-react-component="status" style="width: 300px; height: 0">
+        <div></div>
+      </div>
+      <div id="empty-component-b" data-react-component="location" style="width: 300px; height: 0">
+        <div></div>
+      </div>
+      <div id="empty-component-c" data-component="radius" style="width: 0; height: 30px">
+        <div></div>
+      </div>
+      <div id="empty-pagination" data-react-component="results-pagination" style="width: 300px; height: 0">
+        <div></div>
+      </div>
+      <div id="generic-empty-container" style="width: 300px; height: 0"><div></div></div>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['VisibilityMisuse']);
+      const findings = findingsForRule(result, 'VisibilityMisuse');
+
+      for (const marker of [
+        'empty-text-block',
+        'empty-component-a',
+        'empty-component-b',
+        'empty-component-c',
+      ]) {
+        assert.ok(
+          findings.some((finding) => finding.element.outerHTML.includes(marker)),
+          marker,
+        );
+      }
+      assert.ok(!findings.some((finding) => /generic-empty-container/.test(finding.element.outerHTML)));
+      assert.ok(!findings.some((finding) => /empty-pagination/.test(finding.element.outerHTML)));
     },
   );
 });
@@ -1243,13 +1818,17 @@ test('commercial visibility parity recognizes generic input cue elements only fo
   await withPage(
     `
       <div>
-        <i id="stable-input-cue" aria-hidden="true" style="display:inline-block;width:16px;height:16px"></i>
+        <svg id="stable-input-cue" aria-hidden="true" width="16" height="16"><path d="M0 0h16v16H0z"></path></svg>
         <input id="stable-control" aria-label="Location">
       </div>
       <div>
-        <i id="ambiguous-input-cue" aria-hidden="true" style="display:inline-block;width:16px;height:16px"></i>
+        <svg id="ambiguous-input-cue" aria-hidden="true" width="16" height="16"><path d="M0 0h16v16H0z"></path></svg>
         <input id="duplicated-control" aria-label="First copy">
         <input id="duplicated-control" aria-label="Second copy">
+      </div>
+      <div>
+        <i id="css-font-cue" aria-hidden="true" style="display:inline-block;width:16px;height:16px"></i>
+        <input id="font-cue-control" aria-label="Location">
       </div>
     `,
     async (page) => {
@@ -1258,6 +1837,7 @@ test('commercial visibility parity recognizes generic input cue elements only fo
         .filter((finding) => finding.violationType === 'commercial-parity');
       assert.equal(parity.length, 1);
       assert.match(parity[0].element.outerHTML, /stable-input-cue/);
+      assert.ok(!parity.some((finding) => /css-font-cue/.test(finding.element.outerHTML)));
     },
   );
 });

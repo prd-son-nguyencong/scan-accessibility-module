@@ -197,7 +197,7 @@ export default [
       id: 'general:emphasis-mismatch',
       profiles: ['standards'],
       evaluator: 'semantic-style',
-      target: { selector: 'span' },
+      target: { selector: 'span, i' },
       options: { mode: 'emphasis-mismatch' },
       classification: 'potential',
     }],
