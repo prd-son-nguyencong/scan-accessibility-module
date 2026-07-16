@@ -1,5 +1,13 @@
 import { randomUUID } from 'crypto';
 
+export {
+  ACCESSSCAN_CATEGORIES,
+  getAccessScanCategory,
+  getAccessScanRuleMetadata,
+  getAccessScanRuleRequirement,
+  listAccessScanCatalogRuleIds,
+} from './scanner/access-scan/engine/public-catalog.js';
+
 /**
  * Creates a Violation object conforming to the shared schema.
  * All scanner layers produce this shape — consumed by reporter and fixer.
@@ -37,6 +45,15 @@ export function createViolation({
       line: source.line || null,
       snippet: source.snippet || null,
       url: source.url || null,
+      confidence: source.confidence || null,
+      method: source.method || null,
+      preimageSha256: source.preimageSha256 || null,
+      preimageRange: source.preimageRange || null,
+      partial: source.partial || null,
+      page: source.page || null,
+      routeDependencies: Array.isArray(source.routeDependencies)
+        ? [...source.routeDependencies]
+        : [],
     },
     fix: {
       deterministic: fix.deterministic ?? false,
@@ -44,31 +61,6 @@ export function createViolation({
       patch: fix.patch || null,
     },
   };
-}
-
-/**
- * AccessScan rule-to-subcategory mapping.
- * Used by the HTML reporter to group accessScan violations into 11 categories.
- */
-export const ACCESSSCAN_CATEGORIES = [
-  { id: 'general', label: 'General', wcagVersions: ['WCAG 2.1', 'WCAG 2.0'], rules: ['AltMisuse', 'AriaDescribedByHasReference', 'AriaLabelledByHasReference', 'BreadcrumbsNav', 'EmphasisMismatch', 'IframeDiscernible', 'LinkAnchorAmbiguous', 'NoExtraInformationInTitle', 'NoRoleApplication', 'SalePriceDiscernible', 'StrongMismatch', 'VisibilityMismatch', 'VisibilityMisuse', 'FigureDiscernible'] },
-  { id: 'interactive', label: 'Interactive Content', wcagVersions: ['WCAG 2.2', 'WCAG 2.0'], rules: ['AriaControlsHasReference', 'ButtonDiscernible', 'ButtonMismatch', 'FocusNotObscuredFooter', 'LinkAnchorDiscernible', 'LinkCurrentPage', 'LinkImageWarning', 'LinkMailtoWarning', 'LinkNavigationAmbiguous', 'LinkNavigationDiscernible', 'LinkOpensNewWindow', 'LinkPDFWarning', 'MenuAvoid', 'MenuBarAvoid', 'MenuItemAvoid', 'MenuTriggerClickable', 'NoAutofocus', 'TargetSize'] },
-  { id: 'forms', label: 'Forms', wcagVersions: ['WCAG 2.0'], rules: ['CheckboxDiscernible', 'FormContextChangeWarning', 'FormSubmitButtonMismatch', 'MainNavigationMismatch', 'RadioDiscernible', 'RequiredFormFieldAriaRequired'] },
-  { id: 'landmarks', label: 'Landmarks', wcagVersions: ['WCAG 2.0'], rules: ['ArticleMisuse', 'BreadcrumbsMismatch', 'NavigationMisuse', 'RegionMainContentMismatch', 'RegionMainContentMisuse', 'RegionMainContentSingle', 'RegionFooterMismatch', 'RegionFooterMisuse', 'RegionFooterSingle', 'SearchFormMismatch'] },
-  { id: 'graphics', label: 'Graphics', wcagVersions: ['WCAG 2.0'], rules: ['BackgroundImageDiscernibleImage', 'DecorativeGraphicExposed', 'IconDiscernible', 'ImageDiscernible', 'ImageDiscernibleCorrectly', 'ImageMisuse'] },
-  { id: 'dragging', label: 'Dragging Alternative', wcagVersions: ['WCAG 2.2'], rules: ['DraggingAlternative'] },
-  { id: 'aria', label: 'ARIA', wcagVersions: ['WCAG 2.1'], rules: ['AriaLabelledbyContentMismatch', 'VisibleTextPartOfAccessibleName'] },
-  { id: 'lists', label: 'Lists', wcagVersions: ['WCAG 2.2', 'WCAG 2.0'], rules: ['StickyHeaderObscuresFocus', 'ListEmpty'] },
-  { id: 'metadata', label: 'Metadata', wcagVersions: ['WCAG 2.0'], rules: ['HtmlLang', 'HtmlLangValid', 'MetaDescription', 'MetaRefresh', 'MetaViewportPresent', 'MetaViewportScalable', 'PageTitle', 'PageTitleDescriptive'] },
-  { id: 'tabs', label: 'Tabs', wcagVersions: ['WCAG 2.0'], rules: ['TablistRole', 'TabAriaControls', 'TabAriaSelected', 'TabListMisuse', 'TabMismatch', 'TabMisuse', 'TabPanelMismatch', 'TabPanelMisuse', 'TabpanelLabelledBy'] },
-  { id: 'tables', label: 'Tables', wcagVersions: ['WCAG 2.0'], rules: ['TableCaption', 'TableHeaderEmpty', 'TableHeaders', 'TableMisuse', 'TableNesting', 'TableRoles', 'TableRowHeaderMismatch'] },
-];
-
-export function getAccessScanCategory(ruleId) {
-  for (const cat of ACCESSSCAN_CATEGORIES) {
-    if (cat.rules.includes(ruleId)) return cat;
-  }
-  return ACCESSSCAN_CATEGORIES[0];
 }
 
 /**
@@ -158,6 +150,10 @@ export function normalizeW3cViolation(v, sourceMode = 'local', pageSource = {}) 
       line: v.element?.line || v.line || null,
       snippet: null,
       url: sourceMode === 'url' ? pageSource.url || null : null,
+      confidence: v.source?.confidence || pageSource.confidence || (pageSource.file ? 'low' : 'none'),
+      method: v.source?.method || pageSource.method || (pageSource.file ? 'legacy-source-attribution' : 'unresolved'),
+      preimageSha256: v.source?.preimageSha256 || pageSource.preimageSha256 || null,
+      preimageRange: v.source?.preimageRange || pageSource.preimageRange || null,
     },
     fix: { deterministic: false, hint: v.description || '', patch: null },
   });
@@ -180,11 +176,11 @@ export function normalizeLighthouseViolation(v, sourceMode = 'local', pageSource
     }).filter(Boolean);
     if (items.length) hint += '\n  Resources: ' + items.join('; ');
   }
-  return createViolation({
+  const violation = createViolation({
     ruleId: v.rule || v.id || 'lighthouse',
     layer: 'lighthouse',
-    category: 'performance',
-    wcagRef: null,
+    category: v.category || 'performance',
+    wcagRef: v.wcagCriteria && v.wcagCriteria !== 'perf' ? `WCAG ${v.wcagCriteria}` : null,
     impact: v.impact || 'moderate',
     priority: impactToPriority(v.impact),
     element: { outerHTML: v.snippet || '', selector: v.selector || '', scanId: null },
@@ -194,9 +190,15 @@ export function normalizeLighthouseViolation(v, sourceMode = 'local', pageSource
       line: null,
       snippet: null,
       url: sourceMode === 'url' ? pageSource.url || null : null,
+      confidence: pageSource.confidence || (pageSource.file ? 'low' : 'none'),
+      method: pageSource.method || (pageSource.file ? 'legacy-source-attribution' : 'unresolved'),
+      preimageSha256: pageSource.preimageSha256 || null,
+      preimageRange: pageSource.preimageRange || null,
     },
     fix: { deterministic: false, hint, patch: null },
   });
+  if (v.evidence) violation.evidence = v.evidence;
+  return violation;
 }
 
 /**
@@ -217,6 +219,10 @@ export function normalizeBehavioralViolation(v, layer, sourceMode = 'local', pag
       line: v.source?.line || null,
       snippet: null,
       url: sourceMode === 'url' ? pageSource.url || null : null,
+      confidence: v.source?.confidence || pageSource.confidence || ((v.source?.file || pageSource.file) ? 'low' : 'none'),
+      method: v.source?.method || pageSource.method || ((v.source?.file || pageSource.file) ? 'legacy-source-attribution' : 'unresolved'),
+      preimageSha256: v.source?.preimageSha256 || pageSource.preimageSha256 || null,
+      preimageRange: v.source?.preimageRange || pageSource.preimageRange || null,
     },
     fix: { deterministic: false, hint: v.description || v.message || '', patch: null },
   });

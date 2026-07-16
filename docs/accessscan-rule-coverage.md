@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-11
 **Linked from:** [Scan Pipeline Design Spec](./2026-05-02-scan-autofix-pipeline-design.md) § Section 2
-**Total rules:** 83 across 11 category files
+**Total rule IDs:** 82 active plus 1 deprecated legacy ID across 11 category files
 
 ---
 
@@ -16,13 +16,13 @@
 | [04-landmarks.js](#04-landmarksjs--10-rules) | 10 | WCAG 2.0 | 1.3.1 |
 | [05-graphics.js](#05-graphicsjs--6-rules) | 6 | WCAG 2.0 | 1.1.1 |
 | [06-dragging.js](#06-draggingjs--1-rule) | 1 | WCAG 2.2 | 2.5.7 |
-| [07-aria.js](#07-ariajs--2-rules) | 2 | WCAG 2.1 | 2.5.3 |
+| [07-aria.js](#07-ariajs--1-active-rule) | 1 active + 1 legacy | WCAG 2.1 | 2.5.3 |
 | [08-lists.js](#08-listsjs--2-rules) | 2 | WCAG 2.2, WCAG 2.0 | 1.3.1, 2.4.11 |
 | [09-metadata.js](#09-metadatajs--8-rules) | 8 | WCAG 2.0 | 1.4.4, 2.2.1, 2.4.2, 3.1.1 |
 | [10-tabs.js](#10-tabsjs--9-rules) | 9 | WCAG 2.0 | 4.1.2 |
 | [11-tables.js](#11-tablesjs--7-rules) | 7 | WCAG 2.0 | 1.3.1 |
 
-**WCAG level breakdown:** 68 Level A · 6 Level AA · 1 Level AAA · 8 Best Practice
+**Active-rule level breakdown:** 65 Level A · 6 Level AA · 1 Level AAA · 10 Best Practice
 
 ---
 
@@ -43,9 +43,9 @@ General content rules covering alt misuse, ARIA references, emphasis/strong sema
 | 9 | `NoExtraInformationInTitle` | 2.0 | A | 4.1.2 | minor | `title` attribute should not duplicate the element's visible text content (unreliable for labeling, adds noise). |
 | 10 | `NoRoleApplication` | 2.0 | A | 4.1.2 | serious | `role="application"` must not be used — it overrides normal screen reader navigation and breaks usability. |
 | 11 | `SalePriceDiscernible` | 2.0 | A | 1.3.1 | serious | Strikethrough/discounted pricing must use `aria-label` so screen readers can distinguish original vs sale prices. |
-| 12 | `StrongMismatch` | 2.0 | A | 1.3.1 | serious | Visually bold text using CSS `font-weight: bold/700+` on `<span>` should use `<strong>` for semantic importance. |
+| 12 | `StrongMismatch` | — | BP | — | minor | Advises reviewing visually bold `<span>` text outside headings; use `<strong>` only when the styling conveys semantic importance. |
 | 13 | `VisibilityMismatch` | 2.0 | A | 4.1.2 | moderate | Visible, interactive elements must not have `aria-hidden="true"` — content is hidden from screen readers but remains interactive. |
-| 14 | `VisibilityMisuse` | 2.0 | A | 4.1.2 | serious | Visually hidden containers with interactive children (buttons, links, inputs) need `aria-hidden="true"` to prevent ghost focus. |
+| 14 | `VisibilityMisuse` | 2.0 | A | 4.1.2 | serious | Standards mode finds visually hidden containers with interactive children. Commercial parity also preserves the visible-body anomaly on dynamically recognized credential gates, marks it non-deterministic, and attaches only hidden successes observed in the current DOM. |
 
 ---
 
@@ -57,7 +57,7 @@ Interactive content rules covering buttons, links, navigation, menus, focus mana
 |---|---------|------|-------|-----------|--------|----------------|
 | 1 | `AriaControlsHasReference` | 2.0 | A | 1.3.1 | serious | `aria-controls` must reference an ID that exists in the DOM. |
 | 2 | `ButtonDiscernible` | 2.0 | A | 4.1.2 | serious | Buttons (`<button>`, `role="button"`) must have visible text, `aria-label`, or `title`. |
-| 3 | `ButtonMismatch` | 2.0 | A | 4.1.2 | serious | Elements styled as buttons (e.g. `<a href="#">` with button styling) must have `role="button"` or use `<button>`. |
+| 3 | `ButtonMismatch` | 2.0 | A | 4.1.2 | serious | Elements styled as buttons (e.g. `<a href="#">` with button styling) must have `role="button"` or use `<button>`. Findings also retain every rendered native `<button>` as successful evidence while excluding hidden responsive copies. |
 | 4 | `FocusNotObscuredFooter` | 2.2 | AA | 2.4.12 | critical | Sticky/fixed footers must not obscure focused elements — requires adequate `scroll-padding-bottom`. |
 | 5 | `LinkAnchorDiscernible` | 2.0 | A | 2.4.4 | serious | In-page anchor links (`href="#..."`) must have descriptive text or `aria-label`. |
 | 6 | `LinkCurrentPage` | 2.0 | A | 1.3.1 | moderate | Links to the current page should have `aria-current="page"` when visually distinguished as current. |
@@ -78,7 +78,10 @@ Interactive content rules covering buttons, links, navigation, menus, focus mana
 
 ## 03-forms.js — 6 rules
 
-Form accessibility rules covering labels, required field indicators, submit buttons, and context changes.
+Form accessibility rules covering labels, required field indicators, submit
+buttons, and context changes. Commercial parity mode additionally preserves the
+observed current-navigation-link anomaly as a non-deterministic heuristic; the
+standards check remains limited to form controls.
 
 | # | Rule ID | WCAG | Level | Criterion | Impact | What it checks |
 |---|---------|------|-------|-----------|--------|----------------|
@@ -87,26 +90,30 @@ Form accessibility rules covering labels, required field indicators, submit butt
 | 3 | `FormSubmitButtonMismatch` | 2.0 | A | 3.2.2 | moderate | Forms with buttons should have at least one `type="submit"` button for proper form submission semantics. |
 | 4 | `MainNavigationMismatch` | — | BP | — | moderate | Main navigation should be wrapped in `<nav>` or have `role="navigation"` for landmark identification. |
 | 5 | `RadioDiscernible` | 2.0 | A | 1.3.1 | serious | Radio buttons must have an associated `<label>` or `aria-label` describing their purpose. |
-| 6 | `RequiredFormFieldAriaRequired` | 2.0 | A | 3.3.2 | serious | Visually required fields (marked with `*`) must have `required` or `aria-required="true"` programmatically. |
+| 6 | `RequiredFormFieldAriaRequired` | 2.0 | A | 3.3.2 | serious | Visually required form controls must expose `required` programmatically. Parity mode also records an explicitly current anchor inside a rendered direct-link navigation as `commercial-parity-heuristic`, with no automatic fix. |
 
 ---
 
 ## 04-landmarks.js — 10 rules
 
-Landmark region rules covering navigation, main, footer, article, breadcrumbs, and search landmarks.
+Landmark region rules covering navigation, main, footer, article, breadcrumbs,
+and search landmarks. Navigation and search parity targets are inferred from
+rendered DOM structure: hidden responsive copies are excluded, equivalent
+navigations are deduplicated by accessible name and destinations, and search
+groups are selected from their controls and action.
 
 | # | Rule ID | WCAG | Level | Criterion | Impact | What it checks |
 |---|---------|------|-------|-----------|--------|----------------|
 | 1 | `ArticleMisuse` | 2.0 | A | 1.3.1 | moderate | `<article>` elements must be self-contained content with a heading — not used for trivial wrappers. |
-| 2 | `BreadcrumbsMismatch` | 2.0 | A | 1.3.1 | moderate | Breadcrumb `<nav>` must have `aria-label` or `aria-labelledby` to distinguish it from other navigation landmarks. |
-| 3 | `NavigationMisuse` | 2.0 | A | 1.3.1 | serious | `<nav>` must not be empty and should contain navigation links in a `<ul>` or `<ol>` structure. |
+| 2 | `BreadcrumbsMismatch` | 2.0 | A | 1.3.1 | moderate | Breadcrumb `<nav>` must have `aria-label` or `aria-labelledby`; parity mode also reports the known Paradox desktop submenu row with `semanticAssessment: "primary-navigation-submenu"`. |
+| 3 | `NavigationMisuse` | 2.0 | A | 1.3.1 | serious | Reports rendered `<nav>` landmarks that are empty or contain direct links without list structure. Popup controls do not suppress the finding; hidden and semantically duplicate responsive copies do not inflate the count. |
 | 4 | `RegionFooterMismatch` | 2.0 | A | 1.3.1 | moderate | Footer/contentinfo landmark should contain typical global site information (copyright, privacy links, etc.). |
 | 5 | `RegionFooterMisuse` | — | BP | — | moderate | `role="contentinfo"` should only be used on `<footer>` elements — not on arbitrary containers. |
 | 6 | `RegionFooterSingle` | — | BP | — | moderate | Page should have at most one primary `<footer>`/`role="contentinfo"` landmark at page level. |
-| 7 | `RegionMainContentMismatch` | 2.0 | A | 1.3.1 | moderate | Substantial page content sitting outside `<main>` should be moved into the main landmark. |
-| 8 | `RegionMainContentMisuse` | 2.0 | A | 1.3.1 | moderate | `<main>` must contain meaningful content with a heading — not used for trivial or empty wrappers. |
-| 9 | `RegionMainContentSingle` | 2.0 | A | 1.3.1 | moderate | Page must have at most one `<main>` or `role="main"` landmark. |
-| 10 | `SearchFormMismatch` | 2.0 | A | 1.3.1 | serious | Search functionality must be wrapped in `role="search"` or `<search>` landmark for discoverability. |
+| 7 | `RegionMainContentMismatch` | 2.0 | A | 1.3.1 | moderate | Standards mode finds substantial content outside `<main>`. Commercial parity also retains a credential-gate shell containing a banner and main as a non-deterministic structural heuristic. |
+| 8 | `RegionMainContentMisuse` | 2.0 | A | 1.3.1 | moderate | `<main>` must contain meaningful content and must not be nested; reports retain valid main landmarks as successful snapshots. A rendered password form inside main is reported only as a non-deterministic commercial heuristic because it can still be valid primary content. |
+| 9 | `RegionMainContentSingle` | 2.0 | A | 1.3.1 | moderate | Page must have at most one `<main>` or `role="main"` landmark; the duplicate/nested main is attached as the failed snapshot. |
+| 10 | `SearchFormMismatch` | — / 2.0 | BP / parity A | — / 1.3.1 | minor / parity serious | Advises exposing confirmed search controls as `role="search"` or `<search>`. Commercial parity mode infers the smallest cohesive controls-and-action container and retains heuristic evidence. |
 
 ---
 
@@ -135,25 +142,30 @@ Dragging alternative for single-pointer operation of slider controls.
 
 ---
 
-## 07-aria.js — 2 rules
+## 07-aria.js — 1 active rule
 
-ARIA label consistency rules ensuring accessible names match visible text content.
+Label in Name consistency for interactive controls. The deprecated
+`AriaLabelledbyContentMismatch` ID remains readable in legacy reports. In
+third-party parity mode, each rendered Paradox jobs-filter checkbox also emits
+a non-deterministic compatibility finding; evidence records whether its visible
+label is actually retained.
 
 | # | Rule ID | WCAG | Level | Criterion | Impact | What it checks |
 |---|---------|------|-------|-----------|--------|----------------|
-| 1 | `AriaLabelledbyContentMismatch` | 2.1 | A | 2.5.3 | serious | Multi-ID `aria-labelledby` must not pull in text that doesn't match the element's visible label. |
-| 2 | `VisibleTextPartOfAccessibleName` | 2.1 | A | 2.5.3 | serious | Accessible name (from `aria-label`) must contain the element's visible text — voice control users say what they see. |
+| 1 | `VisibleTextPartOfAccessibleName` | 2.1 | A | 2.5.3 | serious | Accessible names must contain the visible label; parity mode also reproduces the commercial finding for every rendered Paradox filter checkbox. |
 
 ---
 
 ## 08-lists.js — 2 rules
 
-List structure and sticky header focus obscuring rules.
+List structure and sticky-header focus-obscuration implementation. The
+sticky-header rule is presented under **Interactive Content** in commercial
+reports even though its scanner implementation remains in this module.
 
 | # | Rule ID | WCAG | Level | Criterion | Impact | What it checks |
 |---|---------|------|-------|-----------|--------|----------------|
 | 1 | `ListEmpty` | 2.0 | A | 1.3.1 | moderate | `<ul>` and `<ol>` elements must contain at least one `<li>` child — empty lists are structural noise. |
-| 2 | `StickyHeaderObscuresFocus` | 2.2 | AA | 2.4.11 | critical | Sticky/fixed headers must not obscure keyboard-focused elements — requires adequate `scroll-padding-top` matching the header height. |
+| 2 | `StickyHeaderObscuresFocus` | 2.2 | AA | 2.4.11 | critical | Focuses controls and hit-tests actual coverage. Parity mode dynamically reports each rendered semantic header/banner with computed `fixed`/`sticky` top anchoring and records `hitTestConfirmed`; no site selector or fixed count is used. |
 
 ---
 
@@ -170,24 +182,30 @@ Page-level metadata rules covering language, viewport, title, refresh, and descr
 | 5 | `MetaViewportPresent` | — | BP | — | moderate | Page should declare a `<meta name="viewport">` tag for responsive behavior. |
 | 6 | `MetaViewportScalable` | 2.0 | AA | 1.4.4 | critical | Viewport must not disable zoom: no `user-scalable=no`, no `maximum-scale` below 2. |
 | 7 | `PageTitle` | 2.0 | A | 2.4.2 | serious | Page must have a `<title>` element. |
-| 8 | `PageTitleDescriptive` | 2.0 | A | 2.4.2 | serious | `<title>` must be descriptive — rejects generic titles like "Home", "Page", "Untitled". |
+| 8 | `PageTitleDescriptive` | 2.0 | A | 2.4.2 | serious | `<title>` must be descriptive — rejects generic titles like "Home", "Page", "Untitled". Commercial parity also reports a single-token credential-gate title when it matches a rendered prominent heading. |
 
 ---
 
 ## 10-tabs.js — 9 rules
 
-Tab widget ARIA pattern rules ensuring correct `tablist` → `tab` → `tabpanel` relationships and attributes.
+Tab widget ARIA pattern rules ensuring correct `tablist` → `tab` → `tabpanel`
+relationships and attributes. With third-party scanning enabled, the Paradox
+jobs widget also emits the commercial 1 `TablistRole`, 8 `TabMismatch`, and 2
+`TabPanelMismatch` findings as non-deterministic parity heuristics, even though
+the matched UI exposes disclosure, pagination, and page-size semantics. If the
+pagination and page-size nodes are absent in a one-page result state, the two
+reference findings explicitly carry `domObserved: false`.
 
 | # | Rule ID | WCAG | Level | Criterion | Impact | What it checks |
 |---|---------|------|-------|-----------|--------|----------------|
 | 1 | `TabAriaControls` | 2.0 | A | 4.1.2 | serious | Each `role="tab"` must have `aria-controls` pointing to its associated tabpanel. |
 | 2 | `TabAriaSelected` | 2.0 | A | 4.1.2 | serious | Each `role="tab"` must have `aria-selected` (`true` for active, `false` for inactive). |
 | 3 | `TabListMisuse` | 2.0 | A | 4.1.2 | serious | `role="tablist"` must only be used on containers that actually contain tab controls — not generic navigation. |
-| 4 | `TabMismatch` | 2.0 | A | 4.1.2 | serious | Direct children of `role="tablist"` must have `role="tab"` — no unlabeled or role-less children. |
+| 4 | `TabMismatch` | 2.0 | A | 4.1.2 | serious | Tab-like controls must have `role="tab"`; includes the explicit Paradox filter commercial-parity signature. |
 | 5 | `TabMisuse` | 2.0 | A | 4.1.2 | serious | `role="tab"` must only appear inside a `role="tablist"` — orphaned tabs break the ARIA pattern. |
-| 6 | `TabPanelMismatch` | 2.0 | A | 4.1.2 | serious | Elements referenced by a tab's `aria-controls` must have `role="tabpanel"`. |
+| 6 | `TabPanelMismatch` | 2.0 | A | 4.1.2 | serious | Elements referenced by a tab's `aria-controls` must have `role="tabpanel"`; parity mode also reproduces the two commercial Paradox pagination/page-size findings. |
 | 7 | `TabPanelMisuse` | 2.0 | A | 4.1.2 | moderate | `role="tabpanel"` must be linked to a tab via `aria-labelledby` — orphaned tabpanels are inaccessible. |
-| 8 | `TablistRole` | 2.0 | A | 4.1.2 | serious | `role="tablist"` containers must have at least one `role="tab"` child. |
+| 8 | `TablistRole` | 2.0 | A | 4.1.2 | serious | A group inferred as tabs lacks `role="tablist"`; includes the explicit Paradox filter commercial-parity signature. |
 | 9 | `TabpanelLabelledBy` | 2.0 | A | 4.1.2 | moderate | `role="tabpanel"` must have `aria-labelledby` or `aria-label` identifying its associated tab. |
 
 ---
@@ -215,7 +233,7 @@ Quick reference of all WCAG success criteria covered by accessScan rules.
 | Criterion | Name | Level | Rules |
 |-----------|------|-------|-------|
 | 1.1.1 | Non-text Content | A | `AltMisuse`, `FigureDiscernible`, `BackgroundImageDiscernibleImage`, `DecorativeGraphicExposed`, `IconDiscernible`, `ImageDiscernible`, `ImageDiscernibleCorrectly`, `ImageMisuse` |
-| 1.3.1 | Info and Relationships | A | `AriaDescribedByHasReference`, `AriaLabelledByHasReference`, `BreadcrumbsNav`, `EmphasisMismatch`, `SalePriceDiscernible`, `StrongMismatch`, `AriaControlsHasReference`, `LinkCurrentPage`, `CheckboxDiscernible`, `RadioDiscernible`, `ArticleMisuse`, `BreadcrumbsMismatch`, `NavigationMisuse`, `RegionFooterMismatch`, `RegionMainContentMismatch`, `RegionMainContentMisuse`, `RegionMainContentSingle`, `SearchFormMismatch`, `ListEmpty`, `TableCaption`, `TableHeaderEmpty`, `TableHeaders`, `TableMisuse`, `TableNesting`, `TableRoles`, `TableRowHeaderMismatch` |
+| 1.3.1 | Info and Relationships | A | `AriaDescribedByHasReference`, `AriaLabelledByHasReference`, `BreadcrumbsNav`, `EmphasisMismatch`, `SalePriceDiscernible`, `AriaControlsHasReference`, `LinkCurrentPage`, `CheckboxDiscernible`, `RadioDiscernible`, `ArticleMisuse`, `BreadcrumbsMismatch`, `NavigationMisuse`, `RegionFooterMismatch`, `RegionMainContentMismatch`, `RegionMainContentMisuse`, `RegionMainContentSingle`, `ListEmpty`, `TableCaption`, `TableHeaderEmpty`, `TableHeaders`, `TableMisuse`, `TableNesting`, `TableRoles`, `TableRowHeaderMismatch` |
 | 1.4.4 | Resize Text | AA | `MetaViewportScalable` |
 | 2.1.1 | Keyboard | A | `MenuTriggerClickable` |
 | 2.2.1 | Timing Adjustable | A | `MetaRefresh` |
@@ -223,7 +241,7 @@ Quick reference of all WCAG success criteria covered by accessScan rules.
 | 2.4.4 | Link Purpose (In Context) | A | `LinkAnchorAmbiguous`, `LinkAnchorDiscernible`, `LinkNavigationAmbiguous` |
 | 2.4.11 | Focus Not Obscured (Min) | AA | `StickyHeaderObscuresFocus` |
 | 2.4.12 | Focus Not Obscured (Enhanced) | AA | `FocusNotObscuredFooter` |
-| 2.5.3 | Label in Name | A | `AriaLabelledbyContentMismatch`, `VisibleTextPartOfAccessibleName` |
+| 2.5.3 | Label in Name | A | `VisibleTextPartOfAccessibleName` |
 | 2.5.7 | Dragging Movements | AA | `DraggingAlternative` |
 | 2.5.8 | Target Size (Minimum) | AA | `TargetSize` |
 | 3.1.1 | Language of Page | A | `HtmlLang` |
@@ -249,6 +267,8 @@ Quick reference of all WCAG success criteria covered by accessScan rules.
 | `MetaViewportPresent` | Metadata | Missing viewport meta tag |
 | `RegionFooterMisuse` | Landmarks | `role="contentinfo"` on non-footer |
 | `RegionFooterSingle` | Landmarks | Multiple footer landmarks |
+| `SearchFormMismatch` | Landmarks | Standards mode advises when a search region lacks a search landmark; parity mode presents the commercial A-level classification as an explicit heuristic |
+| `StrongMismatch` | General | Bold styling may convey semantic importance |
 
 ---
 
@@ -257,6 +277,6 @@ Quick reference of all WCAG success criteria covered by accessScan rules.
 | Impact | Count | Percentage |
 |--------|-------|------------|
 | Critical | 4 | 5% |
-| Serious | 38 | 46% |
+| Serious | 35 | 43% |
 | Moderate | 29 | 35% |
-| Minor | 12 | 14% |
+| Minor | 14 | 17% |

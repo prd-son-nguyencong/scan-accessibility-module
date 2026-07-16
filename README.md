@@ -3,7 +3,7 @@
 On-demand **WCAG 2.2 AA** accessibility + performance scanner and interactive
 auto-fixer for Liquid/Vite sites (local-career-site conventions) and live URLs.
 
-Four scan layers — axe-core, an 83-rule accessScan engine, W3C Nu HTML Checker,
+Four scan layers — axe-core, an accessScan-compatible rule engine, W3C Nu HTML Checker,
 dead-link crawler, Lighthouse/PSI, plus behavioral checks (keyboard, focus
 traps, ARIA live, dynamic content, screen-reader tree) — normalized into one
 violation schema, traced back to source `.liquid` file + line, and fixable via
@@ -40,14 +40,110 @@ pnpm scan                      # all pages (local instrumented build + tracing)
 pnpm scan --page /jobs         # single page
 pnpm scan --changed-only       # only pages with modified .liquid files
 npx ada-scan --url https://…   # scan a live URL (no build/config needed)
+npx ada-scan --url https://… --exclude-third-party # opt out of remote widget findings
 pnpm scan:fix                  # scan + interactive terminal fix (claude default)
 pnpm scan:fix:cursor           # write fix context for Cursor / VS Code / Windsurf
 pnpm scan:baseline             # save ROI baseline
 pnpm scan:report               # regenerate reports from last scan
 ```
 
-Only `init` is a subcommand; everything else is flags passed straight through
+`init` and `fix` are subcommands. Normal scans use flags passed straight through
 (`--fix`, `--fix-mode`, `--ui`, `--layers`, `--psi/--no-psi`, `--dry-run`, …).
+Remote URL scans include third-party content by default to match commercial
+whole-page scanners. Local scans still require `--include-third-party`.
+
+## Trusted CIS review workflow
+
+`--fix-mode cis` uses the secured local controller under `src/fix/`. CIS only
+proposes edits to allowlisted source blocks; it cannot select paths, read arbitrary
+files, run commands, approve changes, or write source. Source is changed only by the
+separate **Apply** action after shadow verification and exact-diff approval.
+
+URL-only scans are always scan-only, even when fix flags are present:
+
+```bash
+npx ada-scan --url https://careers.example.com/
+npx ada-scan --url https://careers.example.com/ --fix --fix-mode cis --ui
+```
+
+Run a local scan and open the review workbench:
+
+```bash
+npx ada-scan --fix --fix-mode cis --ui --session careers-review
+```
+
+Or review an existing V2 report without rescanning:
+
+```bash
+npx ada-scan fix \
+  --report scan-reports/latest.json \
+  --source . \
+  --session careers-review \
+  --ui
+```
+
+Rerun the same `fix` command with the same `--session` value to resume persisted
+decisions from
+`scan-reports/fix-sessions/<session-id>/session.json`. Session IDs may contain
+letters, numbers, `_`, and `-`. A session is bound to its report ID and fails
+closed if the report, candidate, source preimage, or verification artifact changed.
+
+For an attested hybrid review, set `deploymentUrl` in `.scan-config.json` (or
+`ADA_SCAN_DEPLOYMENT_URL`), build and deploy with the scan instrumentation plugin,
+then scan that deployment against the same local revision:
+
+```json
+{
+  "deploymentUrl": "https://careers.example.com"
+}
+```
+
+```bash
+npx ada-scan \
+  --url https://careers.example.com/ \
+  --source . \
+  --fix --fix-mode cis --ui \
+  --session careers-hybrid-review
+```
+
+Hybrid fixing is enabled only when the deployed HTML, local
+`dist/scan-attestation.json`, build revision, instrumentation digest, deployment
+URL, and source preimages all match. Missing, dirty, stale, malformed, or
+out-of-scope attestation downgrades the run to scan-only.
+
+In the workbench, **Verify** builds and scans the candidate in a disposable shadow
+workspace. **Accept** records a decision only. **Approve exact diff** binds approval
+to the current candidate and diff hashes. **Apply** then performs compare-and-swap
+preflight, atomic writes, and targeted post-apply verification. Transaction failures
+and failed post-verification trigger byte-exact automatic rollback; concurrent edits
+are preserved and reported as rollback conflicts. There is intentionally no
+standalone unreviewed Apply or rollback command.
+
+The older `src/fixer/` path and non-CIS modes remain temporarily available for
+migration and IDE context generation. They are deprecated for CIS fixes: new
+integrations must not reuse their direct-write, wildcard-CORS, git-stash rollback,
+or legacy CIS transport paths.
+
+## Report contract
+
+`scan-reports/latest.json` uses `ScanReportV2` (`schemaVersion: "2.0.0"`).
+Finding and report IDs are canonical SHA-256 hashes, scanner runs retain engine,
+viewport, state, and provenance evidence, and properly instrumented local reports
+include build revision plus instrumentation digest attestation. Missing
+instrumentation is represented explicitly rather than as a hash of an empty manifest.
+
+Programmatic consumers can import the public contract:
+
+```js
+import {
+  buildScanReportV2,
+  projectReportV1,
+  validateScanReportV2,
+} from 'ada-scan/report';
+```
+
+The HTML reporter and legacy fixer currently receive a pure V1 projection. New
+integrations should consume V2; the compatibility projection is temporary.
 
 ## Configuration (`.scan-config.json`)
 
@@ -73,14 +169,63 @@ repo:
   `cis` mode and IDE modes need no SDK.
 - **Peer (optional):** `vite` (the plugin runs inside your host Vite).
 
+## Live CIS operator workflow
+
+Live CIS requires a Workday-approved PEM bundle and `sha256:<64hex>` fingerprint from Trust
+Star/PKI/JAMF — never from an unverified endpoint, never with TLS bypass
+(`NODE_TLS_REJECT_UNAUTHORIZED=0`, `rejectUnauthorized: false`, Bruno
+`sslVerification: false`). Keep `.env` and the CA bundle outside source control.
+
+**Canonical reference:** [docs/cis-contract.md](docs/cis-contract.md) — trust prerequisites,
+config keys, model scoring, activation checklist, troubleshooting codes, implementation
+evidence, redaction policy, and legacy characterization warnings.
+
+From `ada-scan/`:
+
+```bash
+pnpm cis:configure -- \
+  --collection "$HOME/Documents/bruno/ml-https" \
+  --env "../.env" \
+  --ca-bundle "$APPROVED_CIS_CA_BUNDLE" \
+  --ca-sha256 "$APPROVED_CIS_CA_SHA256"
+pnpm cis:models
+```
+
+Benchmark only model IDs returned by `cis:models` (remove absent IDs; never guess aliases):
+
+```bash
+pnpm cis:benchmark -- \
+  --report "../scan-reports/latest.json" \
+  --local-root ".." \
+  --models "anthropic.claude-opus-4-8,anthropic.claude-sonnet-5,anthropic.claude-sonnet-4-20250514-v1:0" \
+  --max-units 15
+```
+
+No ADA-specialized model is proven; `CIS_MODEL` is candidate-hash input with no silent
+runtime fallback. Activate only after inventory, minimal prediction, benchmark artifact,
+and one-file review acceptance (proposal → manual review → shadow verify → accept → exact
+diff approve → apply → rollback). Legacy `scripts/cis-characterize.js` uses unpinned
+`bypass_auth` probing and is **not** a substitute for pinned-CA `cis:models`/benchmark
+validation.
+
+**Implementation verification (2026-07-16):** from `ada-scan/`, contract/redaction
+25/25, trusted-fix 491/491, full `pnpm test` 851/851; repository build via
+`cd .. && pnpm build` exit 0. Point-in-time baseline — counts may change; see
+[cis-contract.md § Implementation verification](docs/cis-contract.md#implementation-verification-2026-07-16).
+
 ## Environment variables (`.env`)
 
 ```bash
 ANTHROPIC_API_KEY=…    # claude fix mode
 OPENAI_API_KEY=…       # codex fix mode
-CIS_PROXY_URL=…        # cis fix mode
+CIS_PROXY_URL=…        # cis fix mode — see Live CIS operator workflow
 CIS_AUTH_TOKEN=…
+CIS_ALLOWED_HOSTS=…    # comma-separated explicit allowlist
+CIS_PROVIDER=aws
 CIS_MODEL=…
+CIS_CA_BUNDLE_PATH=…   # approved PEM bundle (outside repo)
+CIS_CA_SHA256=sha256:… # pinned bundle fingerprint
+ADA_SCAN_DEPLOYMENT_URL=https://careers.example.com # attested hybrid scope
 GOOGLE_API_KEY=…       # PageSpeed Insights — higher rate limits for remote URLs
 ADA_SCAN_ROOT=…        # explicit host root override (useful in monorepos)
 ```
@@ -93,3 +238,6 @@ ADA_SCAN_ROOT=…        # explicit host root override (useful in monorepos)
   results; benchmark and release evidence should record the effective versions
   externally when comparing baselines across upgrades.
 - Requires Node ≥ 20.18.1, ESM host.
+- The trusted CIS transport requires its configured host allowlist and HTTPS
+  (except explicit loopback development); it never sends the PoC
+  `bypass_auth=true` query parameter.

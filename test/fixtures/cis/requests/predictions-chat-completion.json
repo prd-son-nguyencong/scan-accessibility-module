@@ -1,0 +1,34 @@
+{
+  "meta": {
+    "provenance": "bruno-derived",
+    "source": "predictions.bru",
+    "note": "Canonical CIS predictions envelope from Bruno collection."
+  },
+  "request": {
+    "method": "POST",
+    "path": "/ml/inference/cis/v1alpha1/predictions",
+    "query": {
+      "bypass_auth": "true"
+    },
+    "headers": {
+      "Content-Type": "application/json",
+      "Wd-PCA-Feature-Key": "<redacted-feature-key>"
+    },
+    "target": {
+      "provider": "aws",
+      "model": "anthropic.claude-sonnet-4-20250514-v1:0"
+    },
+    "task": {
+      "type": "openai-chat-completion-v1",
+      "input": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "<redacted-content>"
+          }
+        ],
+        "max_completion_tokens": 100
+      }
+    }
+  }
+}

@@ -222,12 +222,12 @@ scanWithLighthouse(url, config)
 
 ---
 
-## Section 2 — 83-Rule Coverage (accessScan)
+## Section 2 — 82 Active Rules + 1 Legacy ID (accessScan)
 
 Coverage strategy: axe-core handles the WCAG overlap, custom Playwright DOM checks fill every remaining gap. Rules are organized across 11 category files.
 
 > **Detailed rule reference:** See [accessScan Rule Coverage](./accessscan-rule-coverage.md) for every rule's WCAG criterion, level, impact, and description.
-> **PO-facing checklist:** See [accessScan Rules for PO](./accessscan-rules-for-po.md) for all 83 rules with requirements and code examples.
+> **PO-facing checklist:** See [accessScan Rules for PO](./accessscan-rules-for-po.md) for all active rules, the deprecated legacy ID, requirements, and code examples.
 
 **Rule distribution by category file:**
 
@@ -239,12 +239,12 @@ Coverage strategy: axe-core handles the WCAG overlap, custom Playwright DOM chec
 | `04-landmarks.js` | 10 | WCAG 2.0 |
 | `05-graphics.js` | 6 | WCAG 2.0 |
 | `06-dragging.js` | 1 | WCAG 2.2 |
-| `07-aria.js` | 2 | WCAG 2.1 |
+| `07-aria.js` | 1 active + 1 legacy | WCAG 2.1 |
 | `08-lists.js` | 2 | WCAG 2.2, WCAG 2.0 |
 | `09-metadata.js` | 8 | WCAG 2.0 |
 | `10-tabs.js` | 9 | WCAG 2.0 |
 | `11-tables.js` | 7 | WCAG 2.0 |
-| **Total** | **83** | |
+| **Total** | **82 active + 1 legacy** | |
 
 ### Complete Rule Registry (from `schema.js` ACCESSSCAN_CATEGORIES)
 
@@ -266,8 +266,9 @@ Coverage strategy: axe-core handles the WCAG overlap, custom Playwright DOM chec
 #### 06-dragging.js (1 rule)
 `DraggingAlternative`
 
-#### 07-aria.js (2 rules)
-`AriaLabelledbyContentMismatch`, `VisibleTextPartOfAccessibleName`
+#### 07-aria.js (1 active rule + 1 legacy ID)
+Active: `VisibleTextPartOfAccessibleName`. Deprecated and no longer emitted:
+`AriaLabelledbyContentMismatch`.
 
 #### 08-lists.js (2 rules)
 `StickyHeaderObscuresFocus`, `ListEmpty`
@@ -431,7 +432,7 @@ Output: `scan-reports/scan-visual.html` (self-contained, no server required)
 Airbnb-inspired design with responsive layout. 5 grouped sections:
 
 **Accessibility**
-- Sources: axe-core + all 83 accessScan rules + behavioral scanners
+- Sources: axe-core + 82 active accessScan rules + behavioral scanners
 - Per issue: rule ID, WCAG version/level, accessScan category, impact, source file + line, ±5-line Liquid context, fix hint, auto-fixable badge
 - Grouped by: page → priority → rule
 
@@ -614,8 +615,12 @@ pnpm scan --no-server              # Skip auto-starting dev server
 pnpm scan --verbose                # Show active layers and detailed progress
 pnpm scan --no-fail                # Exit 0 even with violations
 pnpm scan --dry-run                # Preview without modifying files
-pnpm scan --include-third-party    # Include Paradox widget violations
+pnpm scan --include-third-party    # Include widget violations in local scans
+npx ada-scan --url https://… --exclude-third-party # Opt out for remote scans
 ```
+
+Remote URL scans include third-party content by default for whole-page
+commercial-scanner parity. Local scans exclude it unless explicitly enabled.
 
 ---
 

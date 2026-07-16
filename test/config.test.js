@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { mergeConfig, DEFAULT_CONFIG } from '../src/utils/config.js';
 
 test('mergeConfig shallow-merges nested objects without dropping defaults', () => {
@@ -30,4 +31,19 @@ test('DEFAULT_CONFIG carries the new host-integration fields', () => {
   for (const key of ['devCommand', 'buildCommand', 'buildEnv', 'outDir', 'source', 'distMap', 'thirdParty', 'suppress']) {
     assert.ok(key in DEFAULT_CONFIG, `missing ${key}`);
   }
+});
+
+test('DEFAULT_CONFIG scans axe at desktop and mobile viewports', () => {
+  assert.ok(DEFAULT_CONFIG.axe, 'missing axe configuration');
+  assert.deepEqual(DEFAULT_CONFIG.axe.viewports, [
+    { name: 'desktop', width: 1280, height: 900 },
+    { name: 'mobile', width: 390, height: 844 },
+  ]);
+});
+
+test('scan config template publishes the default axe viewport matrix', () => {
+  const template = JSON.parse(
+    readFileSync(new URL('../templates/scan-config.default.json', import.meta.url), 'utf8'),
+  );
+  assert.deepEqual(template.axe, DEFAULT_CONFIG.axe);
 });

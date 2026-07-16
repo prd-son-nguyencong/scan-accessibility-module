@@ -1,6 +1,7 @@
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
 import path from 'path';
 import { getProjectRoot } from '../utils/paths.js';
+import { buildScanReportV2, projectReportV1 } from './report-v2.js';
 
 const ROOT = getProjectRoot();
 const REPORTS_DIR = path.join(ROOT, 'scan-reports');
@@ -13,14 +14,23 @@ function ensureDir(dir) {
 /**
  * Writes scan results to scan-reports/latest.json and a timestamped history entry.
  */
-export function writeReport(scanResults) {
-  ensureDir(REPORTS_DIR);
+export function buildReportBundle(scanResults, context = {}) {
+  const report = buildScanReportV2(scanResults, context);
+  const legacyReport = projectReportV1(report);
+  legacyReport.summary = buildSummary(legacyReport.pages);
+  return { report, legacyReport };
+}
 
-  const report = {
-    timestamp: new Date().toISOString(),
-    summary: buildSummary(scanResults),
-    pages: scanResults,
-  };
+export function projectReportForLegacy(report) {
+  if (report?.schemaVersion !== '2.0.0') return report;
+  const legacyReport = projectReportV1(report);
+  legacyReport.summary = buildSummary(legacyReport.pages);
+  return legacyReport;
+}
+
+export function writeReport(scanResults, context = {}) {
+  ensureDir(REPORTS_DIR);
+  const { report, legacyReport } = buildReportBundle(scanResults, context);
 
   const latestPath = path.join(REPORTS_DIR, 'latest.json');
   writeFileSync(latestPath, JSON.stringify(report, null, 2));
@@ -31,7 +41,7 @@ export function writeReport(scanResults) {
   ensureDir(histDir);
   writeFileSync(path.join(histDir, 'scan.json'), JSON.stringify(report, null, 2));
 
-  return { report, latestPath, histDir };
+  return { report, legacyReport, latestPath, histDir };
 }
 
 /**
@@ -57,10 +67,28 @@ export function loadBaseline() {
   }
 }
 
-function buildSummary(scanResults) {
+export function buildSummary(scanResults) {
   let totalViolations = 0;
   const violationsByRule = {};
   const violationsByFile = {};
+  const axe = {
+    pages: 0,
+    totalIssueGroups: 0,
+    automaticIssues: 0,
+    guidedIssues: null,
+    manualIssues: null,
+    bestPractice: 0,
+    affectedNodes: 0,
+    incompleteResults: 0,
+    artifactNodeCount: 0,
+    artifactViolationGroupsSkipped: 0,
+    impact: { critical: 0, serious: 0, moderate: 0, minor: 0 },
+    viewportRuns: 0,
+    viewportMatrix: [],
+    unsupportedIssueTypes: [],
+    tags: [],
+    engines: [],
+  };
   const layerCounts = {
     axe: 0, lighthouse: 0, w3c: 0, accessScan: 0, links: 0,
     keyboard: 0, ariaLive: 0, focusTrap: 0, dynamicContent: 0,
@@ -68,14 +96,68 @@ function buildSummary(scanResults) {
   };
 
   for (const pageResult of scanResults) {
+    if (pageResult.axeSummary) {
+      const pageAxe = pageResult.axeSummary;
+      axe.pages++;
+      axe.totalIssueGroups += pageAxe.totalIssueGroups || 0;
+      axe.automaticIssues += pageAxe.automaticIssues || 0;
+      axe.bestPractice += pageAxe.bestPractice || 0;
+      axe.affectedNodes += pageAxe.affectedNodes || 0;
+      axe.incompleteResults += pageAxe.incompleteCount || 0;
+      axe.artifactNodeCount += pageAxe.artifactNodeCount || 0;
+      axe.artifactViolationGroupsSkipped += pageAxe.artifactViolationGroupsSkipped || 0;
+      axe.viewportRuns += pageAxe.viewports?.length || 0;
+      for (const viewport of pageAxe.viewports || []) {
+        const normalized = {
+          name: viewport.name,
+          width: viewport.width,
+          height: viewport.height,
+        };
+        if (!axe.viewportMatrix.some((item) => (
+          item.name === normalized.name &&
+          item.width === normalized.width &&
+          item.height === normalized.height
+        ))) {
+          axe.viewportMatrix.push(normalized);
+        }
+      }
+      for (const issueType of pageAxe.unsupportedIssueTypes || []) {
+        if (!axe.unsupportedIssueTypes.includes(issueType)) {
+          axe.unsupportedIssueTypes.push(issueType);
+        }
+      }
+      for (const tag of pageAxe.tags || []) {
+        if (!axe.tags.includes(tag)) axe.tags.push(tag);
+      }
+      if (
+        pageAxe.testEngine &&
+        !axe.engines.some((engine) => (
+          engine.name === pageAxe.testEngine.name &&
+          engine.version === pageAxe.testEngine.version
+        ))
+      ) {
+        axe.engines.push(pageAxe.testEngine);
+      }
+      for (const impact of Object.keys(axe.impact)) {
+        axe.impact[impact] += pageAxe.impact?.[impact] || 0;
+      }
+      if (typeof pageAxe.guidedIssues === 'number') {
+        axe.guidedIssues = (axe.guidedIssues || 0) + pageAxe.guidedIssues;
+      }
+      if (typeof pageAxe.manualIssues === 'number') {
+        axe.manualIssues = (axe.manualIssues || 0) + pageAxe.manualIssues;
+      }
+    }
+
     // Unified violations format (from scanOnePage): flat array with .layer field
     if (Array.isArray(pageResult.violations) && pageResult.violations.length > 0 && !pageResult.axe) {
       for (const v of pageResult.violations) {
-        totalViolations++;
+        const occurrenceCount = Number.isInteger(v.count) && v.count > 0 ? v.count : 1;
+        totalViolations += occurrenceCount;
         const layer = v.layer || 'axe';
-        layerCounts[layer] = (layerCounts[layer] || 0) + 1;
+        layerCounts[layer] = (layerCounts[layer] || 0) + occurrenceCount;
         const ruleId = v.ruleId || v.rule || v.id || '?';
-        violationsByRule[ruleId] = (violationsByRule[ruleId] || 0) + 1;
+        violationsByRule[ruleId] = (violationsByRule[ruleId] || 0) + occurrenceCount;
         const file = v.source?.file;
         if (file && file !== 'unknown') {
           if (!violationsByFile[file]) violationsByFile[file] = [];
@@ -84,9 +166,10 @@ function buildSummary(scanResults) {
             description: v.fix?.hint || v.description || '',
             impact: v.impact,
             layer,
-            sourceConfidence: v.source?.confidence || 'low',
+            sourceConfidence: v.source?.confidence || 'unknown',
             sourceLine: v.source?.line || null,
             snippetId: v.source?.snippetId || v.element?.scanId || null,
+            count: occurrenceCount,
           });
         }
       }
@@ -131,7 +214,7 @@ function buildSummary(scanResults) {
       const file = v.source?.file;
       if (file && file !== 'unknown') {
         if (!violationsByFile[file]) violationsByFile[file] = [];
-        violationsByFile[file].push({ ruleId: ruleId || '?', description: v.description || '', impact: v.impact, layer: 'w3c', sourceConfidence: v.source?.confidence || 'low', sourceLine: v.source?.line || null, snippetId: v.source?.snippetId || null });
+        violationsByFile[file].push({ ruleId: ruleId || '?', description: v.description || '', impact: v.impact, layer: 'w3c', sourceConfidence: v.source?.confidence || 'unknown', sourceLine: v.source?.line || null, snippetId: v.source?.snippetId || null });
       }
     }
 
@@ -144,7 +227,7 @@ function buildSummary(scanResults) {
         const file = v.source?.file;
         if (file && file !== 'unknown') {
           if (!violationsByFile[file]) violationsByFile[file] = [];
-          violationsByFile[file].push({ ruleId: ruleId || '?', description: v.description || '', impact: v.impact, layer: v.layer || key, sourceConfidence: v.source?.confidence || 'low', sourceLine: v.source?.line || null, snippetId: v.source?.snippetId || null });
+          violationsByFile[file].push({ ruleId: ruleId || '?', description: v.description || '', impact: v.impact, layer: v.layer || key, sourceConfidence: v.source?.confidence || 'unknown', sourceLine: v.source?.line || null, snippetId: v.source?.snippetId || null });
         }
       }
     }
@@ -157,7 +240,7 @@ function buildSummary(scanResults) {
       const file = v.source?.file;
       if (file && file !== 'unknown') {
         if (!violationsByFile[file]) violationsByFile[file] = [];
-        violationsByFile[file].push({ ruleId: ruleId || '?', description: v.description || '', impact: v.impact, layer: 'screenReader', sourceConfidence: v.source?.confidence || 'low', sourceLine: v.source?.line || null, snippetId: v.source?.snippetId || null });
+        violationsByFile[file].push({ ruleId: ruleId || '?', description: v.description || '', impact: v.impact, layer: 'screenReader', sourceConfidence: v.source?.confidence || 'unknown', sourceLine: v.source?.line || null, snippetId: v.source?.snippetId || null });
       }
     }
   }
@@ -168,6 +251,13 @@ function buildSummary(scanResults) {
     violationsByRule,
     violationsByFile,
     layerCounts,
+    axe: axe.pages > 0
+      ? {
+          ...axe,
+          unsupportedIssueTypes: axe.unsupportedIssueTypes.sort(),
+          tags: axe.tags.sort(),
+        }
+      : null,
     topViolations: Object.entries(violationsByRule)
       .sort(([, a], [, b]) => b - a)
       .slice(0, 10)
@@ -176,7 +266,7 @@ function buildSummary(scanResults) {
 }
 
 export function printConsoleSummary(report) {
-  const { summary } = report;
+  const { summary } = projectReportForLegacy(report);
 
   console.log('\nScan Summary');
   console.log('============');
@@ -196,7 +286,8 @@ export function printConsoleSummary(report) {
     for (const [file, violations] of filesWithViolations) {
       const conf = violations[0]?.sourceConfidence || '';
       const confNote = conf === 'high' ? '' : conf === 'medium' ? ' (partial match)' : ' (page-level trace)';
-      console.log(`  ${file}${confNote}  (${violations.length} violation${violations.length === 1 ? '' : 's'})`);
+      const occurrenceCount = violations.reduce((total, violation) => total + (violation.count || 1), 0);
+      console.log(`  ${file}${confNote}  (${occurrenceCount} violation${occurrenceCount === 1 ? '' : 's'})`);
       for (const v of violations.slice(0, 5)) {
         const lineNote = v.sourceLine ? `:${v.sourceLine}` : '';
         console.log(`    [${v.impact}] ${v.ruleId}${lineNote}`);

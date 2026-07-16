@@ -1,0 +1,25 @@
+meta {
+  name: get-models
+  type: http
+  seq: 3
+}
+
+get {
+  url: <redacted-base-url>/ml/inference/cis/v1alpha1/models?bypass_auth=true&model
+  body: none
+  auth: inherit
+}
+
+params:query {
+  bypass_auth: true
+  model:
+}
+
+headers {
+  Wd-PCA-Feature-Key: <redacted-feature-key>
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

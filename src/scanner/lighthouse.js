@@ -2,6 +2,38 @@ const PSI_API_URL = 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed'
 const PSI_CATEGORIES = ['performance', 'accessibility', 'best-practices', 'seo'];
 const PSI_TIMEOUT_MS = 90_000;
 
+export function classifyPsiFailure(error) {
+  const message = String(error?.message || error || '');
+  const statusMatch = message.match(/PSI API (\d{3})/i);
+  const status = statusMatch ? Number(statusMatch[1]) : null;
+  if (status === 429 || /quota exceeded/i.test(message)) {
+    return { code: 'quota-exceeded', status: 429 };
+  }
+  if (/timed out|aborterror/i.test(message)) {
+    return { code: 'timeout', status };
+  }
+  if (/missing lighthouseResult/i.test(message)) {
+    return { code: 'invalid-response', status };
+  }
+  if (status) {
+    return { code: 'http-error', status };
+  }
+  return { code: 'unavailable', status: null };
+}
+
+export function createLighthouseProvenance({
+  requestedSource = 'local',
+  actualSource = 'local',
+  fallbackError = null,
+} = {}) {
+  return {
+    requestedSource,
+    actualSource,
+    comparableToPsi: actualSource === 'psi-api',
+    fallbackReason: fallbackError ? classifyPsiFailure(fallbackError) : null,
+  };
+}
+
 const METRIC_THRESHOLDS = {
   'first-contentful-paint': { good: 1800, poor: 3000, unit: 'ms', label: 'First Contentful Paint' },
   'largest-contentful-paint': { good: 2500, poor: 4000, unit: 'ms', label: 'Largest Contentful Paint' },
@@ -247,6 +279,106 @@ function extractAudits(lhr) {
   return { audits, groups, passedAudits, passedGroups };
 }
 
+export function extractAccessibilityAudits(lhr = {}) {
+  const auditRefs = lhr.categories?.accessibility?.auditRefs || [];
+  const failedAudits = [];
+  const summary = {
+    rawAuditCount: auditRefs.length,
+    issueGroups: 0,
+    affectedNodes: 0,
+    passed: 0,
+    manual: 0,
+    notApplicable: 0,
+    incomplete: 0,
+  };
+
+  for (const reference of auditRefs) {
+    const audit = lhr.audits?.[reference.id];
+    if (!audit) {
+      summary.incomplete += 1;
+      continue;
+    }
+    if (audit.score === 1) {
+      summary.passed += 1;
+      continue;
+    }
+    if (audit.score === null || audit.score === undefined) {
+      if (audit.scoreDisplayMode === 'manual') summary.manual += 1;
+      else if (audit.scoreDisplayMode === 'notApplicable') summary.notApplicable += 1;
+      else summary.incomplete += 1;
+      continue;
+    }
+
+    const items = Array.isArray(audit.details?.items) ? audit.details.items : [];
+    const nodes = items.map((item) => {
+      const node = item.node || item;
+      return {
+        selector: node.selector || '',
+        snippet: node.snippet || '',
+        nodeLabel: node.nodeLabel || '',
+        explanation: node.explanation || item.explanation || '',
+        path: node.path || '',
+      };
+    }).filter((node) =>
+      node.selector || node.snippet || node.nodeLabel || node.explanation || node.path
+    );
+    failedAudits.push({
+      id: reference.id,
+      title: audit.title || reference.id,
+      description: (audit.description || '').replace(/\[.*?\]\(.*?\)/g, '').trim(),
+      score: audit.score,
+      weight: reference.weight ?? null,
+      nodes,
+    });
+    summary.issueGroups += 1;
+    summary.affectedNodes += nodes.length;
+  }
+
+  return { failedAudits, summary };
+}
+
+export function generateLighthouseAccessibilityViolations(result = {}) {
+  const findings = new Map();
+
+  for (const [deviceName, device] of Object.entries(result)) {
+    for (const audit of device?.accessibility?.failedAudits || []) {
+      const nodes = audit.nodes?.length > 0 ? audit.nodes : [{}];
+      for (const node of nodes) {
+        const key = `${audit.id}|${node.selector || ''}|${node.snippet || ''}`;
+        if (!findings.has(key)) {
+          findings.set(key, {
+            rule: audit.id,
+            category: 'accessibility',
+            description: [audit.title, node.explanation].filter(Boolean).join(' — '),
+            impact: 'moderate',
+            wcagCriteria: null,
+            selector: node.selector || '',
+            snippet: node.snippet || '',
+            evidence: {
+              audit: {
+                title: audit.title,
+                description: audit.description,
+                score: audit.score,
+                weight: audit.weight,
+              },
+              nodeLabel: node.nodeLabel || '',
+              path: node.path || '',
+              viewports: [],
+            },
+          });
+        }
+        findings.get(key).evidence.viewports.push({
+          name: device.device || deviceName,
+          width: device.viewport?.width || null,
+          height: device.viewport?.height || null,
+        });
+      }
+    }
+  }
+
+  return [...findings.values()];
+}
+
 function extractScores(lhr) {
   const scores = {};
   for (const [key, catId] of [['performance', 'performance'], ['accessibility', 'accessibility'], ['bestPractices', 'best-practices'], ['seo', 'seo']]) {
@@ -272,14 +404,21 @@ async function runLighthouseForDevice(pageUrl, deviceMode, chromePort) {
   const lhr = result.lhr;
 
   const { audits, groups, passedAudits, passedGroups } = extractAudits(lhr);
+  const accessibility = extractAccessibilityAudits(lhr);
   return {
     device: deviceMode,
+    engineVersion: lhr.lighthouseVersion || null,
+    viewport: {
+      width: deviceConfig.screenEmulation.width,
+      height: deviceConfig.screenEmulation.height,
+    },
     scores: extractScores(lhr),
     metrics: extractMetrics(lhr),
     audits,
     groups,
     passedAudits,
     passedGroups,
+    accessibility,
     finalUrl: lhr.finalDisplayedUrl || lhr.finalUrl || pageUrl,
     fetchTime: lhr.fetchTime,
     runWarnings: (lhr.runWarnings || []).slice(0, 5),
@@ -332,16 +471,26 @@ function normalizePSIResponse(psiData) {
   const scores = extractScores(lhr);
   const metrics = extractMetrics(lhr);
   const { audits, groups, passedAudits, passedGroups } = extractAudits(lhr);
+  const accessibility = extractAccessibilityAudits(lhr);
   const device = lhr.configSettings?.formFactor || 'mobile';
+  const screenEmulation = lhr.configSettings?.screenEmulation
+    || DEVICE_CONFIGS[device]?.screenEmulation
+    || {};
 
   return {
     device,
+    engineVersion: lhr.lighthouseVersion || null,
+    viewport: {
+      width: screenEmulation.width || null,
+      height: screenEmulation.height || null,
+    },
     scores,
     metrics,
     audits,
     groups,
     passedAudits,
     passedGroups,
+    accessibility,
     finalUrl: lhr.finalDisplayedUrl || lhr.finalUrl || '',
     fetchTime: lhr.fetchTime || new Date().toISOString(),
     runWarnings: (lhr.runWarnings || []).slice(0, 5),
@@ -403,6 +552,8 @@ function generateViolations(result, pageUrl, config) {
     }
   }
 
+  violations.push(...generateLighthouseAccessibilityViolations(result));
+
   return { violations, passes };
 }
 
@@ -420,6 +571,7 @@ export async function scanWithLighthouse(pageUrl, config = {}) {
   const passes = [];
   const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)/i.test(pageUrl);
   const usePSI = !isLocal && config.usePSI !== false;
+  let psiFailure = null;
 
   if (usePSI) {
     try {
@@ -434,10 +586,16 @@ export async function scanWithLighthouse(pageUrl, config = {}) {
         violations: vs,
         passes: ps,
         source: 'psi-api',
+        provenance: createLighthouseProvenance({
+          requestedSource: 'psi-api',
+          actualSource: 'psi-api',
+        }),
         timestamp: new Date().toISOString(),
       };
     } catch (psiErr) {
-      console.warn(`  PSI API failed (${psiErr.message}), falling back to local Lighthouse...`);
+      psiFailure = psiErr;
+      const failure = classifyPsiFailure(psiErr);
+      console.warn(`  PSI API failed (${failure.code}${failure.status ? `, HTTP ${failure.status}` : ''}), falling back to local Lighthouse...`);
     }
   }
 
@@ -457,7 +615,12 @@ export async function scanWithLighthouse(pageUrl, config = {}) {
         lighthouse: result,
         violations: vs,
         passes: ps,
-        source: 'local',
+        source: psiFailure ? 'local-fallback' : 'local',
+        provenance: createLighthouseProvenance({
+          requestedSource: usePSI ? 'psi-api' : 'local',
+          actualSource: 'local',
+          fallbackError: psiFailure,
+        }),
         timestamp: new Date().toISOString(),
       };
     } finally {
@@ -485,6 +648,11 @@ export async function scanWithLighthouse(pageUrl, config = {}) {
       violations,
       passes,
       source: 'error',
+      provenance: createLighthouseProvenance({
+        requestedSource: usePSI ? 'psi-api' : 'local',
+        actualSource: 'error',
+        fallbackError: psiFailure || err,
+      }),
       timestamp: new Date().toISOString(),
     };
   }

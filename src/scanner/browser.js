@@ -9,9 +9,9 @@ export async function getBrowser() {
   return browser;
 }
 
-export async function newPage(browserInstance) {
+export async function newPage(browserInstance, options = {}) {
   const context = await browserInstance.newContext({
-    viewport: { width: 1280, height: 900 },
+    viewport: options.viewport || { width: 1280, height: 900 },
     userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 ADA-Scanner/1.0',
   });
   const page = await context.newPage();

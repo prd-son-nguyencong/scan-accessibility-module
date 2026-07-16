@@ -1,0 +1,16 @@
+{
+  "externalSourcePath": "<operator-home>/Documents/bruno/ml-https",
+  "note": "Sanitized excerpts redact base URL and feature key. Recompute sha256 after editing sanitized files.",
+  "files": [
+    {
+      "file": "get-models.sanitized.bru",
+      "source": "get-models.bru",
+      "sha256": "26e8e4c5a001da04c732951024515ac181080b17e57ac2d4366988fe459a70d9"
+    },
+    {
+      "file": "predictions.sanitized.bru",
+      "source": "predictions.bru",
+      "sha256": "81d7ea3498ff5b63751c7d34c54a0054d4c196dddff4e8feb7f1d692129eba7d"
+    }
+  ]
+}

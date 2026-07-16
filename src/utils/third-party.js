@@ -14,6 +14,16 @@ const DEFAULT_THIRD_PARTY = {
 
 let _cache;
 
+export function resolveIncludeThirdParty({
+  isRemoteUrl = false,
+  includeRequested = false,
+  excludeRequested = false,
+} = {}) {
+  if (excludeRequested) return false;
+  if (includeRequested) return true;
+  return isRemoteUrl;
+}
+
 export function getThirdPartyConfig() {
   if (_cache) return _cache;
   try {
@@ -70,8 +80,18 @@ function escapeRegExp(s) {
  */
 export function isTemplateDevArtifact(html = '', tokens) {
   const toks = tokens || getThirdPartyConfig().devArtifactTokens || [];
-  let stripped = String(html);
-  for (const re of templateTokenPatterns(toks)) {
+  const source = String(html);
+  const patterns = templateTokenPatterns(toks);
+  const hasTemplateToken = patterns.some((re) => {
+    re.lastIndex = 0;
+    return re.test(source);
+  });
+
+  if (!hasTemplateToken) return false;
+
+  let stripped = source;
+  for (const re of patterns) {
+    re.lastIndex = 0;
     stripped = stripped.replace(re, '');
   }
   stripped = stripped.replace(/<[^>]+>/g, '').replace(/\s+/g, '');

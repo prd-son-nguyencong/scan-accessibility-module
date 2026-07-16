@@ -3,6 +3,7 @@ import fg from 'fast-glob';
 import path from 'path';
 import { getProjectRoot, urlToPageFile } from '../utils/paths.js';
 import { resolveFromPageUrl, clearResolverCache } from './resolve-source.js';
+import { computeSourcePreimage } from './preimage.js';
 
 const ROOT = getProjectRoot();
 
@@ -104,6 +105,28 @@ function distPathToSourcePath(distPath) {
   return distPath.replace(/^dist\//, 'src/').replace(/\.html$/, '.liquid');
 }
 
+export function normalizeTraceAttestation(source, root = ROOT) {
+  const preimage = computeSourcePreimage(source.file, source.line, root);
+  return preimage
+    ? {
+        ...source,
+        preimageSha256: preimage.preimageSha256,
+        preimageRange: preimage.range,
+      }
+    : {
+        ...source,
+        confidence: source.confidence === 'high' ? 'medium' : source.confidence,
+        preimageSha256: null,
+        preimageRange: null,
+      };
+}
+
+const attachPreimage = normalizeTraceAttestation;
+
+export function confidenceForPartialMatch({ line, manifestMatched }) {
+  return line && manifestMatched ? 'high' : 'medium';
+}
+
 // ─── Core tracer ──────────────────────────────────────────────────────────────
 
 /**
@@ -138,21 +161,29 @@ async function traceToSource(snippetHtml, pageUrl) {
             line = findLineInSource(srcFile, snippetHtml);
           }
         }
-        const confidence = line ? 'high' : (manifest[distFile] ? 'high' : 'medium');
-        return { file: srcFile, line, confidence, method: 'partial-file-search' };
+        const confidence = confidenceForPartialMatch({
+          line,
+          manifestMatched: Boolean(manifest[distFile]),
+        });
+        return attachPreimage({
+          file: srcFile,
+          line,
+          confidence,
+          method: manifest[distFile] ? 'instrumentation-manifest' : 'partial-file-search',
+        });
       }
     }
 
     // 1.5. Resolve via scan:begin/end markers in the built dist page HTML
     const pageResolved = await resolveFromPageUrl({ html: snippetHtml }, pageUrl);
     if (pageResolved) {
-      return {
+      return attachPreimage({
         file: pageResolved.originFile,
         line: pageResolved.originLine,
         confidence: pageResolved.confidence,
         snippetId: pageResolved.snippetId,
         method: pageResolved.method,
-      };
+      });
     }
   }
 
@@ -161,7 +192,12 @@ async function traceToSource(snippetHtml, pageUrl) {
     const urlPath = new URL(pageUrl).pathname;
     const pageFile = urlToPageFile(urlPath);
     const line = searchKey.length > 10 ? findLineInSource(pageFile, snippetHtml) : null;
-    return { file: pageFile, line, confidence: line ? 'medium' : 'low', method: 'url-fallback' };
+    return attachPreimage({
+      file: pageFile,
+      line,
+      confidence: line ? 'medium' : 'low',
+      method: 'url-fallback',
+    });
   } catch {
     return { file: 'unknown', line: null, confidence: 'none', method: 'url-fallback' };
   }
@@ -184,9 +220,19 @@ export async function mapViolationToSource(node, pageUrl) {
 export async function mapDescriptionToSource(pageUrl) {
   try {
     const urlPath = new URL(pageUrl).pathname;
-    return { file: urlToPageFile(urlPath), line: null, confidence: 'low' };
+    return {
+      file: urlToPageFile(urlPath),
+      line: null,
+      confidence: 'low',
+      method: 'url-fallback',
+    };
   } catch {
-    return { file: 'unknown', line: null, confidence: 'none' };
+    return {
+      file: 'unknown',
+      line: null,
+      confidence: 'none',
+      method: 'url-fallback',
+    };
   }
 }
 
