@@ -205,21 +205,27 @@ WCAG versions: 2.1 + 2.0
 
 | Property | Value |
 |----------|-------|
-| **WCAG** | 2.0 — Level A |
+| **WCAG** | Best Practice — manual verification |
 | **Impacted Users** | Blind |
 
-**Requirement:** Elements with strong importance should have the strong role. If not, screen reader users may not understand the importance of the text.
+**Requirement:** Bold styling does not automatically mean semantic importance. Confirm the author intent; use `<strong>` only when the text's importance must be conveyed to assistive technology.
+
+The scanner excludes bold spans inside headings because the heading already
+provides structural semantics. This avoids reporting status badges such as
+`<h3>Job title <span class="remote">Remote</span></h3>`.
 
 **Failing example:**
 
 ```html
-<span class="results-header__content__from">1</span>
+<span class="font-bold">Important: Applications close today</span>
+<!-- Review required: styling may be carrying semantic importance. -->
 ```
 
 **Passing example:**
 
 ```html
-<strong class="text-[1.6rem] font-['Open_Sans'] font-bold">Lead with heart. Serve with purpose.</strong>
+<strong>Important: Applications close today</strong>
+<span class="font-bold">6</span><!-- A presentational result count may stay a span. -->
 ```
 
 ---
@@ -261,6 +267,14 @@ WCAG versions: 2.1 + 2.0
 | **Impacted Users** | Blind |
 
 **Requirement:** When elements are visually hidden but still exposed to assistive technology, screen reader users may encounter content that should not be available in the current interface. This can obscure the current state of the page and lead to confusion about what information or controls are available.
+
+> **Commercial parity note:** On a dynamically recognized credential gate,
+> accessScan can report the visibly rendered `<body>` even though it is not
+> hidden. `ada-scan` retains that observation as a non-deterministic heuristic
+> and never recommends adding `aria-hidden` to the visible body. Successful
+> snapshots include only native/CSS-hidden elements present in the current DOM;
+> no scanner iframe or fixed success count is fabricated. Hidden credential
+> values are redacted before reporting.
 
 **Failing example:**
 
@@ -381,7 +395,7 @@ WCAG versions: 2.1 + 2.0
 
 ---
 
-## 2. Interactive Content (18 rules)
+## 2. Interactive Content (19 rules)
 
 WCAG versions: 2.2 + 2.0 + Best Practices
 
@@ -450,6 +464,10 @@ WCAG versions: 2.2 + 2.0 + Best Practices
 | **Impacted Users** | Blind |
 
 **Requirement:** If interactive elements cannot be identified as buttons, screen reader users may not realize the element is actionable, which can stop them from submitting forms, opening dialogs, or performing other intended actions.
+
+> **Evidence note:** When a failure exists, the report also retains every
+> rendered native `<button>` as a successful snapshot. Buttons hidden by their
+> own or an ancestor's responsive state are excluded.
 
 **Failing example:**
 
@@ -840,6 +858,52 @@ WCAG versions: 2.2 + 2.0 + Best Practices
 
 ---
 
+### 2.19 StickyHeaderObscuresFocus
+
+| Property | Value |
+|----------|-------|
+| **WCAG** | 2.2 — Level AA (SC 2.4.11) |
+| **Impacted Users** | Motor Impaired |
+
+> Commercial alias: `FocusNotObscuredHeader`
+
+**Requirement:** When a visible control receives focus, it must not be
+completely hidden by a sticky or fixed header. The standards check focuses
+controls and confirms full coverage with browser hit-testing; header height or
+`scroll-padding-top` alone does not prove failure.
+
+> **Commercial parity note:** Parity mode dynamically identifies rendered
+> semantic `<header>` and `role="banner"` elements whose computed position is
+> `fixed` or `sticky` and whose computed top offset anchors them to the viewport
+> top. It targets the header snapshot and records
+> `evidence.hitTestConfirmed`. An unconfirmed observation remains
+> non-deterministic and must not be auto-fixed. No hostname, brand, class, ID,
+> site selector, or fixed count participates in recognition.
+
+**Failing example:**
+
+```html
+<header class="site-header">...</header>
+<button class="covered-control">Covered focused control</button>
+<style>
+  .site-header { position: fixed; top: 0; z-index: 2; height: 6rem; }
+  .covered-control { position: fixed; top: 1rem; z-index: 1; }
+</style>
+```
+
+**Passing example:**
+
+```html
+<header class="site-header">...</header>
+<style>
+  .site-header { position: fixed; top: 0; height: 6rem; }
+  html { scroll-padding-top: 6rem; }
+</style>
+<!-- Verify by keyboard that every focused control remains at least partly visible. -->
+```
+
+---
+
 ## 3. Forms (6 rules)
 
 WCAG version: 2.0
@@ -986,6 +1050,13 @@ WCAG version: 2.0
 
 **Requirement:** If a field is marked as required only through visual cues, but lacks the `required` attribute or `aria-required="true"`, screen readers will not announce it as mandatory. As a result, users may experience unnecessary delays or confusion when trying to submit the form.
 
+> **Commercial parity note:** A commercial report can associate this rule with
+> a current-page navigation anchor even though an anchor is not a form field.
+> Parity mode reproduces that observation only when an explicitly current link
+> appears in a rendered direct-link navigation. It is marked
+> `commercial-parity-heuristic`, remains non-deterministic, and must not add
+> `required` or `aria-required` automatically.
+
 **Failing example:**
 
 ```html
@@ -1045,6 +1116,11 @@ WCAG versions: 2.0 + Best Practices
 
 **Requirement:** A breadcrumb region presents a trail of links showing the user's current page in relation to higher-level pages on a site. Without a label, it may be announced by screen readers simply as "navigation", making it hard to distinguish from other navigation regions.
 
+> **Commercial parity note:** Third-party mode reproduces the commercial
+> finding on the known Paradox desktop submenu row. It is marked
+> `commercial-parity-heuristic` and `semanticAssessment:
+> "primary-navigation-submenu"` because that row is not a true breadcrumb.
+
 **Failing example:**
 
 ```html
@@ -1073,13 +1149,18 @@ WCAG versions: 2.0 + Best Practices
 | **WCAG** | 2.0 — Level A |
 | **Impacted Users** | Blind |
 
-**Requirement:** Screen readers rely on accurate tagging and labeling to provide necessary context. If an element that does not contain navigation links is tagged as a navigation landmark, screen reader users may lose orientation and find the page's structure difficult to understand.
+**Requirement:** A navigation landmark should identify a section that contains primary links for moving through the site or page. Using navigation landmarks for minor or secondary link groups makes it harder for screen reader users to locate the page's key navigation areas.
+
+The scanner uses rendered structure rather than a site profile: it excludes
+elements hidden by an ancestor, deduplicates equivalent responsive navigations
+by accessible name and destinations, and does not exempt a navigation merely
+because it contains a popup control.
 
 **Failing example:**
 
 ```html
-<nav id="desktop-navigation" aria-label="Main navigation">
-  <a href="/">Careers Home</a>
+<nav id="site-navigation" aria-label="Main navigation">
+  <a href="/">Home</a>
   <!-- Links not wrapped in <ul>/<ol> -->
 </nav>
 ```
@@ -1104,6 +1185,11 @@ WCAG versions: 2.0 + Best Practices
 | **Impacted Users** | Blind |
 
 **Requirement:** The main landmark represents the primary content of a page. It should include only content unique to that page and must remain separate from repeated elements, such as navigation, header, or footer.
+
+> **Commercial parity note:** A rendered top-level shell containing both a
+> banner and a credential-gate main is retained as a non-deterministic
+> compatibility observation. Recognition uses password-form and landmark
+> structure, not a hostname, route, brand, class, ID, selector, or fixed count.
 
 **Failing example:**
 
@@ -1134,6 +1220,13 @@ WCAG versions: 2.0 + Best Practices
 | **Impacted Users** | Blind |
 
 **Requirement:** Incorrectly tagging the main landmark may cause screen reader users to misunderstand where the primary content begins or ends, leading to confusion and inefficient navigation.
+
+The report includes both failed main elements and valid main landmarks under
+“successful elements” to match commercial evidence presentation.
+
+> **Commercial parity note:** A rendered main whose primary child is a
+> credential form may be valid page content. The commercial observation is
+> retained as a non-deterministic heuristic and is not eligible for auto-fix.
 
 **Failing example:**
 
@@ -1167,6 +1260,9 @@ WCAG versions: 2.0 + Best Practices
 
 **Requirement:** A page typically presents one central subject, so a single main landmark establishes the boundaries of the primary content for screen reader users. Multiple main landmarks create uncertainty about the scope, leading to confusion and difficulty navigating.
 
+When multiple main landmarks exist, the duplicate or nested `<main>` is retained
+as this rule's failed code snapshot.
+
 **Failing example:**
 
 ```html
@@ -1189,17 +1285,24 @@ WCAG versions: 2.0 + Best Practices
 
 | Property | Value |
 |----------|-------|
-| **WCAG** | 2.0 — Level A |
+| **WCAG** | Best Practice; commercial parity presentation: 2.0 — Level A |
 | **Impacted Users** | Blind |
 
 **Requirement:** Screen reader users rely on landmarks to quickly access important regions of a page. Defining a form as a search landmark ensures that users can quickly recognize and navigate to the search form.
 
+The standards-oriented result remains advisory because identifying a page's
+intended search region requires context. Commercial parity mode presents the
+commercial severity and marks the result `commercial-parity-heuristic`. Its
+snapshot is inferred dynamically from the smallest ancestor containing search
+controls and an action; no site selector or fixed element count is used.
+
 **Failing example:**
 
 ```html
-<div class="c-jobs-search-vertical" data-testid="jobs-search_container">
-  <input type="text" placeholder="Search jobs">
-  <button>Search</button>
+<div class="job-search">
+  <input type="search" aria-label="Keywords">
+  <input type="text" aria-label="Location">
+  <button type="button">Search</button>
 </div>
 ```
 
@@ -1488,101 +1591,56 @@ WCAG version: 2.2
 
 ---
 
-## 7. ARIA (2 rules)
+## 7. ARIA (1 active rule)
 
 WCAG version: 2.1
 
 ---
 
-### 7.1 AriaLabelledbyContentMismatch
-
-| Property | Value |
-|----------|-------|
-| **WCAG** | 2.1 — Level A (SC 2.5.3) |
-| **Impacted Users** | Blind, Motor Impaired |
-
-> *Internal scanner rule — not present in commercial accessScan docs.*
-
-**Requirement:** When `aria-labelledby` references an element whose text differs from the control's visible text, speech-input users (e.g., Dragon NaturallySpeaking) cannot activate the control by saying the visible label. The accessible name must contain the visible text.
-
-**Failing example:**
-
-```html
-<span id="label-1">Proceed to checkout</span>
-<button aria-labelledby="label-1">Buy now</button>
-<!-- Visible text "Buy now" is not in accessible name "Proceed to checkout" -->
-```
-
-**Passing example:**
-
-```html
-<span id="label-1">Buy now</span>
-<button aria-labelledby="label-1">Buy now</button>
-```
-
----
-
-### 7.2 VisibleTextPartOfAccessibleName
+### 7.1 VisibleTextPartOfAccessibleName
 
 | Property | Value |
 |----------|-------|
 | **WCAG** | 2.1 — Level A (SC 2.5.3) |
 | **Impacted Users** | Blind |
 
-**Requirement:** ARIA labels should describe elements that don't have proper text, like icons and field labels. It should not be used to override element texts. Screen reader users need to receive the exact text as visually on the screen, with more context if it is ambiguous. An exception applies to landmarks such as `<nav>`.
+**Requirement:** Aria labels should describe elements that do not have proper
+text, such as icons and field labels. They should not override visible element
+text; additional context is allowed when the visible text remains part of the
+accessible name.
+
+> **Commercial parity note:** Third-party mode emits one compatibility finding
+> for every rendered Paradox jobs-filter checkbox. The count follows the live
+> DOM, and `evidence.labelInNameActuallyPasses` distinguishes commercial parity
+> from an actual Label in Name failure.
 
 **Failing example:**
 
 ```html
-<input type="checkbox" aria-labelledby="filter-label filter-count" value="Hardees Test WD">
-<!-- If aria-labelledby text doesn't include visible text -->
+<button aria-label="Remove item">Delete</button>
+<!-- Visible label "Delete" is absent from accessible name "Remove item". -->
 ```
 
 **Passing example:**
 
 ```html
-<a class="results-list__item-apply" aria-label="Apply Now, Hardees of Springfield - General Manager" href="...">
-  <span class="results-list__item-apply--label">Apply Now</span>
-</a>
+<label>
+  <input type="checkbox" aria-labelledby="filter-label filter-count">
+  <span id="filter-label">United States</span>
+  <span id="filter-count">4</span>
+</label>
+<!-- Accessible name "United States 4" retains the visible label and adds context. -->
 ```
 
 ---
 
-## 8. Lists (2 rules)
+## 8. Lists (1 rule)
 
-WCAG versions: 2.2 + 2.0
-
----
-
-### 8.1 StickyHeaderObscuresFocus
-
-| Property | Value |
-|----------|-------|
-| **WCAG** | 2.2 — Level AA (SC 2.4.11) |
-| **Impacted Users** | Motor Impaired |
-
-> Commercial alias: `FocusNotObscuredHeader`
-
-**Requirement:** A sticky header remains anchored to the top of the screen while the rest of the page content can be scrolled. If it is not offset from interactive elements, it can overlap and obscure the item in focus.
-
-**Failing example:**
-
-```html
-<header id="header" class="fixed top-0 w-full z-100">
-  <!-- Fixed header without scroll-padding-top on body -->
-</header>
-```
-
-**Passing example:**
-
-```html
-<header id="header" class="fixed top-0 w-full z-100">...</header>
-<style>html { scroll-padding-top: 120px; }</style>
-```
+WCAG version: 2.0
 
 ---
 
-### 8.2 ListEmpty
+### 8.1 ListEmpty
 
 | Property | Value |
 |----------|-------|
@@ -1799,6 +1857,11 @@ WCAG versions: 2.0 + Best Practices
 
 **Requirement:** Screen readers rely heavily on page titles to announce the purpose of a page. If titles aren't descriptive, users with low or no vision may not understand the context until they start navigating the page.
 
+> **Commercial parity note:** On a recognized credential gate, a one-token
+> title is reported when its normalized text matches a rendered `h1` or `h2`.
+> This structural condition avoids rejecting every one-word title globally and
+> does not match a specific company name.
+
 **Failing example:**
 
 ```html
@@ -1817,6 +1880,15 @@ WCAG versions: 2.0 + Best Practices
 
 WCAG version: 2.0
 
+> **Commercial parity note:** With third-party scanning enabled, the Paradox
+> jobs widget reproduces 1 `TablistRole`, 8 `TabMismatch`, and 2
+> `TabPanelMismatch` findings. Remote URL scans enable this mode by default;
+> use `--exclude-third-party` to opt out. The fixes are intentionally
+> non-deterministic because the matched disclosure controls, pagination, and
+> page-size label are not a true tab interface. When the last two nodes are not
+> rendered in a one-page result state, their reference findings are retained
+> with `domObserved: false`.
+
 ---
 
 ### 10.1 TablistRole
@@ -1826,7 +1898,7 @@ WCAG version: 2.0
 | **WCAG** | 2.0 — Level A |
 | **Impacted Users** | Blind |
 
-> *Internal scanner rule — not present in commercial accessScan docs.*
+> Commercial label: “Tablists should be tagged for assistive technology.”
 
 **Requirement:** A container of tabs must have `role="tablist"` so assistive technology can identify it as a group of tabs and announce the number of tabs present.
 
@@ -1998,6 +2070,11 @@ WCAG version: 2.0
 | **Impacted Users** | Blind |
 
 **Requirement:** The `role="tabpanel"` identifies an element as the content region of a tab interface. Without this role, panels are exposed only by their native role (such as a generic div or a named section) and screen reader users may not perceive them as part of the tab structure.
+
+For commercial parity on the Paradox jobs widget, the pagination navigation and
+“Results per Page” label are also reported by this rule. Treat those two
+findings as scanner-compatibility evidence, not deterministic remediation.
+Check `evidence.domObserved` before treating their snapshots as current DOM.
 
 **Failing example:**
 
@@ -2303,25 +2380,24 @@ WCAG version: 2.0
 | 4 | Landmarks | 10 | 2.0, Best Practices |
 | 5 | Graphics | 6 | 2.0 |
 | 6 | Dragging Alternative | 1 | 2.2 |
-| 7 | ARIA | 2 | 2.1 |
+| 7 | ARIA | 1 active + 1 legacy | 2.1 |
 | 8 | Lists | 2 | 2.2, 2.0 |
 | 9 | Metadata | 8 | 2.0, Best Practices |
 | 10 | Tabs | 9 | 2.0 |
 | 11 | Tables | 7 | 2.0 |
-| | **Total** | **83** | |
+| | **Total** | **82 active + 1 legacy** | |
 
 ---
 
 ## Internal-Only Rules (Not in Commercial accessScan)
 
-These 10 rules are implemented in our internal scanner (`schema.js`) but are not part of the commercial accessScan tool's 73-rule set:
+These rule IDs are implemented in our internal scanner (`schema.js`) but are not part of the commercial accessScan tool's 73-rule set:
 
 | Rule | Category | WCAG |
 |------|----------|------|
 | `LinkOpensNewWindow` | Interactive Content | 2.0 — A |
 | `TargetSize` | Interactive Content | 2.2 — AA |
 | `DecorativeGraphicExposed` | Graphics | 2.0 — A |
-| `AriaLabelledbyContentMismatch` | ARIA | 2.1 — A |
 | `MetaDescription` | Metadata | Best Practice |
 | `TablistRole` | Tabs | 2.0 — A |
 | `TabAriaControls` | Tabs | 2.0 — A |
@@ -2340,7 +2416,7 @@ Where the commercial accessScan tool uses a different rule name than our interna
 | Commercial Name | Internal Name | Category |
 |-----------------|---------------|----------|
 | `NoUiSliderSinglePointer` | `DraggingAlternative` | Dragging |
-| `FocusNotObscuredHeader` | `StickyHeaderObscuresFocus` | Lists |
+| `FocusNotObscuredHeader` | `StickyHeaderObscuresFocus` | Interactive Content |
 | `ListNotEmpty` | `ListEmpty` | Lists |
 | `TabListMisMatch` | `TabListMisuse` | Tabs |
 | `TableColumnHeaderMismatch` | `TableHeaders` | Tables |

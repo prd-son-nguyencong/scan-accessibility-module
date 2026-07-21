@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "token-leak",
+  "profile": "commercial-parity",
+  "route": "https://bnetesting.example/careers",
+  "captureState": "initial",
+  "viewport": { "width": 1280, "height": 900 }
+}

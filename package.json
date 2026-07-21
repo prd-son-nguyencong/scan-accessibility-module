@@ -1,6 +1,6 @@
 {
   "name": "ada-scan",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "On-demand WCAG/ADA accessibility + performance scanner and interactive auto-fixer for Liquid/Vite sites and live URLs.",
   "type": "module",
   "bin": {
@@ -11,6 +11,10 @@
     "./vite": {
       "types": "./vite/index.d.ts",
       "default": "./vite/scan-instrumentation.js"
+    },
+    "./report": {
+      "types": "./src/reporter/report-v2.d.ts",
+      "default": "./src/reporter/report-v2.js"
     },
     "./package.json": "./package.json"
   },
@@ -26,13 +30,22 @@
     "node": ">=20.18.1"
   },
   "scripts": {
-    "test": "node --test test/**/*.test.js"
+    "test": "node --test test/*.test.js test/fix/*.test.js",
+    "cis:models": "node scripts/cis-models.js",
+    "cis:configure": "node scripts/cis-configure.js",
+    "cis:benchmark": "node scripts/cis-benchmark.js",
+    "cis:demo": "node bin/ada-scan.js demo",
+    "corpus:capture": "node scripts/accessscan-corpus/capture.js",
+    "corpus:seed": "node scripts/accessscan-corpus/seed.js",
+    "corpus:verify": "node scripts/accessscan-corpus/verify.js",
+    "corpus:drift": "node scripts/accessscan-corpus/drift.js"
   },
   "dependencies": {
     "@axe-core/playwright": "4.12.1",
     "dotenv": "^16.5.0",
     "fast-glob": "^3.3.3",
-    "playwright": "1.59.1"
+    "playwright": "1.59.1",
+    "undici": "^8.7.0"
   },
   "optionalDependencies": {
     "@anthropic-ai/sdk": "^0.92.0",

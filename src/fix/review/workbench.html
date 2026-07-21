@@ -1,0 +1,787 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Accessibility &amp; Performance Fix Review</title>
+    <style nonce="__NONCE__">
+      :root {
+        color-scheme: light dark;
+        --bg: #f4f5f7;
+        --panel: #ffffff;
+        --border: #c8ccd4;
+        --text: #111318;
+        --muted: #4b5565;
+        --accent: #1f4fd6;
+        --accent-soft: #e8eefc;
+        --danger: #b42318;
+        --success: #067647;
+        --warning: #b54708;
+        --focus: #005fcc;
+        --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        --min-meta: 13px;
+        --target: 44px;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0f1115; --panel: #171a21; --border: #303748; --text: #eef1f6; --muted: #a7b0c0;
+          --accent: #6b95ff; --accent-soft: #1b2744; --danger: #ff8a80; --success: #57d799; --warning: #ffb86b;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; max-width: 100%; background: var(--bg); color: var(--text); font-family: var(--font); overflow-wrap: anywhere; }
+      body.app-shell { min-height: 100vh; display: flex; flex-direction: column; min-width: 0; }
+      a { color: var(--accent); }
+      button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+        outline: 3px solid var(--focus); outline-offset: 2px;
+      }
+      .skip-link { position: absolute; left: -9999px; top: 0; background: var(--panel); padding: 0.75rem 1rem; border: 1px solid var(--border); z-index: 1000; }
+      .skip-link:focus { left: 0.75rem; top: 0.75rem; }
+      .app-header { display: flex; justify-content: space-between; gap: 1rem; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); background: var(--panel); }
+      .app-header h1 { margin: 0; font-size: 1.125rem; font-weight: 650; }
+      .app-header p { margin: 0.125rem 0 0; font-size: var(--min-meta); color: var(--muted); }
+      .toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); background: var(--panel); }
+      .toolbar label { font-size: var(--min-meta); color: var(--muted); display: flex; gap: 0.35rem; align-items: center; }
+      .toolbar input[type="search"], .toolbar select { min-height: var(--target); border: 1px solid var(--border); border-radius: 4px; background: var(--bg); padding: 0 0.65rem; min-width: 8rem; }
+      .mode-toggle, .status-facets { display: inline-flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+      .mode-toggle button, .status-facets button, .toolbar > button {
+        min-height: var(--target); border: 1px solid var(--border); border-radius: 4px; background: var(--bg); padding: 0 0.75rem; cursor: pointer;
+      }
+      .mode-toggle button[aria-pressed="true"], .status-facets button[aria-pressed="true"] {
+        background: var(--accent-soft); color: var(--accent); font-weight: 600;
+      }
+      .layout { display: grid; grid-template-columns: minmax(220px, 24%) minmax(260px, 30%) minmax(320px, 1fr); gap: 0; min-height: 0; flex: 1; min-width: 0; width: 100%; }
+      .pane { border-right: 1px solid var(--border); background: var(--panel); min-height: 0; display: flex; flex-direction: column; }
+      .pane:last-child { border-right: 0; }
+      .pane-header { padding: 0.65rem 0.85rem; border-bottom: 1px solid var(--border); font-size: 0.8125rem; font-weight: 650; letter-spacing: 0.02em; text-transform: uppercase; color: var(--muted); }
+      .pane-body { overflow: auto; padding: 0.5rem; flex: 1; min-width: 0; }
+      .list-item { width: 100%; text-align: left; border: 1px solid transparent; border-radius: 4px; background: transparent; padding: 0.65rem 0.75rem; cursor: pointer; min-height: var(--target); }
+      .list-item:hover { background: var(--bg); }
+      .list-item[aria-current="true"] { border-color: var(--accent); background: var(--accent-soft); }
+      .list-item-title { font-size: 0.9375rem; font-weight: 600; margin: 0 0 0.25rem; }
+      .list-item-meta { font-size: var(--min-meta); color: var(--muted); display: flex; flex-wrap: wrap; gap: 0.35rem 0.65rem; }
+      .badge { display: inline-flex; align-items: center; border-radius: 3px; padding: 0.1rem 0.4rem; font-size: var(--min-meta); border: 1px solid var(--border); background: var(--bg); }
+      .review-section { margin-bottom: 1rem; }
+      .review-section h2, .review-section h3 { margin: 0 0 0.35rem; font-size: 1rem; }
+      .review-section p, .review-section li, .review-section pre { font-size: 0.8125rem; line-height: 1.45; }
+      .review-section ul { margin: 0.35rem 0 0; padding-left: 1.25rem; }
+      .review-section li { margin-bottom: 0.35rem; }
+      .trace-candidate-note { font-size: var(--min-meta); color: var(--muted); margin-left: 0.35rem; }
+      button, input, select, textarea { font: inherit; color: inherit; }
+      details { border: 1px solid var(--border); border-radius: 4px; padding: 0.35rem 0.55rem; margin-bottom: 0.5rem; }
+      summary { cursor: pointer; font-size: 0.8125rem; font-weight: 600; min-height: 2rem; display: flex; align-items: center; }
+      .review-section pre { margin: 0; padding: 0.65rem; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); overflow: auto; font-family: var(--mono); white-space: pre-wrap; word-break: break-word; }
+      .decision-bar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; padding: 0.75rem 1rem; border-top: 1px solid var(--border); background: var(--panel); }
+      .decision-bar button { min-height: var(--target); min-width: 6.5rem; border-radius: 4px; border: 1px solid var(--border); background: var(--bg); cursor: pointer; padding: 0 0.85rem; }
+      .decision-bar button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+      .decision-bar button:disabled { opacity: 0.45; cursor: not-allowed; }
+      .gate-banner { padding: 0.65rem 1rem; border-top: 1px solid var(--border); background: var(--accent-soft); font-size: 0.8125rem; }
+      .trace-inbox-item { border: 1px solid var(--border); border-radius: 4px; padding: 0.65rem; margin-bottom: 0.5rem; }
+      .mobile-tabs { display: none; }
+      .mobile-tab-panel { display: block; min-height: 0; }
+      dialog { border: 1px solid var(--border); border-radius: 6px; padding: 1rem; max-width: 32rem; width: calc(100% - 2rem); background: var(--panel); color: var(--text); }
+      dialog form { display: grid; gap: 0.75rem; }
+      dialog menu { display: flex; gap: 0.5rem; justify-content: flex-end; padding: 0; margin: 0; }
+      @media (max-width: 960px) {
+        .layout { display: block; height: auto; min-height: 0; flex: 1; }
+        .mobile-tabs { display: flex; gap: 0.35rem; padding: 0.5rem 1rem 0; background: var(--panel); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5; }
+        .mobile-tabs button { flex: 1; min-height: var(--target); border: 1px solid var(--border); border-bottom: 0; border-radius: 4px 4px 0 0; background: var(--bg); cursor: pointer; }
+        .mobile-tabs button[aria-selected="true"] { background: var(--panel); border-color: var(--accent); color: var(--accent); font-weight: 650; }
+        .mobile-tab-panel { display: none; }
+        .mobile-tab-panel[data-active="true"] { display: block; }
+        .decision-bar { position: sticky; bottom: 0; z-index: 6; }
+      }
+    </style>
+  </head>
+  <body class="app-shell">
+    <a class="skip-link" href="#review-main">Skip to review panel</a>
+    <header class="app-header" role="banner">
+      <div>
+        <h1>Accessibility &amp; Performance Fix Review</h1>
+        <p>Accessibility file-first review and performance metric-first review in one release shell.</p>
+      </div>
+      <div id="session-meta" aria-live="polite"></div>
+    </header>
+
+    <section class="toolbar" aria-label="Filters and mode">
+      <div class="mode-toggle" role="group" aria-label="Review mode">
+        <button type="button" id="mode-accessibility" aria-pressed="true">Accessibility</button>
+        <button type="button" id="mode-performance" aria-pressed="false">Performance</button>
+      </div>
+      <label>Search <input type="search" id="filter-search" autocomplete="off" placeholder="Global search" /></label>
+      <label>Source <select id="filter-source"><option value="all">All sources</option></select></label>
+      <div class="status-facets" role="group" aria-label="Status filters">
+        <button type="button" data-status="all" aria-pressed="true">All</button>
+        <button type="button" data-status="pending" aria-pressed="false">Pending</button>
+        <button type="button" data-status="accepted" aria-pressed="false">Accepted</button>
+        <button type="button" data-status="rejected" aria-pressed="false">Rejected</button>
+        <button type="button" data-status="blocked" aria-pressed="false">Blocked</button>
+        <button type="button" data-status="verified" aria-pressed="false">Verified</button>
+      </div>
+      <label>Type <select id="filter-type"><option value="all">All</option><option value="accessibility">Accessibility</option><option value="performance">Performance</option></select></label>
+      <label>Severity <select id="filter-severity"><option value="all">All</option><option value="critical">Critical</option><option value="serious">Serious</option><option value="moderate">Moderate</option><option value="minor">Minor</option></select></label>
+      <button type="button" id="trace-all">Trace all</button>
+      <button type="button" id="batch-accept" hidden disabled>Approve verified batch</button>
+    </section>
+
+    <div class="mobile-tabs" role="tablist" aria-label="Workbench panes">
+      <button type="button" role="tab" id="tab-source" aria-controls="panel-source" aria-selected="false" tabindex="-1">Source</button>
+      <button type="button" role="tab" id="tab-list" aria-controls="panel-list" aria-selected="true" tabindex="0">List</button>
+      <button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="false" tabindex="-1">Review</button>
+    </div>
+
+    <main class="layout" id="review-main">
+      <section class="mobile-tab-panel" id="panel-source" data-pane="source" role="tabpanel" aria-labelledby="tab-source" hidden>
+        <div class="pane"><div class="pane-header">Source</div><div class="pane-body" id="source-list"></div></div>
+      </section>
+      <section class="mobile-tab-panel" id="panel-list" data-pane="list" role="tabpanel" aria-labelledby="tab-list" data-active="true">
+        <div class="pane"><div class="pane-header">List</div><div class="pane-body" id="unit-list"></div></div>
+      </section>
+      <section class="mobile-tab-panel" id="panel-review" data-pane="review" role="tabpanel" aria-labelledby="tab-review" hidden>
+        <div class="pane"><div class="pane-header">Review</div><div class="pane-body" id="review-panel" aria-live="polite"></div></div>
+      </section>
+    </main>
+
+    <div class="gate-banner" id="apply-gate" role="status" aria-live="polite"></div>
+    <footer class="decision-bar" aria-label="Decision actions">
+      <button type="button" id="propose-btn">Generate proposal</button>
+      <button type="button" id="verify-btn" disabled>Run isolated verification</button>
+      <button type="button" id="accept-btn" class="primary" disabled>Accept</button>
+      <button type="button" id="reject-btn">Reject</button>
+      <button type="button" id="revise-btn">Revise</button>
+      <button type="button" id="undo-btn" disabled>Undo</button>
+      <button type="button" id="approve-diff-btn" disabled>Approve exact diff</button>
+      <button type="button" id="apply-btn" disabled>Apply</button>
+    </footer>
+
+    <dialog id="reject-dialog" aria-labelledby="reject-dialog-title">
+      <form method="dialog" id="reject-form">
+        <h2 id="reject-dialog-title">Reject fix unit</h2>
+        <label>Reason<textarea id="reject-reason" required rows="4" maxlength="500"></textarea></label>
+        <menu>
+          <button type="button" id="reject-cancel">Cancel</button>
+          <button type="submit" value="confirm">Reject</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="revise-dialog" aria-labelledby="revise-dialog-title">
+      <form method="dialog" id="revise-form">
+        <h2 id="revise-dialog-title">Request revision</h2>
+        <p>Proposal generation remains pending. This records a durable revision request without writing source.</p>
+        <label>Revision note<textarea id="revision-note" required rows="4" maxlength="500"></textarea></label>
+        <menu>
+          <button type="button" id="revise-cancel">Cancel</button>
+          <button type="submit" value="confirm">Request revision</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="manual-map-dialog" aria-labelledby="manual-map-dialog-title">
+      <form method="dialog" id="manual-map-form">
+        <h2 id="manual-map-dialog-title">Manual source mapping</h2>
+        <p id="manual-map-finding"></p>
+        <label>Relative file<input type="text" id="manual-map-file" required autocomplete="off" /></label>
+        <label>Line<input type="number" id="manual-map-line" required min="1" step="1" /></label>
+        <label>Expected preimage hash<input type="text" id="manual-map-preimage" required pattern="sha256:[a-f0-9]{64}" /></label>
+        <menu>
+          <button type="button" id="manual-map-cancel">Cancel</button>
+          <button type="submit" value="confirm">Apply mapping</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <div id="status-live" class="visually-hidden" aria-live="assertive"></div>
+    <style nonce="__NONCE__">.visually-hidden{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}</style>
+
+    <script nonce="__NONCE__">
+      (function initReviewWorkbench() {
+        const TOKEN_HEADER = '__TOKEN_HEADER__';
+        const state = { token: '', snapshot: null, selectedUnitId: null, manualMapFindingId: null, manualCheckAck: {}, preferences: { mode: 'accessibility', search: '', sourceFilter: 'all', statusFilter: 'all', severityFilter: 'all', typeFilter: 'all', activeTab: 'list' } };
+        const els = {
+          sessionMeta: document.getElementById('session-meta'), sourceList: document.getElementById('source-list'), unitList: document.getElementById('unit-list'),
+          reviewPanel: document.getElementById('review-panel'), applyGate: document.getElementById('apply-gate'), statusLive: document.getElementById('status-live'),
+          filterSearch: document.getElementById('filter-search'), filterSource: document.getElementById('filter-source'), filterSeverity: document.getElementById('filter-severity'), filterType: document.getElementById('filter-type'),
+          modeAccessibility: document.getElementById('mode-accessibility'), modePerformance: document.getElementById('mode-performance'),
+          acceptBtn: document.getElementById('accept-btn'), rejectBtn: document.getElementById('reject-btn'), reviseBtn: document.getElementById('revise-btn'),
+          proposeBtn: document.getElementById('propose-btn'), verifyBtn: document.getElementById('verify-btn'),
+          undoBtn: document.getElementById('undo-btn'), approveDiffBtn: document.getElementById('approve-diff-btn'), applyBtn: document.getElementById('apply-btn'), traceAllBtn: document.getElementById('trace-all'), batchAcceptBtn: document.getElementById('batch-accept'),
+          statusFacets: Array.from(document.querySelectorAll('.status-facets button')),
+          tabs: [document.getElementById('tab-source'), document.getElementById('tab-list'), document.getElementById('tab-review')],
+          panels: [document.getElementById('panel-source'), document.getElementById('panel-list'), document.getElementById('panel-review')],
+          rejectDialog: document.getElementById('reject-dialog'), rejectForm: document.getElementById('reject-form'), rejectReason: document.getElementById('reject-reason'),
+          reviseDialog: document.getElementById('revise-dialog'), reviseForm: document.getElementById('revise-form'), revisionNote: document.getElementById('revision-note'),
+          manualMapDialog: document.getElementById('manual-map-dialog'), manualMapForm: document.getElementById('manual-map-form'),
+          manualMapFinding: document.getElementById('manual-map-finding'), manualMapFile: document.getElementById('manual-map-file'),
+          manualMapLine: document.getElementById('manual-map-line'), manualMapPreimage: document.getElementById('manual-map-preimage'),
+        };
+        const SHA256_PATTERN = /^sha256:[a-f0-9]{64}$/;
+
+        const TOKEN_STORAGE_KEY = 'ada-review-session-token';
+        let persistSeq = 0;
+        let searchDebounceTimer = null;
+
+        function parseTokenFromFragment() {
+          const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+          return params.get('token') || '';
+        }
+        function readStoredToken() {
+          try { return sessionStorage.getItem(TOKEN_STORAGE_KEY) || ''; } catch { return ''; }
+        }
+        function storeToken(token) {
+          if (!token) return;
+          try { sessionStorage.setItem(TOKEN_STORAGE_KEY, token); } catch { /* ignore */ }
+        }
+        function resolveToken() {
+          const fromFragment = parseTokenFromFragment();
+          if (fromFragment) {
+            storeToken(fromFragment);
+            return fromFragment;
+          }
+          return readStoredToken();
+        }
+        function scrubTokenFromUrl() {
+          if (window.location.hash) history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+        function announce(message) { els.statusLive.textContent = ''; window.setTimeout(function(){ els.statusLive.textContent = message; }, 20); }
+        function clearElement(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+        function appendText(parent, tag, text, className) { const el = document.createElement(tag); if (className) el.className = className; el.textContent = text; parent.appendChild(el); return el; }
+        function authHeaders(extra) { const headers = Object.assign({}, extra || {}); headers[TOKEN_HEADER] = state.token; return headers; }
+        async function apiFetch(path, options) {
+          const response = await fetch(path, Object.assign({}, options || {}, { headers: authHeaders(Object.assign({ 'content-type': 'application/json' }, (options && options.headers) || {})) }));
+          if (!response.ok) { const payload = await response.json().catch(function(){ return {}; }); throw new Error(payload.error || payload.message || ('HTTP ' + response.status)); }
+          return response.json();
+        }
+        function visibleUnits() {
+          if (!state.snapshot) return [];
+          return state.snapshot.units.filter(function(unit) {
+            if (state.preferences.typeFilter !== 'all' && unit.kind !== state.preferences.typeFilter) return false;
+            if (state.preferences.mode === 'accessibility' && unit.kind !== 'accessibility') return false;
+            if (state.preferences.mode === 'performance' && unit.kind !== 'performance') return false;
+            if (state.preferences.statusFilter === 'verified') {
+              if (!unit.verified) return false;
+            } else if (state.preferences.statusFilter !== 'all' && unit.reviewStatus !== state.preferences.statusFilter) return false;
+            if (state.preferences.severityFilter !== 'all' && unit.severity !== state.preferences.severityFilter) return false;
+            if (state.preferences.sourceFilter !== 'all') {
+              const source = unit.sourceFile || '(unmapped)';
+              if (source !== state.preferences.sourceFilter) return false;
+            }
+            const query = state.preferences.search.trim().toLowerCase();
+            if (!query) return true;
+            return [unit.title, unit.fixUnitId, unit.canonicalRuleId, unit.sourceFile, unit.reviewStatus, unit.severity, unit.evidenceSummary].filter(Boolean).join(' ').toLowerCase().includes(query);
+          });
+        }
+        function candidateUsable(partial) {
+          return Boolean(partial?.file && Number.isInteger(partial.line) && partial.line > 0 && SHA256_PATTERN.test(partial.preimageSha256 || ''));
+        }
+        function boundText(text, maxLength) {
+          const value = String(text || '');
+          return value.length > maxLength ? value.slice(0, maxLength) + '…' : value;
+        }
+        function safeEditorHref(url) {
+          if (typeof url !== 'string') return null;
+          if (!/^vscode:\/\/file\/.+|^cursor:\/\/file\/.+/.test(url)) return null;
+          return url;
+        }
+        function appendManualMappingButton(parent, findingId) {
+          const manualBtn = document.createElement('button');
+          manualBtn.type = 'button';
+          manualBtn.textContent = 'Manual mapping';
+          manualBtn.addEventListener('click', function(){ openManualMapDialog(findingId); });
+          parent.appendChild(manualBtn);
+        }
+        function renderSourceSnippets(snippets, parent) {
+          const section = document.createElement('section');
+          section.className = 'review-section';
+          appendText(section, 'h3', 'Source snippets');
+          const list = (snippets || []).filter(function(snippet){ return snippet && (snippet.file || snippet.snippet); });
+          if (list.length === 0) {
+            appendText(section, 'p', 'No source snippets available.');
+            parent.appendChild(section);
+            return;
+          }
+          for (const snippet of list) {
+            const details = document.createElement('details');
+            const summary = document.createElement('summary');
+            summary.textContent = [snippet.file || '(unmapped)', snippet.line ? ':' + snippet.line : '', snippet.confidence ? ' · ' + snippet.confidence : ''].join('');
+            details.appendChild(summary);
+            if (snippet.method) appendText(details, 'p', 'Method: ' + snippet.method);
+            if (snippet.snippet) appendText(details, 'pre', boundText(snippet.snippet, 480));
+            section.appendChild(details);
+          }
+          parent.appendChild(section);
+        }
+        function renderScannerEvidence(evidence, parent) {
+          const section = document.createElement('section');
+          section.className = 'review-section';
+          const wrapper = document.createElement('details');
+          appendText(wrapper, 'summary', 'Scanner evidence');
+          const items = (evidence || []).slice(0, 12);
+          if (items.length === 0) {
+            appendText(wrapper, 'p', 'No scanner evidence recorded.');
+          } else {
+            for (const [index, item] of items.entries()) {
+              const itemDetails = document.createElement('details');
+              const title = item?.message || item?.nativeRuleId || item?.layer || ('Evidence ' + (index + 1));
+              appendText(itemDetails, 'summary', boundText(title, 140));
+              appendText(itemDetails, 'pre', boundText(JSON.stringify(item, null, 2), 240));
+              wrapper.appendChild(itemDetails);
+            }
+            if ((evidence || []).length > 12) appendText(wrapper, 'p', 'Showing first 12 evidence items.');
+          }
+          section.appendChild(wrapper);
+          parent.appendChild(section);
+        }
+        function renderAccessibilityReview(accessibility, unit, parent) {
+          renderSourceSnippets(accessibility.snippets, parent);
+          renderScannerEvidence(accessibility.evidence, parent);
+          const proposalSection = document.createElement('section');
+          proposalSection.className = 'review-section';
+          appendText(proposalSection, 'h3', 'CIS proposal');
+          const candidate = accessibility.candidate || unit.candidate || null;
+          if (candidate?.rationale) appendText(proposalSection, 'p', 'Rationale: ' + candidate.rationale);
+          if (candidate?.cisTelemetry) {
+            appendText(proposalSection, 'p', 'Telemetry: calls=' + (candidate.cisTelemetry.sessionCalls || 0) + ', outcome=' + (candidate.cisTelemetry.outcome || 'unknown'));
+          }
+          const attestations = candidate?.manualCheckAttestations || [];
+          const checks = attestations.length ? attestations : (candidate?.manualChecks || []).map(function(label, index) {
+            return { checkId: unit.fixUnitId + ':' + index, label: label };
+          });
+          if (checks.length > 0) {
+            appendText(proposalSection, 'h4', 'Manual accessibility checks');
+            const list = document.createElement('ul');
+            checks.forEach(function(attestation) {
+              const item = document.createElement('li');
+              const label = document.createElement('label');
+              const box = document.createElement('input');
+              box.type = 'checkbox';
+              box.dataset.checkId = attestation.checkId;
+              box.checked = Boolean(state.manualCheckAck[attestation.checkId]);
+              box.addEventListener('change', function() {
+                state.manualCheckAck[attestation.checkId] = box.checked;
+                renderDecisionButtons();
+              });
+              label.appendChild(box);
+              label.appendChild(document.createTextNode(' ' + attestation.label));
+              item.appendChild(label);
+              list.appendChild(item);
+            });
+            proposalSection.appendChild(list);
+          }
+          parent.appendChild(proposalSection);
+
+          const section = document.createElement('section');
+          section.className = 'review-section';
+          appendText(section, 'h3', 'Candidate diff');
+          if (unit.candidateHash) appendText(section, 'p', 'Candidate hash: ' + unit.candidateHash);
+          if (unit.diffHash) appendText(section, 'p', 'Diff hash: ' + unit.diffHash);
+          if (unit.candidate?.verification) appendText(section, 'p', 'Verification: ' + unit.candidate.verification.status);
+          appendText(section, 'pre', accessibility.diff?.text || 'Proposal generation pending.');
+          if (unit.diffApproved) appendText(section, 'p', 'Exact diff approved.');
+          else if (unit.reviewStatus === 'accepted' && unit.verified) appendText(section, 'p', 'Exact diff approval required before Apply.');
+          parent.appendChild(section);
+          if ((accessibility.mergeTargets || []).length > 0) {
+            const mergeSection = document.createElement('div'); mergeSection.className = 'review-section';
+            appendText(mergeSection, 'h3', 'Merge eligible targets');
+            const select = document.createElement('select');
+            const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = 'Select target unit'; select.appendChild(placeholder);
+            for (const target of accessibility.mergeTargets) {
+              const option = document.createElement('option'); option.value = target.fixUnitId; option.textContent = target.title; select.appendChild(option);
+            }
+            const mergeBtn = document.createElement('button'); mergeBtn.type = 'button'; mergeBtn.textContent = 'Merge into target';
+            mergeBtn.addEventListener('click', function(){
+              const targetId = select.value;
+              if (!targetId) { announce('Select a merge target.'); return; }
+              mergeUnits(unit.fixUnitId, targetId).catch(function(e){ announce('Merge failed: ' + e.message); });
+            });
+            mergeSection.appendChild(select); mergeSection.appendChild(mergeBtn); parent.appendChild(mergeSection);
+          }
+          const details = document.createElement('details'); appendText(details, 'summary', 'Rule IDs and trace internals');
+          appendText(details, 'pre', JSON.stringify({ ruleId: unit.canonicalRuleId, trace: unit.trace }, null, 2)); parent.appendChild(details);
+        }
+        function renderOwnerCandidates(performance, parent) {
+          const section = document.createElement('section');
+          section.className = 'review-section';
+          appendText(section, 'h3', 'Owner candidates');
+          const candidates = performance.ownerCandidates || [];
+          if (candidates.length === 0) {
+            appendText(section, 'p', 'No owner candidates traced yet.');
+            parent.appendChild(section);
+            return;
+          }
+          const list = document.createElement('ul');
+          for (const candidate of candidates) {
+            const item = document.createElement('li');
+            item.textContent = [candidate.file || '(unmapped)', candidate.line ? ':' + candidate.line : '', candidate.confidence ? ' · ' + candidate.confidence : '', candidate.method ? ' · ' + candidate.method : ''].join('');
+            const href = safeEditorHref(candidate.editorLink);
+            if (href) {
+              item.appendChild(document.createTextNode(' '));
+              const link = document.createElement('a');
+              link.href = href;
+              link.textContent = 'Open in editor';
+              link.rel = 'noopener noreferrer';
+              item.appendChild(link);
+            }
+            list.appendChild(item);
+          }
+          section.appendChild(list);
+          parent.appendChild(section);
+        }
+        function renderMultiFilePlan(performance, parent) {
+          const section = document.createElement('section');
+          section.className = 'review-section';
+          appendText(section, 'h3', 'Multi-file plan');
+          appendText(section, 'pre', JSON.stringify(performance.plan || {}, null, 2));
+          parent.appendChild(section);
+        }
+        function selectedUnit() { return visibleUnits().find(function(u){ return u.fixUnitId === state.selectedUnitId; }) || visibleUnits()[0] || null; }
+
+        function renderTraceInbox(container, inbox) {
+          appendText(container, 'h3', 'Source Trace inbox');
+          for (const entry of inbox || []) {
+            const item = document.createElement('article'); item.className = 'trace-inbox-item';
+            appendText(item, 'p', (entry.unresolved ? 'Unmapped' : 'Mapped') + ' · ' + entry.findingId);
+            if (!entry.unresolved) {
+              container.appendChild(item);
+              continue;
+            }
+            appendManualMappingButton(item, entry.findingId);
+            for (const partial of entry.partials || []) {
+              const row = document.createElement('div');
+              appendText(row, 'p', partial.file + ':' + partial.line + ' · ' + partial.confidence + ' · ' + partial.method);
+              const editorHref = safeEditorHref(partial.editorLink);
+              if (editorHref) { const a = document.createElement('a'); a.href = editorHref; a.textContent = 'Open in editor'; a.rel = 'noopener noreferrer'; row.appendChild(a); }
+              const useBtn = document.createElement('button'); useBtn.type = 'button'; useBtn.textContent = 'Use candidate';
+              useBtn.disabled = !candidateUsable(partial);
+              if (useBtn.disabled) appendText(row, 'span', 'Missing valid file, line, or preimage hash', 'trace-candidate-note');
+              useBtn.addEventListener('click', function(){ mapFinding(entry.findingId, partial).catch(function(e){ announce('Mapping failed: ' + e.message); }); });
+              row.appendChild(useBtn); item.appendChild(row);
+            }
+            if ((entry.mergeTargets || []).length > 0) {
+              const mergeRow = document.createElement('div');
+              appendText(mergeRow, 'p', 'Merge into existing unit');
+              const select = document.createElement('select');
+              const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = 'Select target unit'; select.appendChild(placeholder);
+              for (const target of entry.mergeTargets) {
+                const option = document.createElement('option'); option.value = target.fixUnitId; option.textContent = target.title + ' · ' + (target.sourceFile || '(unmapped)'); select.appendChild(option);
+              }
+              const mergeBtn = document.createElement('button'); mergeBtn.type = 'button'; mergeBtn.textContent = 'Merge';
+              mergeBtn.addEventListener('click', function(){
+                const sourceUnitId = entry.fixUnitId;
+                const targetId = select.value;
+                if (!sourceUnitId || !targetId) { announce('Select a merge target.'); return; }
+                mergeUnits(sourceUnitId, targetId).catch(function(e){ announce('Merge failed: ' + e.message); });
+              });
+              mergeRow.appendChild(select); mergeRow.appendChild(mergeBtn); item.appendChild(mergeRow);
+            }
+            container.appendChild(item);
+          }
+        }
+
+        function renderSourceList() {
+          clearElement(els.sourceList);
+          if (state.preferences.mode === 'performance') {
+            const metrics = state.snapshot?.performance?.metrics || [];
+            for (const group of metrics) {
+              const button = document.createElement('button'); button.type = 'button'; button.className = 'list-item';
+              appendText(button, 'p', group.metric, 'list-item-title');
+              appendText(button, 'p', group.opportunities.length + ' opportunity(ies)', 'list-item-meta');
+              button.addEventListener('click', function(){
+                state.preferences.search = group.metric; els.filterSearch.value = group.metric; persistPreferences(); renderAll(false);
+              });
+              els.sourceList.appendChild(button);
+            }
+            return;
+          }
+          renderTraceInbox(els.sourceList, state.snapshot?.accessibility?.traceInbox || state.snapshot?.traceInbox || []);
+          const heading = document.createElement('h3'); heading.textContent = 'Source files'; els.sourceList.appendChild(heading);
+          const files = new Map();
+          for (const unit of visibleUnits()) {
+            const file = unit.sourceFile || '(unmapped)'; files.set(file, (files.get(file) || 0) + 1);
+          }
+          for (const entry of [...files.entries()].sort(function(a,b){ return a[0].localeCompare(b[0]); })) {
+            const button = document.createElement('button'); button.type = 'button'; button.className = 'list-item';
+            appendText(button, 'p', entry[0], 'list-item-title'); appendText(button, 'p', entry[1] + ' unit(s)', 'list-item-meta');
+            button.addEventListener('click', function(){ state.preferences.sourceFilter = entry[0]; els.filterSource.value = entry[0]; persistPreferences(); renderAll(false); });
+            els.sourceList.appendChild(button);
+          }
+        }
+
+        function renderUnitList() {
+          clearElement(els.unitList);
+          const units = visibleUnits();
+          if (!state.selectedUnitId && units[0]) state.selectedUnitId = units[0].fixUnitId;
+          for (const unit of units) {
+            const button = document.createElement('button'); button.type = 'button'; button.className = 'list-item';
+            button.setAttribute('aria-current', unit.fixUnitId === state.selectedUnitId ? 'true' : 'false');
+            appendText(button, 'p', unit.title, 'list-item-title');
+            const meta = document.createElement('p'); meta.className = 'list-item-meta';
+            appendText(meta, 'span', unit.reviewStatus, 'badge'); appendText(meta, 'span', unit.severity, 'badge');
+            appendText(meta, 'span', unit.evidenceSummary || '', 'badge');
+            button.appendChild(meta);
+            button.addEventListener('click', function(){ state.selectedUnitId = unit.fixUnitId; persistPreferences(); renderAll(false); });
+            els.unitList.appendChild(button);
+          }
+        }
+
+        function renderReviewPanel() {
+          clearElement(els.reviewPanel);
+          const unit = selectedUnit();
+          if (!unit) { appendText(els.reviewPanel, 'p', 'No units match the current filters.'); return; }
+          appendText(els.reviewPanel, 'h2', unit.title).tabIndex = -1;
+          appendText(els.reviewPanel, 'p', 'Status: ' + unit.reviewStatus + ' · Severity: ' + unit.severity);
+          if (unit.blockedReason) appendText(els.reviewPanel, 'p', 'Blocked: ' + unit.blockedReason);
+          if (unit.decision?.revisionNote) appendText(els.reviewPanel, 'p', 'Revision requested: ' + unit.decision.revisionNote);
+          if (unit.editorLink) { const link = document.createElement('p'); const a = document.createElement('a'); a.href = unit.editorLink; a.textContent = 'Open source owner in editor'; a.rel = 'noopener noreferrer'; link.appendChild(a); els.reviewPanel.appendChild(link); }
+
+          if (state.preferences.mode === 'accessibility') {
+            const accessibility = (state.snapshot.accessibility?.sources || []).flatMap(function(s){ return s.units; }).find(function(u){ return u.fixUnitId === unit.fixUnitId; });
+            if (accessibility) renderAccessibilityReview(accessibility, unit, els.reviewPanel);
+          } else {
+            const performance = (state.snapshot.performance?.metrics || []).flatMap(function(m){ return m.opportunities; }).find(function(o){ return o.fixUnitId === unit.fixUnitId; });
+            if (performance) {
+              appendText(els.reviewPanel, 'h3', 'Metric / opportunity'); appendText(els.reviewPanel, 'p', performance.title || unit.title);
+              appendText(els.reviewPanel, 'p', 'Routes: ' + performance.routes.join(', '));
+              appendText(els.reviewPanel, 'p', 'Resources: ' + performance.resources.join(', '));
+              appendText(els.reviewPanel, 'h3', 'Baseline'); appendText(els.reviewPanel, 'pre', JSON.stringify(performance.baseline || {}, null, 2));
+              appendText(els.reviewPanel, 'h3', 'After'); appendText(els.reviewPanel, 'pre', JSON.stringify(performance.after || {}, null, 2));
+              renderOwnerCandidates(performance, els.reviewPanel);
+              renderMultiFilePlan(performance, els.reviewPanel);
+            }
+          }
+        }
+
+        function allManualChecksAcknowledged(unit) {
+          const attestations = unit?.candidate?.manualCheckAttestations || [];
+          if (attestations.length === 0) return true;
+          return attestations.every(function(attestation) {
+            return Boolean(state.manualCheckAck[attestation.checkId]);
+          });
+        }
+
+        function acknowledgedCheckIds(unit) {
+          const attestations = unit?.candidate?.manualCheckAttestations || [];
+          return attestations.filter(function(attestation) {
+            return Boolean(state.manualCheckAck[attestation.checkId]);
+          }).map(function(attestation) { return attestation.checkId; });
+        }
+
+        function renderDecisionButtons() {
+          const unit = selectedUnit();
+          const accepted = unit?.reviewStatus === 'accepted';
+          const rejected = unit?.reviewStatus === 'rejected';
+          const hasRevision = Boolean(unit?.decision?.revisionNote);
+          els.proposeBtn.textContent = hasRevision || !unit?.candidateHash ? 'Generate proposal' : 'Regenerate proposal';
+          els.proposeBtn.disabled = !unit || Boolean(unit.blockedReason) || accepted;
+          els.verifyBtn.disabled = !unit || !unit.candidateHash || unit.verified || !allManualChecksAcknowledged(unit);
+          els.acceptBtn.disabled = !unit || !unit.acceptAllowed || !unit.candidateHash || accepted;
+          els.rejectBtn.disabled = !unit || accepted || rejected;
+          els.reviseBtn.disabled = !unit || accepted || rejected;
+          els.undoBtn.disabled = !unit || (!accepted && !rejected && !unit.decision?.revisionNote);
+          els.approveDiffBtn.disabled = !unit || !accepted || !unit.verified || !unit.candidateHash || !unit.diffHash || unit.diffApproved;
+        }
+
+        function renderApplyGate() {
+          const gate = state.snapshot?.applyGate;
+          if (!gate) { els.applyGate.textContent = 'Loading apply gate…'; els.applyBtn.disabled = true; return; }
+          els.applyGate.textContent = gate.message + ' Gate: ' + gate.reason + ' · Accepted ' + gate.acceptedCount + ' · Pending ' + gate.pendingCount + ' · Blocked ' + gate.blockedCount;
+          els.applyBtn.disabled = gate.blocked;
+          els.batchAcceptBtn.hidden = gate.batchEligibleCount === 0; els.batchAcceptBtn.disabled = gate.batchEligibleCount === 0;
+        }
+
+        function renderFilters() {
+          clearElement(els.filterSource);
+          const all = document.createElement('option'); all.value = 'all'; all.textContent = 'All sources'; els.filterSource.appendChild(all);
+          for (const file of [...new Set((state.snapshot?.units || []).map(function(u){ return u.sourceFile || '(unmapped)'; }))].sort()) {
+            const option = document.createElement('option'); option.value = file; option.textContent = file; els.filterSource.appendChild(option);
+          }
+          els.filterSearch.value = state.preferences.search; els.filterSource.value = state.preferences.sourceFilter; els.filterSeverity.value = state.preferences.severityFilter; els.filterType.value = state.preferences.typeFilter || 'all';
+          els.modeAccessibility.setAttribute('aria-pressed', state.preferences.mode === 'accessibility' ? 'true' : 'false');
+          els.modePerformance.setAttribute('aria-pressed', state.preferences.mode === 'performance' ? 'true' : 'false');
+          for (const button of els.statusFacets) button.setAttribute('aria-pressed', button.dataset.status === state.preferences.statusFilter ? 'true' : 'false');
+        }
+
+        function setActiveTab(tabName, forceNarrow) {
+          state.preferences.activeTab = tabName;
+          const narrow = forceNarrow != null ? forceNarrow : window.matchMedia('(max-width: 960px)').matches;
+          for (const tab of els.tabs) {
+            const selected = tab.id === 'tab-' + tabName;
+            tab.setAttribute('aria-selected', selected ? 'true' : 'false');
+            tab.tabIndex = selected ? 0 : -1;
+          }
+          for (const panel of els.panels) {
+            const active = panel.dataset.pane === tabName;
+            panel.dataset.active = active ? 'true' : 'false';
+            if (narrow) panel.hidden = !active; else panel.hidden = false;
+          }
+        }
+
+        function renderAll(refreshFilters) {
+          if (refreshFilters !== false) renderFilters();
+          renderSourceList(); renderUnitList(); renderReviewPanel(); renderDecisionButtons(); renderApplyGate();
+          setActiveTab(state.preferences.activeTab || 'list');
+        }
+
+        async function persistPreferences() {
+          const seq = ++persistSeq;
+          try {
+            const payload = await apiFetch('/api/preferences', { method: 'POST', body: JSON.stringify({ preferences: Object.assign({}, state.preferences, { selectedUnitId: state.selectedUnitId }) }) });
+            if (seq !== persistSeq) return;
+            state.preferences = payload.preferences;
+          } catch (error) {
+            if (seq !== persistSeq) return;
+            announce('Unable to save preferences: ' + error.message);
+          }
+        }
+
+        function scheduleSearchPersist() {
+          clearTimeout(searchDebounceTimer);
+          searchDebounceTimer = window.setTimeout(function(){ persistPreferences(); }, 300);
+        }
+
+        async function refreshSnapshot() {
+          const payload = await apiFetch('/api/snapshot');
+          state.snapshot = payload;
+          if (payload.preferences) state.preferences = Object.assign({}, state.preferences, payload.preferences);
+          if (payload.preferences?.selectedUnitId) state.selectedUnitId = payload.preferences.selectedUnitId;
+          renderAll();
+        }
+
+        async function postDecision(decision, extra) {
+          const unit = selectedUnit(); if (!unit) return;
+          const payload = await apiFetch('/api/fix-units/' + encodeURIComponent(unit.fixUnitId) + '/decision', { method: 'POST', body: JSON.stringify(Object.assign({ decision: decision }, extra || {})) });
+          state.snapshot = payload.snapshot; announce('Decision updated: ' + decision + ' for ' + unit.title); renderAll(false);
+        }
+
+        async function mapFinding(findingId, partial) {
+          await apiFetch('/api/trace/map', { method: 'POST', body: JSON.stringify({ findingId: findingId, file: partial.file, line: partial.line, expectedPreimageSha256: partial.preimageSha256 }) });
+          await refreshSnapshot(); announce('Manual mapping applied.');
+        }
+
+        function openManualMapDialog(findingId) {
+          state.manualMapFindingId = findingId;
+          els.manualMapFinding.textContent = 'Finding: ' + findingId;
+          els.manualMapFile.value = '';
+          els.manualMapLine.value = '';
+          els.manualMapPreimage.value = '';
+          els.manualMapDialog.showModal();
+        }
+
+        async function mergeUnits(sourceFixUnitId, targetFixUnitId) {
+          await apiFetch('/api/fix-units/' + encodeURIComponent(sourceFixUnitId) + '/merge', { method: 'POST', body: JSON.stringify({ targetFixUnitId: targetFixUnitId }) });
+          await refreshSnapshot(); announce('Units merged.');
+        }
+
+        async function proposeCandidate() {
+          const unit = selectedUnit();
+          if (!unit) return;
+          await apiFetch('/api/fix-units/' + encodeURIComponent(unit.fixUnitId) + '/propose', { method: 'POST', body: '{}' });
+          state.manualCheckAck = {};
+          await refreshSnapshot();
+          announce('Proposal updated for ' + unit.title);
+        }
+
+        async function verifyCandidate() {
+          const unit = selectedUnit();
+          if (!unit) return;
+          if (!allManualChecksAcknowledged(unit)) {
+            announce('Acknowledge every manual check before verification.');
+            return;
+          }
+          await apiFetch('/api/fix-units/' + encodeURIComponent(unit.fixUnitId) + '/verify', {
+            method: 'POST',
+            body: JSON.stringify({ acknowledgedCheckIds: acknowledgedCheckIds(unit) }),
+          });
+          await refreshSnapshot();
+          announce('Verification completed for ' + unit.title);
+        }
+
+        async function approveExactDiff() {
+          const unit = selectedUnit();
+          if (!unit?.candidateHash || !unit?.diffHash) return;
+          await apiFetch('/api/fix-units/' + encodeURIComponent(unit.fixUnitId) + '/approve-diff', {
+            method: 'POST',
+            body: JSON.stringify({ candidateHash: unit.candidateHash, diffHash: unit.diffHash }),
+          });
+          await refreshSnapshot();
+          announce('Exact diff approved for ' + unit.title);
+        }
+
+        async function applyAccepted() {
+          const payload = await apiFetch('/api/apply', { method: 'POST', body: '{}' });
+          state.snapshot = payload.snapshot;
+          announce('Apply completed: ' + (payload.result?.status || 'unknown'));
+          renderAll(false);
+        }
+
+        async function batchAcceptVerified() {
+          const ids = (state.snapshot?.units || []).filter(function(unit){ return unit.batchEligible; }).map(function(unit){ return unit.fixUnitId; });
+          if (ids.length === 0) { announce('No verified batch-eligible units.'); return; }
+          await apiFetch('/api/fix-units/batch/accept', { method: 'POST', body: JSON.stringify({ unitIds: ids }) });
+          await refreshSnapshot(); announce('Batch accept completed for ' + ids.length + ' unit(s).');
+        }
+
+        function bindEvents() {
+          els.filterSearch.addEventListener('input', function(){
+            state.preferences.search = els.filterSearch.value;
+            scheduleSearchPersist();
+            renderAll(false);
+          });
+          els.filterSource.addEventListener('change', function(){ state.preferences.sourceFilter = els.filterSource.value; persistPreferences(); renderAll(false); });
+          els.filterSeverity.addEventListener('change', function(){ state.preferences.severityFilter = els.filterSeverity.value; persistPreferences(); renderAll(false); });
+          els.filterType.addEventListener('change', function(){ state.preferences.typeFilter = els.filterType.value; persistPreferences(); renderAll(false); });
+          for (const button of els.statusFacets) button.addEventListener('click', function(){ state.preferences.statusFilter = button.dataset.status; persistPreferences(); renderAll(false); });
+          els.modeAccessibility.addEventListener('click', function(){ state.preferences.mode = 'accessibility'; persistPreferences(); renderAll(false); });
+          els.modePerformance.addEventListener('click', function(){ state.preferences.mode = 'performance'; persistPreferences(); renderAll(false); });
+          els.acceptBtn.addEventListener('click', function(){ const unit = selectedUnit(); if (!unit?.candidateHash) return; postDecision('accepted', { candidateHash: unit.candidateHash }).catch(function(e){ announce('Accept failed: ' + e.message); }); });
+          els.rejectBtn.addEventListener('click', function(){ els.rejectReason.value = ''; els.rejectDialog.showModal(); });
+          els.reviseBtn.addEventListener('click', function(){ els.revisionNote.value = ''; els.reviseDialog.showModal(); });
+          document.getElementById('reject-cancel').addEventListener('click', function(){ els.rejectDialog.close(); });
+          document.getElementById('revise-cancel').addEventListener('click', function(){ els.reviseDialog.close(); });
+          els.rejectForm.addEventListener('submit', function(event){ event.preventDefault(); postDecision('rejected', { rejectReason: els.rejectReason.value.trim() }).then(function(){ els.rejectDialog.close(); }).catch(function(e){ announce('Reject failed: ' + e.message); }); });
+          els.reviseForm.addEventListener('submit', function(event){ event.preventDefault(); postDecision('revision_requested', { revisionNote: els.revisionNote.value.trim() }).then(function(){ els.reviseDialog.close(); }).catch(function(e){ announce('Revise failed: ' + e.message); }); });
+          els.undoBtn.addEventListener('click', function(){ postDecision('pending').catch(function(e){ announce('Undo failed: ' + e.message); }); });
+          els.proposeBtn.addEventListener('click', function(){ proposeCandidate().catch(function(e){ announce('Proposal failed: ' + e.message); }); });
+          els.verifyBtn.addEventListener('click', function(){ verifyCandidate().catch(function(e){ announce('Verification failed: ' + e.message); }); });
+          els.approveDiffBtn.addEventListener('click', function(){ approveExactDiff().catch(function(e){ announce('Diff approval failed: ' + e.message); }); });
+          els.applyBtn.addEventListener('click', function(){ applyAccepted().catch(function(e){ announce('Apply failed: ' + e.message); }); });
+          els.traceAllBtn.addEventListener('click', function(){ apiFetch('/api/trace/all', { method: 'POST', body: '{}' }).then(function(p){ state.snapshot = p; announce('Trace refreshed.'); renderAll(false); }).catch(function(e){ announce('Trace all failed: ' + e.message); }); });
+          els.batchAcceptBtn.addEventListener('click', function(){ batchAcceptVerified().catch(function(e){ announce('Batch accept failed: ' + e.message); }); });
+          document.getElementById('manual-map-cancel').addEventListener('click', function(){ els.manualMapDialog.close(); });
+          els.manualMapForm.addEventListener('submit', function(event){
+            event.preventDefault();
+            mapFinding(state.manualMapFindingId, {
+              file: els.manualMapFile.value.trim(),
+              line: Number.parseInt(els.manualMapLine.value, 10),
+              preimageSha256: els.manualMapPreimage.value.trim(),
+            }).then(function(){ els.manualMapDialog.close(); }).catch(function(e){ announce('Manual mapping failed: ' + e.message); });
+          });
+          window.addEventListener('resize', function(){ setActiveTab(state.preferences.activeTab || 'list'); });
+          for (const tab of els.tabs) {
+            tab.addEventListener('click', function(){ setActiveTab(tab.id.replace('tab-', '')); persistPreferences(); });
+            tab.addEventListener('keydown', function(event){
+              const index = els.tabs.indexOf(tab);
+              if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+                event.preventDefault();
+                const next = els.tabs[(index + (event.key === 'ArrowRight' ? 1 : -1) + els.tabs.length) % els.tabs.length];
+                next.focus(); next.click();
+              }
+            });
+          }
+        }
+
+        async function boot() {
+          state.token = resolveToken();
+          if (!state.token) { els.applyGate.textContent = 'Missing review session token in URL fragment.'; return; }
+          scrubTokenFromUrl();
+          bindEvents();
+          try { await refreshSnapshot(); announce('Review workbench loaded.'); }
+          catch (error) { els.applyGate.textContent = 'Unable to load review session: ' + error.message; }
+        }
+        boot();
+      })();
+    </script>
+  </body>
+</html>

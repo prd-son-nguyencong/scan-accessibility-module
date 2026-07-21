@@ -2,6 +2,7 @@ import { writeFileSync } from 'fs';
 import path from 'path';
 import { getProjectRoot } from '../utils/paths.js';
 import { groupViolations, ACCESSSCAN_CATEGORIES } from '../schema.js';
+import { getAccessScanCategory, getAccessScanRuleRequirement } from '../scanner/access-scan/engine/public-catalog.js';
 
 const ROOT = getProjectRoot();
 const REPORTS_DIR = path.join(ROOT, 'scan-reports');
@@ -17,6 +18,47 @@ const TOOL_CONFIG = [
 
 function esc(str = '') {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** Sum occurrence counts so Serious/Total match Nu message totals (not fix-unit cards). */
+export function countIssueOccurrences(violations = []) {
+  return violations.reduce((sum, violation) => {
+    const count = Number.isInteger(violation.count) && violation.count > 0
+      ? violation.count
+      : 1;
+    return sum + count;
+  }, 0);
+}
+
+export function formatAccessScanProfileLabel(profile) {
+  if (profile === 'commercial-parity') {
+    return 'Commercial parity (accessScan oracle)';
+  }
+  if (profile === 'standards') {
+    return 'Standards (WCAG)';
+  }
+  return 'Unknown accessScan profile';
+}
+
+function resolveAccessScanMetadata(report = {}, pages = []) {
+  if (report.runMetadata?.accessScan) {
+    return report.runMetadata.accessScan;
+  }
+
+  for (const page of pages) {
+    for (const run of page.scannerRuns || []) {
+      if (run.layer === 'accessScan' && run.evidence?.profile) {
+        return {
+          profile: run.evidence.profile,
+          includeThirdParty: run.evidence.includeThirdParty === true,
+          comparatorVersion: run.evidence.comparatorVersion || null,
+          execution: run.evidence.execution || null,
+        };
+      }
+    }
+  }
+
+  return null;
 }
 
 function prettyHtml(raw) {
@@ -70,6 +112,96 @@ function svgIcon(pathD, size = 16, color = '#222222') {
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${pathD}"/></svg>`;
 }
 
+function scannerRunMetrics(run = {}) {
+  const metrics = [];
+  const add = (value, label) => {
+    if (value !== undefined && value !== null) metrics.push(`${value} ${label}`);
+  };
+  add(run.raw?.messageCount, 'raw messages');
+  add(run.raw?.errors, 'errors');
+  add(run.raw?.warnings, 'warnings');
+  add(run.raw?.artifactFilteredCount, 'artifacts filtered');
+  add(run.supplemental?.candidateCount, 'supplemental candidates');
+  add(run.supplemental?.addedCount, 'supplemental findings added');
+  add(run.supplemental?.suppressedCount, 'supplemental duplicates suppressed');
+  add(run.emitted?.actionableOccurrences ?? run.emitted?.findingOccurrences, 'finding occurrences');
+  add(run.emitted?.actionableFixUnits ?? run.emitted?.fixUnits, 'fix units');
+  add(run.emitted?.infoFixUnits, 'informational fix units');
+  add(run.evidence?.issueGroups ?? run.evidence?.ruleGroups, 'issue groups');
+  add(run.evidence?.affectedNodes, 'affected nodes');
+  add(run.evidence?.findingOccurrences, 'finding occurrences');
+  add(run.evidence?.fixUnits, 'fix units');
+  add(run.evidence?.incomplete, 'incomplete');
+  add(run.evidence?.accessibility?.rawAuditCount, 'accessibility audits');
+  add(run.evidence?.accessibility?.issueGroups, 'accessibility issue groups');
+  add(run.evidence?.accessibility?.affectedNodes, 'accessibility nodes');
+  add(run.evidence?.accessibility?.passed, 'accessibility passes');
+  add(run.evidence?.accessibility?.manual, 'manual checks');
+  add(run.evidence?.accessibility?.notApplicable, 'not applicable');
+  add(run.evidence?.accessibility?.incomplete, 'incomplete accessibility audits');
+  if (run.layer === 'accessScan' && run.evidence?.profile) {
+    metrics.push(`Profile: ${formatAccessScanProfileLabel(run.evidence.profile)}`);
+  }
+  if (run.layer === 'accessScan' && run.evidence?.comparatorVersion) {
+    metrics.push(`Comparator: ${run.evidence.comparatorVersion}`);
+  }
+  for (const check of run.evidence?.execution?.perCheck || []) {
+    const statusLabel = check.statusCounts
+      ? `${check.status} (${Object.entries(check.statusCounts).map(([status, count]) => `${status}:${count}`).join(', ')})`
+      : check.status;
+    metrics.push(
+      `${esc(check.checkId)}: ${esc(statusLabel)}, ${check.candidateCount} candidates, ${check.findingCount} findings`,
+    );
+  }
+  return metrics;
+}
+
+export function buildScannerRunEvidence(pages = []) {
+  const records = pages.flatMap((page) =>
+    (page.scannerRuns || []).map((run) => ({ page, run }))
+  );
+  if (records.length === 0) return '';
+
+  const cards = records.map(({ page, run }) => {
+    const viewport = run.viewport
+      ? `${run.viewport.name || 'viewport'}${run.viewport.width && run.viewport.height ? ` · ${run.viewport.width} × ${run.viewport.height}` : ''}`
+      : 'Not viewport-specific';
+    const state = `${String(run.pageState || 'initial').replace(/[-_]/g, ' ')} state`;
+    const status = ['complete', 'fallback', 'error', 'skipped'].includes(run.status) ? run.status : 'unknown';
+    const engine = run.engine?.name || run.layer || 'Scanner';
+    const metrics = scannerRunMetrics(run);
+    return `<article class="scanner-run-card">
+      <div class="scanner-run-heading">
+        <div>
+          <h3>${esc(engine)}</h3>
+          <p>${esc(page.name || page.url || 'Scanned page')} · ${esc(run.layer || 'unknown layer')}</p>
+        </div>
+        <span class="scanner-status scanner-status--${status}">${esc(status)}</span>
+      </div>
+      <dl class="scanner-run-context">
+        <div><dt>Engine</dt><dd>${esc(run.engine?.version ? `${engine} ${run.engine.version}` : engine)}</dd></div>
+        <div><dt>Page state</dt><dd>${esc(state.charAt(0).toUpperCase() + state.slice(1))}</dd></div>
+        <div><dt>Viewport</dt><dd>${esc(viewport)}</dd></div>
+        ${run.source ? `<div><dt>Source</dt><dd>${esc(run.source)}</dd></div>` : ''}
+      </dl>
+      ${metrics.length > 0 ? `<ul class="scanner-run-metrics">${metrics.map((metric) => `<li>${esc(metric)}</li>`).join('')}</ul>` : ''}
+    </article>`;
+  }).join('');
+
+  return `<section class="scanner-evidence" aria-labelledby="scanner-evidence-title">
+    <details>
+      <summary>
+        <span id="scanner-evidence-title">Scan evidence</span>
+        <span class="scanner-evidence-count">${records.length} run${records.length === 1 ? '' : 's'}</span>
+      </summary>
+      <div class="scanner-evidence-body">
+        <p>Engine versions, tested page states, viewports, and raw scanner totals retained with this report.</p>
+        <div class="scanner-run-grid">${cards}</div>
+      </div>
+    </details>
+  </section>`;
+}
+
 // ─── Performance Dashboard (kept from original) ─────────────────────────────
 
 function buildCircleGauge(score, label, size = 120) {
@@ -107,14 +239,61 @@ function buildMetricRow(metric) {
   </tr>`;
 }
 
-function buildPerformanceDashboard(lighthouseData) {
+export function buildPerformanceProvenance(pageData = {}) {
+  const source = pageData.source || 'local';
+  const provenance = pageData.provenance || {
+    requestedSource: source === 'psi-api' || source === 'local-fallback' ? 'psi-api' : 'local',
+    actualSource: source === 'psi-api' ? 'psi-api' : source === 'error' ? 'error' : 'local',
+    comparableToPsi: source === 'psi-api',
+    fallbackReason: source === 'local-fallback' ? { code: 'unavailable', status: null } : null,
+  };
+
+  if (provenance.actualSource === 'psi-api') {
+    return `<div class="perf-provenance">
+      <strong>PageSpeed Insights API</strong>
+      <span>Remote lab evidence; comparable to PSI baselines collected with the same strategy.</span>
+    </div>`;
+  }
+
+  if (provenance.requestedSource === 'psi-api') {
+    const reasonLabels = {
+      'quota-exceeded': 'PSI API quota exceeded',
+      timeout: 'PSI API timed out',
+      'invalid-response': 'PSI API returned an invalid response',
+      'http-error': 'PSI API request failed',
+      unavailable: 'PSI API unavailable',
+    };
+    const reason = reasonLabels[provenance.fallbackReason?.code] || 'PSI API unavailable';
+    if (provenance.actualSource === 'local') {
+      return `<div class="perf-provenance perf-provenance--fallback">
+        <strong>Local Lighthouse fallback</strong>
+        <span>${esc(reason)}. These scores are not comparable to a PageSpeed Insights baseline.</span>
+      </div>`;
+    }
+    return `<div class="perf-provenance perf-provenance--fallback">
+      <strong>PageSpeed Insights unavailable</strong>
+      <span>${esc(reason)}. No PSI-comparable performance scores were produced.</span>
+    </div>`;
+  }
+
+  return `<div class="perf-provenance">
+    <strong>Local Lighthouse</strong>
+    <span>Local lab evidence; not comparable to a PageSpeed Insights baseline.</span>
+  </div>`;
+}
+
+export function buildPerformanceDashboard(lighthouseData) {
   if (!lighthouseData || Object.keys(lighthouseData).length === 0) return '';
   let html = '';
   for (const [pageName, pageData] of Object.entries(lighthouseData)) {
     const lh = pageData.lighthouse;
-    if (!lh) continue;
     html += `<div class="perf-dashboard">
-      <div class="device-tabs">
+      ${buildPerformanceProvenance(pageData)}`;
+    if (!lh) {
+      html += `<p class="perf-unavailable">No performance scores were produced for this page.</p></div>`;
+      continue;
+    }
+    html += `<div class="device-tabs">
         <button class="device-tab active" onclick="switchDevice(this,'mobile-${esc(pageName)}','desktop-${esc(pageName)}')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg>
           Mobile
@@ -302,7 +481,7 @@ function buildAxeSection(violations) {
     const issueCards = ruleViols.map((v) => {
       const selector = v.element?.selector || '';
       const outerHTML = v.element?.outerHTML || '';
-      return `<div class="violation-card" data-impact="${v.impact}" data-layer="${v.layer}" data-category="${v.category}">
+      return `<div class="violation-card" data-impact="${esc(v.impact)}" data-layer="${esc(v.layer)}" data-category="${esc(v.category)}">
         ${selector ? `<div class="v-location"><span class="location-label">Element Location:</span><code>${esc(selector)}</code></div>` : ''}
         ${outerHTML ? `<pre class="code-snippet">${esc(prettyHtml(outerHTML.slice(0, 500)))}</pre>` : ''}
         <div class="v-fix-row">
@@ -339,110 +518,36 @@ function buildAxeSection(violations) {
 
 // ─── AccessScan section builder ──────────────────────────────────────────────
 
-const RULE_REQUIREMENTS = {
-  AltMisuse: { title: 'Elements other than image (Tag: IMG) should not have alt attribute', requirement: 'The alt attribute is used to provide a text alternative for images. It is not meant to be used on elements other than images and therefore will not be read using screen-readers.' },
-  BreadcrumbsNav: { title: 'Breadcrumbs navigation should be tagged properly', requirement: 'Breadcrumb navigation regions are essential for user orientation. If not appropriately tagged, screen reader users will not know that such an option exists on the page and will face more difficulties browsing around.' },
-  EmphasisMismatch: { title: 'Emphasis should be tagged properly for assistive technology', requirement: 'Elements with emphasis importance should have the emphasis role. If not, screen reader users may not understand the emphasis of the text.' },
-  IframeDiscernible: { title: 'Iframes should have a descriptive label', requirement: 'An iframe needs a label that describes its purpose to screen reader users.' },
-  LinkAnchorAmbiguous: { title: 'Ambiguous links should have additional descriptions for screen readers', requirement: 'Ambiguous links like "Learn More", "Shop Now" and "Start Here" are often used as a call to action. However, screen-reader users, while using link navigation, do not interact with content above or below the link and therefore don\'t have the same context.' },
-  NoRoleApplication: { title: 'Avoid using role="application"', requirement: 'Using role="application" is generally discouraged because it disables standard screen reader modes and forces users into an application mode, removing familiar navigation shortcuts.' },
-  SalePriceDiscernible: { title: 'Original and discounted prices should be indicated to assistive technology', requirement: 'Discounted prices often appear next to the original and distinguished with visual cues like strikethroughs or color changes. Both prices must also be conveyed by screen readers in a way that enables users to differentiate between the values.' },
-  StrongMismatch: { title: 'Strong should be tagged properly for assistive technology', requirement: 'Elements with strong importance should have the strong role. If not, screen reader users may not understand the importance of the text.' },
-  VisibilityMismatch: { title: 'Visible content should not be hidden from assistive technology', requirement: 'If content remains visible on the screen but assigned aria-hidden="true", it will be excluded from the accessibility tree. As a result, screen reader users will not have access to the same information as sighted users.' },
-  VisibilityMisuse: { title: 'Visibly hidden content should not be exposed to assistive technology', requirement: 'When elements are visually hidden but still exposed to assistive technology, screen reader users may encounter content that should not be available in the current interface.' },
-  AriaDescribedByHasReference: { title: 'aria-describedby should reference a valid element id', requirement: 'If an element\'s aria-describedby attribute points to an id that does not exist or is not valid, assistive technologies will not convey the intended description.' },
-  AriaLabelledByHasReference: { title: 'aria-labelledby should reference a valid element id', requirement: 'Since aria-labelledby relies on valid id references, screen readers can only announce the label if the target exists. If the id is missing or invalid, the label will not be conveyed.' },
-  FigureDiscernible: { title: 'Figure elements should receive text description or lose figure role', requirement: 'Figure elements are often incorrectly used to display images on the screen. Incorrectly using the figure tag, without providing a proper figcaption, adds unnecessary clutter to the screen reader user\'s experience.' },
-  NoExtraInformationInTitle: { title: 'The title attribute should not be the only method used to provide information', requirement: 'The title attribute is announced inconsistently across screen readers and browsers, making it unreliable for labeling interactive controls.' },
-  FocusNotObscuredFooter: { title: 'Focused elements should not be obscured by a sticky footer', requirement: 'A sticky footer remains anchored to the bottom of the screen while the rest of the page content can be scrolled. If it is not offset from interactive elements, it can overlap and obscure the item in focus.' },
-  ButtonDiscernible: { title: 'Buttons should have a label', requirement: 'Buttons that do not contain visible text should be assigned labels that inform screen reader users of their purpose.' },
-  ButtonMismatch: { title: 'Buttons should be tagged for assistive technology', requirement: 'If interactive elements cannot be identified as buttons, screen reader users may not realize the element is actionable.' },
-  LinkAnchorDiscernible: { title: 'Anchor links should have a descriptive label', requirement: 'Activating anchor links enables users to navigate to a different section within the same page. Anchor links without visible text or labeled images should be assigned labels that inform screen reader users of their destination.' },
-  LinkCurrentPage: { title: 'Visual indication that a link\'s destination is the current page should be announced by screen readers', requirement: 'Visual cues are often used by sighted users to indicate which link represents the current page. This information should be made available to screen reader users by assigning aria-current=\'page\' to the link.' },
-  LinkNavigationAmbiguous: { title: 'Link context should be exposed to assistive technology', requirement: 'Screen reader users may find it difficult to distinguish between links when the purpose of each link cannot be determined from its text alone or together with its immediate context.' },
-  LinkNavigationDiscernible: { title: 'Navigation links should have a descriptive label', requirement: 'Activating navigation links enables users to navigate to a different page within the site. Links without visible text or labeled images should be assigned labels.' },
-  MenuAvoid: { title: 'Avoid using role="menu" for web navigation links', requirement: 'In most cases, using role=menu on navigation elements within a web page can negatively impact screen reader users, especially those using JAWS.' },
-  MenuBarAvoid: { title: 'Avoid using role="menubar" for web navigation links', requirement: 'In most cases, using role=menubar on navigation elements within a web page can negatively impact screen reader users, especially those using JAWS.' },
-  MenuItemAvoid: { title: 'Avoid using role="menuitem" for web navigation links', requirement: 'In most cases, using ARIA menu roles within a web page can negatively impact screen reader users, especially those using JAWS.' },
-  MenuTriggerClickable: { title: 'ARIA relationship attributes should only be applied to elements with appropriate roles', requirement: 'Interactive elements that trigger additional content should only have relationship and state ARIA attributes if they have interactive roles, such as button, tab, or combobox.' },
-  NoAutofocus: { title: 'Avoid using autofocus', requirement: 'Make sure that no element has an autofocus attribute.' },
-  AriaControlsHasReference: { title: 'aria-controls should reference a valid element id', requirement: 'The element\'s aria-controls points to an id that does not exist, breaking the link between the controlling element and the content it manages.' },
-  LinkImageWarning: { title: 'Warning a user when a link triggers an image to open is recommended', requirement: 'It\'s good practice to warn users about the expected behavior when activating a link triggers an image to appear.' },
-  LinkMailtoWarning: { title: 'Warning a user when a link triggers a mail application is recommended', requirement: 'It\'s good practice to warn users about the expected behavior when activating a link triggers a mail application.' },
-  LinkPDFWarning: { title: 'Warning a user when a link triggers a PDF file is recommended', requirement: 'It\'s good practice to warn users about the expected behavior when activating a link triggers a PDF reader.' },
-  LinkOpensNewWindow: { title: 'Warning a user when a link opens in a new window is recommended', requirement: 'It\'s good practice to warn users about the expected behavior when activating a link opens a new browser window or tab.' },
-  TargetSize: { title: 'Interactive elements should meet minimum target size', requirement: 'Interactive elements must meet the minimum target size of 24x24 CSS pixels (WCAG 2.5.8) to ensure users with motor impairments can activate them without difficulty.' },
-  CheckboxDiscernible: { title: 'Checkbox controls should have a label', requirement: 'Screen readers rely on properly coded and associated labels to announce the purpose of a form field. A checkbox control without an identifiable label may prevent screen reader users from completing the form.' },
-  FormContextChangeWarning: { title: 'Interacting with form controls should not cause a change in context without warning', requirement: 'Interacting with form controls shouldn\'t automatically submit a form or cause any other change in context without notifying the user in advance.' },
-  FormSubmitButtonMismatch: { title: 'Form submission controls should have type="submit"', requirement: 'Adding type="submit" to a control that submits a form ensures that screen readers users expect a change of context when they activate the control.' },
-  MainNavigationMismatch: { title: 'Main navigation should have role navigation', requirement: 'Main navigation elements should have role navigation to ensure that screen readers can identify them as navigation regions.' },
-  RadioDiscernible: { title: 'Radio controls should have a label', requirement: 'Screen readers rely on properly coded and associated labels to announce the purpose of a form field. A radio control without an identifiable label may prevent screen reader users from completing the form.' },
-  RequiredFormFieldAriaRequired: { title: 'Mandatory form fields should indicate that they are required', requirement: 'If a field is marked as required only through visual cues, but lacks the required attribute or aria-required="true", screen readers will not announce it as mandatory.' },
-  ArticleMisuse: { title: 'Only elements that function as articles should be tagged as article regions', requirement: 'Using an <article> tag on content that is not self-contained causes screen readers to announce misleading information about the page structure.' },
-  BreadcrumbsMismatch: { title: 'Breadcrumb navigation region should have a label', requirement: 'A breadcrumb region presents a trail of links showing the user\'s current page in relation to higher-level pages. Without a label, it may be announced simply as "navigation".' },
-  NavigationMisuse: { title: 'An element without navigation links is tagged as a navigation landmark', requirement: 'Screen readers rely on accurate tagging and labeling to provide necessary context. If an element that does not contain navigation links is tagged as a navigation landmark, screen reader users may lose orientation.' },
-  RegionMainContentMismatch: { title: 'All main content should be contained in the main landmark', requirement: 'The main landmark represents the primary content of a page. It should include only content unique to that page and must remain separate from repeated elements.' },
-  RegionMainContentMisuse: { title: 'An element without main content is tagged as a main landmark', requirement: 'Incorrectly tagging the main landmark may cause screen reader users to misunderstand where the primary content begins or ends.' },
-  RegionMainContentSingle: { title: 'Each page should include at most one main landmark', requirement: 'A page typically presents one central subject, so a single main landmark establishes the boundaries of the primary content for screen reader users.' },
-  SearchFormMismatch: { title: 'A search form should be tagged as a search landmark', requirement: 'Screen reader users rely on landmarks to quickly access important regions of a page. Defining a form as a search landmark ensures that users can quickly recognize and navigate to the search form.' },
-  RegionFooterMismatch: { title: 'Global site information should be in a contentinfo landmark (footer)', requirement: 'The contentinfo region, typically represented by the <footer> element, provides screen reader users with information about the website, such as copyright, contact details, and legal information.' },
-  RegionFooterMisuse: { title: 'An element without global site information is tagged as a contentinfo landmark', requirement: 'When a region without global site information is tagged as a contentinfo landmark, screen reader users may be misled about its purpose.' },
-  RegionFooterSingle: { title: 'Each page should include at most one global contentinfo landmark (footer)', requirement: 'Each page should normally include only one contentinfo landmark to keep landmark navigation simple and predictable.' },
-  BackgroundImageDiscernibleImage: { title: 'Functional CSS background images should be tagged for assistive technology', requirement: 'Functional images presented using CSS background properties should be marked up using role="img" so that they can be identified as images by screen reader users.' },
-  DecorativeGraphicExposed: { title: 'Decorative graphics inside interactive elements should be hidden', requirement: 'Small decorative icons inside interactive elements that already have text labels add unnecessary clutter to the screen reader experience.' },
-  IconDiscernible: { title: 'Meaningful icons should have a label, while decorative icons should be hidden', requirement: 'Smaller graphics used as decorative or complementary elements, such as icons, that do not provide additional information will often add unnecessary clutter to a screen reader user\'s browsing experience.' },
-  ImageDiscernible: { title: 'Functional images should have a text alternative', requirement: 'Images require a text alternative when the image conveys meaningful content or serves a functional purpose. If the image is decorative, it must be hidden from assistive technology.' },
-  ImageDiscernibleCorrectly: { title: 'Functional images should have an informative and accurate text alternative', requirement: 'Text alternatives must provide accurate descriptions of the image. Incorrect text alternatives, such as filenames or placeholder values, may disrupt the screen reader experience.' },
-  ImageMisuse: { title: 'Only elements that function as images should be tagged as image', requirement: 'When non-graphical elements are marked up as images, screen reader users may misunderstand the intended purpose of the content.' },
-  DraggingAlternative: { title: 'A slider should be operated with a single pointer', requirement: 'A slider should be operable with a single pointer.' },
-  VisibleTextPartOfAccessibleName: { title: 'Aria labels should not override or replace visible text', requirement: 'Aria labels should describe elements that don\'t have proper text, like icons and field labels. It should not be used to override element texts. Screen reader users need to receive the exact text as visually on the screen.' },
-  AriaLabelledbyContentMismatch: { title: 'aria-labelledby composed name should match visible text', requirement: 'When aria-labelledby references multiple elements, the composed accessible name should include the visible text content to avoid confusion for screen reader users.' },
-  StickyHeaderObscuresFocus: { title: 'Focused elements should not be obscured by a sticky header', requirement: 'A sticky header remains anchored to the top of the screen while the rest of the page content can be scrolled. If it is not offset from interactive elements, it can overlap and obscure the item in focus.' },
-  ListEmpty: { title: 'Lists should contain at least one list item', requirement: 'An empty list will still be announced by screen readers, which may confuse users, leaving them unsure if the list is empty or an issue prevents the screen reader from announcing the list items.' },
-  HtmlLang: { title: 'Default page language should be defined', requirement: 'Specifying a default page language ensures screen readers apply the correct pronunciation rules, voices, and braille output.' },
-  HtmlLangValid: { title: 'HTML lang attribute should have a valid value', requirement: 'Assigning a valid ISO language value to the <html> lang attribute ensures that screen readers use the correct pronunciation rules.' },
-  MetaDescription: { title: 'Page should have a meta description', requirement: 'A meta description provides a brief summary of the page content for search engines and assistive technologies.' },
-  MetaRefresh: { title: 'Pages should not use meta http-equiv="refresh"', requirement: 'A <meta> element with http-equiv="refresh" is sometimes used to automatically redirect users after a time delay. These timed changes can interrupt and disorient users who rely on assistive technology.' },
-  MetaViewportScalable: { title: 'Meta viewport should allow content scaling', requirement: 'The meta viewport should allow scalability so text can be resized up to 200% without loss of functionality. Using user-scalable=no or maximum-scale=1 prevents users from enlarging content.' },
-  MetaViewportPresent: { title: 'Page should have a meta viewport tag', requirement: 'Providing a meta viewport to control layout and scaling on mobile devices.' },
-  PageTitle: { title: 'Page should have a title', requirement: 'A missing page title makes it difficult for screen reader users and sighted users with multiple tabs open to identify the page.' },
-  PageTitleDescriptive: { title: 'Page title should be descriptive', requirement: 'Screen readers rely heavily on page titles to announce the purpose of a page. If titles aren\'t descriptive, users may not understand the context.' },
-  TablistRole: { title: 'Tablists should be tagged for assistive technology', requirement: 'A tablist without role="tablist" is not announced as a group of related tabs, preventing screen reader users from recognizing the structure.' },
-  TabAriaSelected: { title: 'Tab elements should have aria-selected', requirement: 'Tab elements need aria-selected to communicate which tab is currently active to screen reader users.' },
-  TabAriaControls: { title: 'Tab elements should have aria-controls', requirement: 'Tab elements need aria-controls pointing to the tabpanel ID so screen readers can link tabs to their content panels.' },
-  TabpanelLabelledBy: { title: 'Tab panels should have aria-labelledby', requirement: 'Tab panels need aria-labelledby referencing the controlling tab element ID for screen reader navigation.' },
-  TabListMisuse: { title: 'Only elements that function as tablists should receive role="tablist"', requirement: 'Applying role="tablist" to an element without tabs misleads screen reader users by suggesting a group of tabs that does not exist.' },
-  TabMismatch: { title: 'Tab controls should be tagged for assistive technology', requirement: 'Custom tabs must be explicitly defined for screen readers since there are no native HTML tab elements. Without role="tab", assistive technology will not identify them as tabs.' },
-  TabMisuse: { title: 'Only elements that function as tabs should receive role="tab"', requirement: 'Applying role="tab" to an element that is not part of a functioning tab interface misleads screen reader users.' },
-  TabPanelMismatch: { title: 'Tab panels should be tagged for assistive technology', requirement: 'The role="tabpanel" identifies an element as the content region of a tab interface. Without this role, panels are not perceived as part of the tab structure.' },
-  TabPanelMisuse: { title: 'Only elements that function as tab panels should receive role="tabpanel"', requirement: 'Applying role="tabpanel" to an element without a corresponding tab misleads screen reader users.' },
-  TableHeaders: { title: 'Table column headers should be tagged for assistive technology', requirement: 'If a column header is not marked up with the correct role or scope, screen reader users cannot determine which header applies to each cell.' },
-  TableHeaderEmpty: { title: 'Table header cells should not be empty', requirement: 'If a table header cell is empty, screen reader users may only hear a generic label such as "column 3" or nothing at all.' },
-  TableMisuse: { title: 'Only elements that function as data tables should be tagged as table', requirement: 'When a layout table is marked up with HTML table elements or assigned table ARIA roles, screen readers announce a data table structure even though the table is only used for page layout.' },
-  TableNesting: { title: 'Tables should not be nested', requirement: 'Nested tables are often misinterpreted by screen readers, making it hard for users to follow the intended structure and meaning of the data.' },
-  TableRoles: { title: 'Layout tables should not use data table markup', requirement: 'Layout tables should use role="presentation" so screen readers skip table semantics and do not announce misleading row/column information.' },
-  TableCaption: { title: 'Data tables should have a caption', requirement: 'A caption or aria-label on data tables provides screen readers with context about the table\'s purpose and content.' },
-  TableRowHeaderMismatch: { title: 'Table row headers should be tagged for assistive technology', requirement: 'If a table row header is not marked up with the correct role or scope, screen reader users cannot determine which header applies to each cell.' },
-};
+export { getAccessScanRuleRequirement };
 
-function buildAccessScanRuleCard(ruleId, ruleViols) {
+export function buildAccessScanRuleCard(ruleId, ruleViols) {
   const first = ruleViols[0];
-  const failCount = ruleViols.length;
+  const failCount = ruleViols.reduce((sum, violation) => {
+    const count = Number.isInteger(violation.count) && violation.count > 0
+      ? violation.count
+      : 1;
+    return sum + count;
+  }, 0);
   const wcagRef = first.wcagRef || '';
   const wcagVersion = wcagRef.match(/WCAG\s*\d+\.?\d*/)?.[0] || 'WCAG 2.0';
   const wcagLevel = wcagRef.match(/(A{1,3})\b/)?.[1] || (wcagRef.includes('Best Practice') ? 'BP' : 'A');
-  const ruleInfo = RULE_REQUIREMENTS[ruleId];
+  const ruleInfo = getAccessScanRuleRequirement(ruleId);
   const ruleTitle = ruleInfo?.title || ruleId;
-  const requirement = ruleInfo?.requirement || first.fix?.hint || '';
+  const requirement = ruleInfo?.requirement || first.fix?.hint || (
+    getAccessScanCategory(ruleId) === null
+      ? 'This rule is not in the current accessScan catalog. The finding is preserved for review.'
+      : ''
+  );
 
   const dedupMap = new Map();
   for (const v of ruleViols) {
     const html = v.element?.outerHTML || '';
     const key = html.slice(0, 500) || v.id;
+    const occurrence = Number.isInteger(v.count) && v.count > 0 ? v.count : 1;
     if (dedupMap.has(key)) {
-      dedupMap.get(key).count++;
+      dedupMap.get(key).count += occurrence;
     } else {
-      dedupMap.set(key, { v, html, count: 1 });
+      dedupMap.set(key, { v, html, count: occurrence });
     }
   }
 
@@ -465,6 +570,32 @@ function buildAccessScanRuleCard(ruleId, ruleViols) {
     }).filter(Boolean).join('');
   }
 
+  const successfulMap = new Map();
+  for (const violation of ruleViols) {
+    const directElements = violation.evidence?.successfulElements || [];
+    const observedElements = (violation.evidence?.observations || [])
+      .flatMap((observation) => observation.evidence?.successfulElements || []);
+    for (const element of [...directElements, ...observedElements]) {
+      const elementHtml = element?.outerHTML || '';
+      const key = elementHtml.slice(0, 500) || element?.selector;
+      if (key && !successfulMap.has(key)) {
+        successfulMap.set(key, element);
+      }
+    }
+  }
+  const successfulElements = [...successfulMap.values()];
+  const successfulSnapshots = successfulElements.map((element, index) =>
+    `<div class="snapshot-block success-snapshot">
+      <span class="snapshot-num">${index + 1}</span>
+      <div class="snapshot-content">
+        <pre class="code-snippet">${esc(prettyHtml(element.outerHTML.slice(0, 500)))}</pre>
+      </div>
+    </div>`
+  ).join('');
+  const successfulContent = successfulSnapshots
+    ? `<div class="as-snapshots as-success-snapshots"><span class="as-snap-label">${successfulElements.length} code snapshot${successfulElements.length === 1 ? '' : 's'} of successful element${successfulElements.length === 1 ? '' : 's'}</span>${successfulSnapshots}</div>`
+    : '';
+
   const impactLabel = first.impact === 'critical' ? 'Critical' : first.impact === 'serious' ? 'Serious' : first.impact === 'moderate' ? 'Moderate' : 'Minor';
   const foundDate = first.foundAt ? new Date(first.foundAt).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' }) : new Date().toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' });
 
@@ -478,9 +609,10 @@ function buildAccessScanRuleCard(ruleId, ruleViols) {
         </div>
         ${codeSnapshots
           ? `<div class="as-snapshots"><span class="as-snap-label">${failCount} code snapshot${failCount === 1 ? '' : 's'} of failed element${failCount === 1 ? '' : 's'}</span>${codeSnapshots}</div>`
-          : `<div class="as-page-level">Page-level violation &mdash; no specific element to display.</div>`}`;
+          : `<div class="as-page-level">Page-level violation &mdash; no specific element to display.</div>`}
+        ${successfulContent}`;
 
-  return `<div class="as-rule-card violation-card" data-impact="${first.impact}" data-layer="accessScan" data-category="accessibility">
+  return `<div class="as-rule-card violation-card" data-impact="${esc(first.impact)}" data-layer="accessScan" data-category="accessibility">
     <div class="as-rule-layout">
       <div class="as-rule-left">
         ${leftContent}
@@ -500,11 +632,27 @@ function buildAccessScanRuleCard(ruleId, ruleViols) {
   </div>`;
 }
 
-function buildAccessScanSection(violations) {
+function buildAccessScanSection(violations, metadata = {}) {
   const totalIssues = violations.length;
   const isCompliant = totalIssues === 0;
+  const profileLabel = metadata.profile
+    ? formatAccessScanProfileLabel(metadata.profile)
+    : null;
 
-  let html = `<div class="as-compliance-bar">
+  let html = '';
+  if (profileLabel) {
+    html += `<div class="as-profile-banner" role="note">
+      <strong>accessScan profile:</strong> ${esc(profileLabel)}
+      ${metadata.comparatorVersion
+        ? `<span class="as-profile-meta">Comparator ${esc(metadata.comparatorVersion)}</span>`
+        : ''}
+      ${metadata.includeThirdParty
+        ? '<span class="as-profile-meta">Legacy includeThirdParty: true</span>'
+        : ''}
+    </div>`;
+  }
+
+  html += `<div class="as-compliance-bar">
     <span class="as-compliance-badge ${isCompliant ? 'compliant' : 'non-compliant'}">
       ${isCompliant ? '&#x2713; Compliant' : '&#x2717; Non-compliant'}
     </span>
@@ -517,9 +665,16 @@ function buildAccessScanSection(violations) {
     return html + `<div class="no-issues"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#008a05" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span>All clear</span></div>`;
   }
 
+  const cataloguedRuleIds = new Set(ACCESSSCAN_CATEGORIES.flatMap((category) => category.rules));
+
   for (const cat of ACCESSSCAN_CATEGORIES) {
-    const catViols = violations.filter((v) => cat.rules.includes(v.ruleId));
-    const catCount = catViols.length;
+    const catViols = violations.filter((v) => cataloguedRuleIds.has(v.ruleId) && cat.rules.includes(v.ruleId));
+    const catCount = catViols.reduce((sum, violation) => {
+      const count = Number.isInteger(violation.count) && violation.count > 0
+        ? violation.count
+        : 1;
+      return sum + count;
+    }, 0);
     const catStatusClass = catCount > 0 ? 'has-issues' : 'no-issues-cat';
 
     const byRule = groupViolations(catViols, (v) => v.ruleId);
@@ -542,8 +697,28 @@ function buildAccessScanSection(violations) {
     </details>`;
   }
 
+  const uncatalogued = violations.filter((v) => !cataloguedRuleIds.has(v.ruleId));
+  if (uncatalogued.length > 0) {
+    const byRule = groupViolations(uncatalogued, (v) => v.ruleId);
+    let ruleCards = '';
+    for (const [ruleId, ruleViols] of byRule) {
+      ruleCards += buildAccessScanRuleCard(ruleId, ruleViols);
+    }
+
+    html += `<details class="cat-accordion has-issues uncatalogued" open>
+      <summary>
+        <span class="cat-label">Uncatalogued</span>
+        <span class="cat-wcag">Stale or unknown accessScan rules</span>
+        <span class="cat-count has-count">${uncatalogued.length}</span>
+      </summary>
+      <div class="cat-body">${ruleCards}</div>
+    </details>`;
+  }
+
   return html;
 }
+
+export { buildAccessScanSection, buildAxeSection, buildGenericViolationSection };
 
 // ─── Generic violations section (W3C, Links, Behavioral) ────────────────────
 
@@ -559,11 +734,14 @@ function buildGenericViolationSection(violations) {
     const issueCards = ruleViols.map((v) => {
       const outerHTML = v.element?.outerHTML || '';
       const selector = v.element?.selector || '';
-      return `<div class="violation-card" data-impact="${v.impact}" data-layer="${v.layer}" data-category="${v.category}">
+      const occurrence = Number.isInteger(v.count) && v.count > 0 ? v.count : 1;
+      const countBadge = occurrence > 1 ? `<span class="dedup-badge">&times;${occurrence}</span>` : '';
+      return `<div class="violation-card" data-impact="${esc(v.impact)}" data-layer="${esc(v.layer)}" data-category="${esc(v.category)}">
         <div class="v-meta-row">
           ${impactBadge(v.impact)}
           ${v.wcagRef ? `<span class="wcag-tag">${esc(v.wcagRef)}</span>` : ''}
           ${v.fix?.deterministic ? '<span class="fix-auto">Auto-fix</span>' : '<span class="fix-ai">AI-fix</span>'}
+          ${countBadge}
         </div>
         <p class="v-hint">${esc(v.fix?.hint || '')}</p>
         ${selector ? `<div class="v-location"><code>${esc(selector)}</code></div>` : ''}
@@ -572,13 +750,14 @@ function buildGenericViolationSection(violations) {
       </div>`;
     }).join('');
 
+    const ruleOcc = countIssueOccurrences(ruleViols);
     html += `<details class="rule-accordion">
       <summary>
         <div class="rule-summary-left">
           ${impactBadge(first.impact)}
           <span class="rule-title">${esc(ruleId)}</span>
         </div>
-        <span class="rule-count">${ruleViols.length} issue${ruleViols.length === 1 ? '' : 's'}</span>
+        <span class="rule-count">${ruleOcc} issue${ruleOcc === 1 ? '' : 's'}</span>
       </summary>
       <div class="rule-body">${issueCards}</div>
     </details>`;
@@ -588,11 +767,14 @@ function buildGenericViolationSection(violations) {
 
 // ─── Tool section wrapper ────────────────────────────────────────────────────
 
-function buildToolSection(tool, allViolations, lighthouseData) {
+function buildToolSection(tool, allViolations, lighthouseData, accessScanMetadata = null) {
   const toolViols = tool.layers
     ? allViolations.filter((v) => tool.layers.includes(v.layer))
     : allViolations.filter((v) => v.layer === tool.layer);
-  const count = toolViols.length;
+  const count = countIssueOccurrences(toolViols);
+  const toolLabel = tool.id === 'accessScan' && accessScanMetadata?.profile
+    ? `AccessScan — ${formatAccessScanProfileLabel(accessScanMetadata.profile)}`
+    : tool.label;
 
   let content = '';
   if (tool.id === 'performance') {
@@ -604,7 +786,7 @@ function buildToolSection(tool, allViolations, lighthouseData) {
   } else if (tool.id === 'axe') {
     content = buildAxeSection(toolViols);
   } else if (tool.id === 'accessScan') {
-    content = buildAccessScanSection(toolViols);
+    content = buildAccessScanSection(toolViols, accessScanMetadata || {});
   } else {
     content = buildGenericViolationSection(toolViols);
   }
@@ -616,7 +798,7 @@ function buildToolSection(tool, allViolations, lighthouseData) {
       <div class="tool-icon" style="background:${tool.color}10;color:${tool.color}">
         ${svgIcon(tool.icon, 18, tool.color)}
       </div>
-      <h2>${esc(tool.label)}</h2>
+      <h2>${esc(toolLabel)}</h2>
       <span class="tool-total">Total issues: <strong>${count}</strong></span>
       <span class="section-badge" style="background:${count > 0 ? tool.color : '#008a05'}">${count}</span>
       <svg class="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
@@ -627,26 +809,36 @@ function buildToolSection(tool, allViolations, lighthouseData) {
 
 // ─── Main HTML builder ───────────────────────────────────────────────────────
 
-function buildHtml(report) {
+export function buildHtml(report) {
   const allViolations = (report.pages || []).flatMap((p) => p.violations || []);
-  const total = allViolations.length;
+  const total = countIssueOccurrences(allViolations);
   const ts = report.timestamp ? new Date(report.timestamp).toLocaleString() : new Date().toLocaleString();
   const lighthouseData = report.lighthouse || {};
+  const accessScanMetadata = resolveAccessScanMetadata(report, report.pages || []);
+  const scannerRunEvidence = buildScannerRunEvidence(report.pages || []);
 
-  const toolCounts = TOOL_CONFIG.map((t) => ({
-    ...t,
-    count: t.layers
-      ? allViolations.filter((v) => t.layers.includes(v.layer)).length
-      : allViolations.filter((v) => v.layer === t.layer).length,
-  }));
+  const toolCounts = TOOL_CONFIG.map((t) => {
+    const toolViols = t.layers
+      ? allViolations.filter((v) => t.layers.includes(v.layer))
+      : allViolations.filter((v) => v.layer === t.layer);
+    return {
+      ...t,
+      count: countIssueOccurrences(toolViols),
+      label: t.id === 'accessScan' && accessScanMetadata?.profile
+        ? `AccessScan — ${formatAccessScanProfileLabel(accessScanMetadata.profile)}`
+        : t.label,
+    };
+  });
 
-  const criticalCount = allViolations.filter((v) => v.impact === 'critical').length;
-  const seriousCount = allViolations.filter((v) => v.impact === 'serious').length;
-  const moderateCount = allViolations.filter((v) => v.impact === 'moderate').length;
+  const criticalCount = countIssueOccurrences(allViolations.filter((v) => v.impact === 'critical'));
+  const seriousCount = countIssueOccurrences(allViolations.filter((v) => v.impact === 'serious'));
+  const moderateCount = countIssueOccurrences(allViolations.filter((v) => v.impact === 'moderate'));
   const healthScore = total === 0 ? 100 : Math.max(0, 100 - criticalCount * 15 - seriousCount * 5 - moderateCount * 2);
   const healthColor = scoreColor(healthScore);
 
-  const sections = TOOL_CONFIG.map((t) => buildToolSection(t, allViolations, lighthouseData)).join('\n');
+  const sections = TOOL_CONFIG.map((t) =>
+    buildToolSection(t, allViolations, lighthouseData, accessScanMetadata)
+  ).join('\n');
 
   const navItems = toolCounts.map((t) =>
     `<button class="nav-pill" onclick="scrollToSection('section-${t.id}')">
@@ -657,13 +849,18 @@ function buildHtml(report) {
 
   const impactOptions = ['all', 'critical', 'serious', 'moderate', 'minor'].map((f) => {
     const colors = { all: '#222222', critical: '#c13515', serious: '#ff385c', moderate: '#6a6a6a', minor: '#929292' };
-    const count = f === 'all' ? total : allViolations.filter((v) => v.impact === f).length;
+    const count = f === 'all'
+      ? total
+      : countIssueOccurrences(allViolations.filter((v) => v.impact === f));
     return `<button class="filter-pill${f === 'all' ? ' active' : ''}" data-filter="${f}" data-group="impact" onclick="setFilter('impact','${f}',this)" style="--fc:${colors[f]}">${f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)} <span class="pill-count">${count}</span></button>`;
   }).join('');
 
   const categoryFilters = [{ id: 'all', label: 'All', color: '#222222' }, ...TOOL_CONFIG.map((t) => ({ id: t.layer || t.id, label: t.label, color: t.color }))];
   const categoryOptions = categoryFilters.map((f) => {
-    const count = f.id === 'all' ? total : allViolations.filter((v) => v.layer === f.id || (f.id === 'behavioral' && ['keyboard', 'focusTrap', 'ariaLive', 'dynamicContent', 'screenReader'].includes(v.layer))).length;
+    const filtered = f.id === 'all'
+      ? allViolations
+      : allViolations.filter((v) => v.layer === f.id || (f.id === 'behavioral' && ['keyboard', 'focusTrap', 'ariaLive', 'dynamicContent', 'screenReader'].includes(v.layer)));
+    const count = countIssueOccurrences(filtered);
     return `<button class="filter-pill${f.id === 'all' ? ' active' : ''}" data-filter="${f.id}" data-group="category-tool" onclick="setFilter('category-tool','${f.id}',this)" style="--fc:${f.color}">${esc(f.label)} <span class="pill-count">${count}</span></button>`;
   }).join('');
 
@@ -1074,6 +1271,18 @@ body { font-family: var(--font); font-size: 14px; color: var(--ink); background:
 
 /* ─── Performance Dashboard ─── */
 .perf-dashboard { padding: 0; }
+.perf-provenance {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 12px;
+  padding: 12px 24px; background: var(--surface-soft);
+  border-bottom: 1px solid var(--hairline); color: var(--body);
+  font-size: 13px; line-height: 1.5;
+}
+.perf-provenance strong { color: var(--ink); }
+.perf-provenance--fallback { border-left: 4px solid var(--error); }
+.perf-unavailable { margin: 0; padding: 24px; color: var(--body); font-size: 14px; }
+@media (forced-colors: active) {
+  .perf-provenance { border: 1px solid CanvasText; }
+}
 .device-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--hairline-soft); }
 .device-tab {
   flex: 1; padding: 16px 24px; font-size: 14px; font-weight: 500; color: var(--muted);
@@ -1159,6 +1368,43 @@ body { font-family: var(--font); font-size: 14px; color: var(--ink); background:
 .passed-item { border-top: none; padding: 4px 12px 4px 28px; }
 .passed-item .audit-title { color: var(--muted); font-weight: 400; }
 
+/* ─── Scanner Run Evidence ─── */
+.scanner-evidence { max-width: 1760px; margin: 0 auto; padding: 0 80px 32px; }
+.scanner-evidence > details { border: 1px solid var(--hairline); border-radius: var(--r-lg); background: var(--canvas); overflow: hidden; }
+.scanner-evidence summary {
+  min-height: 56px; padding: 0 20px; cursor: pointer; list-style: none;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  font-size: 14px; font-weight: 600;
+}
+.scanner-evidence summary::-webkit-details-marker { display: none; }
+.scanner-evidence summary:hover { background: var(--surface-soft); }
+.scanner-evidence summary:focus-visible { outline: 2px solid var(--ink); outline-offset: -3px; }
+.scanner-evidence-count {
+  color: var(--muted); background: var(--surface-soft); border: 1px solid var(--hairline-soft);
+  border-radius: var(--r-full); padding: 3px 9px; font-size: 12px;
+}
+.scanner-evidence-body { border-top: 1px solid var(--hairline-soft); padding: 20px; }
+.scanner-evidence-body > p { color: var(--muted); margin-bottom: 16px; }
+.scanner-run-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.scanner-run-card { border: 1px solid var(--hairline-soft); border-radius: var(--r-md); padding: 16px; min-width: 0; }
+.scanner-run-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.scanner-run-heading h3 { font-size: 14px; line-height: 1.3; }
+.scanner-run-heading p { color: var(--muted); font-size: 12px; margin-top: 3px; }
+.scanner-status { border-radius: var(--r-full); padding: 3px 8px; font-size: 11px; font-weight: 700; text-transform: capitalize; }
+.scanner-status--complete { color: #007003; background: #edf7ed; }
+.scanner-status--fallback { color: #6b4200; background: #fff4df; }
+.scanner-status--error { color: #a52e13; background: #fff0ec; }
+.scanner-status--skipped { color: #4a5568; background: #edf2f7; }
+.scanner-status--unknown { color: var(--body); background: var(--surface-strong); }
+.scanner-run-context { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; margin-bottom: 14px; }
+.scanner-run-context dt { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
+.scanner-run-context dd { color: var(--ink); font-size: 12px; margin-top: 2px; overflow-wrap: anywhere; }
+.scanner-run-metrics { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; }
+.scanner-run-metrics li {
+  color: var(--body); background: var(--surface-soft); border: 1px solid var(--hairline-soft);
+  border-radius: var(--r-full); padding: 4px 8px; font-size: 11px;
+}
+
 /* ─── Footer ─── */
 .site-footer {
   max-width: 1760px; margin: 0 auto; padding: 28px 80px;
@@ -1169,7 +1415,7 @@ body { font-family: var(--font); font-size: 14px; color: var(--ink); background:
 
 /* ─── Responsive ─── */
 @media (max-width: 1128px) {
-  .top-nav-inner, .hero, .filter-bar, .main-content, .site-footer { padding-left: 24px; padding-right: 24px; }
+  .top-nav-inner, .hero, .scanner-evidence, .filter-bar, .main-content, .site-footer { padding-left: 24px; padding-right: 24px; }
   .as-rule-layout { grid-template-columns: 1fr; }
   .as-rule-left { border-right: none; border-bottom: 1px solid var(--hairline-soft); }
   .as-rule-right { border-top: 1px solid var(--hairline-soft); }
@@ -1181,7 +1427,7 @@ body { font-family: var(--font); font-size: 14px; color: var(--ink); background:
   .hero { padding: 28px 16px 24px; }
   .hero-top { flex-direction: column; gap: 6px; align-items: flex-start; }
   .hero-title { font-size: 26px; }
-  .filter-bar, .main-content, .site-footer { padding-left: 16px; padding-right: 16px; }
+  .scanner-evidence, .filter-bar, .main-content, .site-footer { padding-left: 16px; padding-right: 16px; }
   .summary-row { grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .stat-card { padding: 14px 16px; }
   .stat-value { font-size: 26px; }
@@ -1250,6 +1496,8 @@ body { font-family: var(--font); font-size: 14px; color: var(--ink); background:
     ${toolCounts.map((t) => `<div class="stat-card"><span class="stat-value" style="color:${t.color}">${t.count}</span><span class="stat-label">${esc(t.label)}</span></div>`).join('')}
   </div>
 </header>
+
+${scannerRunEvidence}
 
 <div class="filter-bar">
   <div class="filter-row">

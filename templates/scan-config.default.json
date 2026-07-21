@@ -20,6 +20,12 @@
     "devArtifactTokens": ["{{", "}}", "{%", "%}"],
     "chatbotSelector": ".oliviaButton"
   },
+  "axe": {
+    "viewports": [
+      { "name": "desktop", "width": 1280, "height": 900 },
+      { "name": "mobile", "width": 390, "height": 844 }
+    ]
+  },
   "pages": [],
   "concurrency": 2,
   "thresholds": { "wcag": 0, "performance": 90, "bestPractices": 90 },

@@ -1,0 +1,399 @@
+{
+  "schemaVersion": "1.0.0",
+  "target": {
+    "name": "HIT-01 Homepage",
+    "url": "https://hitachi728.preview.sites.stg.paradox.ai/",
+    "pageState": "initial"
+  },
+  "baseline": {
+    "name": "HIT-01 Homepage — Manual Baseline R1",
+    "recordedDate": "2026-07-13",
+    "status": "historical-provisional",
+    "officialR2Evidence": false,
+    "limitations": [
+      "The manual baseline does not contain raw exports or stable element locators.",
+      "The manual and automated runs were not paired within 30 minutes.",
+      "The manual baseline does not record an exact viewport or all tool versions."
+    ]
+  },
+  "automatedEvidence": {
+    "producer": {
+      "name": "ada-scan",
+      "version": "1.0.1"
+    },
+    "captures": [
+      {
+        "generatedAt": "2026-07-15T07:46:57.418Z",
+        "layers": [
+          "axe",
+          "accessScan",
+          "w3c"
+        ],
+        "includeThirdParty": true
+      },
+      {
+        "generatedAt": "2026-07-15T07:57:53.433Z",
+        "layers": [
+          "lighthouse"
+        ],
+        "requestedSource": "psi-api",
+        "actualSource": "local-fallback"
+      }
+    ],
+    "scannerRuns": [
+      {
+        "layer": "axe",
+        "engine": {
+          "name": "axe-core",
+          "version": "4.12.1"
+        },
+        "viewport": {
+          "name": "desktop",
+          "width": 1280,
+          "height": 900
+        },
+        "pageState": "initial",
+        "status": "complete",
+        "raw": {
+          "issueGroups": 6,
+          "affectedNodes": 6,
+          "incomplete": 3
+        }
+      },
+      {
+        "layer": "axe",
+        "engine": {
+          "name": "axe-core",
+          "version": "4.12.1"
+        },
+        "viewport": {
+          "name": "mobile",
+          "width": 390,
+          "height": 844
+        },
+        "pageState": "initial",
+        "status": "complete",
+        "raw": {
+          "issueGroups": 7,
+          "affectedNodes": 7,
+          "incomplete": 3
+        }
+      },
+      {
+        "layer": "accessScan",
+        "engine": {
+          "name": "ada-scan accessScan",
+          "version": "1.0.1"
+        },
+        "viewport": {
+          "name": "desktop",
+          "width": 1280,
+          "height": 900
+        },
+        "pageState": "initial",
+        "status": "complete",
+        "raw": {
+          "ruleGroups": 19,
+          "findingOccurrences": 72,
+          "fixUnits": 72
+        }
+      },
+      {
+        "layer": "w3c",
+        "engine": {
+          "name": "Nu Html Checker",
+          "version": "26.7.15"
+        },
+        "viewport": null,
+        "pageState": "initial",
+        "status": "complete",
+        "raw": {
+          "messageCount": 35,
+          "errors": 21,
+          "warnings": 14,
+          "supplementalCandidates": 63,
+          "supplementalDuplicatesSuppressed": 13,
+          "actionableFixUnits": 30
+        }
+      },
+      {
+        "layer": "lighthouse",
+        "engine": {
+          "name": "Lighthouse",
+          "version": "13.4.0"
+        },
+        "viewport": {
+          "name": "mobile",
+          "width": 412,
+          "height": 823
+        },
+        "pageState": "initial",
+        "status": "fallback",
+        "raw": {
+          "accessibilityAudits": 76,
+          "accessibilityIssueGroups": 4,
+          "accessibilityNodes": 4,
+          "manualChecks": 10
+        }
+      },
+      {
+        "layer": "lighthouse",
+        "engine": {
+          "name": "Lighthouse",
+          "version": "13.4.0"
+        },
+        "viewport": {
+          "name": "desktop",
+          "width": 1350,
+          "height": 940
+        },
+        "pageState": "initial",
+        "status": "fallback",
+        "raw": {
+          "accessibilityAudits": 76,
+          "accessibilityIssueGroups": 3,
+          "accessibilityNodes": 3,
+          "manualChecks": 10
+        }
+      }
+    ]
+  },
+  "comparison": {
+    "axe": {
+      "classification": "detected",
+      "manual": {
+        "issueGroups": 7,
+        "critical": 2,
+        "moderate": 5
+      },
+      "automated": {
+        "issueGroups": 7,
+        "affectedNodes": 7,
+        "critical": 2,
+        "moderate": 5,
+        "ruleIds": [
+          "button-name",
+          "heading-order",
+          "landmark-main-is-top-level",
+          "landmark-no-duplicate-main",
+          "landmark-unique",
+          "meta-viewport",
+          "select-name"
+        ]
+      }
+    },
+    "accessScan": {
+      "manualFailedRuleCount": 10,
+      "automatedAllRuleGroups": 19,
+      "automatedAllFindingOccurrences": 72,
+      "baselineFindings": [
+        {
+          "manualFinding": "Strong should be tagged properly for assistive technology.",
+          "classification": "detected",
+          "automatedRuleIds": [
+            "StrongMismatch"
+          ],
+          "occurrences": 3
+        },
+        {
+          "manualFinding": "Tablists should be tagged for assistive technology.",
+          "classification": "state-dependent",
+          "automatedRuleIds": [
+            "TablistRole"
+          ],
+          "reason": "No tab-interface candidate was present in the reproducible initial DOM. Positive roleless-tab fixtures verify detector support."
+        },
+        {
+          "manualFinding": "Tab controls should be tagged for assistive technology.",
+          "classification": "state-dependent",
+          "automatedRuleIds": [
+            "TabMismatch"
+          ],
+          "reason": "No tab-interface candidate was present in the reproducible initial DOM. Positive roleless-tab fixtures verify detector support."
+        },
+        {
+          "manualFinding": "Tab panels should be tagged for assistive technology.",
+          "classification": "state-dependent",
+          "automatedRuleIds": [
+            "TabPanelMismatch"
+          ],
+          "reason": "No tab-interface candidate was present in the reproducible initial DOM. Positive roleless-tab fixtures verify detector support."
+        },
+        {
+          "manualFinding": "Breadcrumb navigation region should have a label.",
+          "classification": "state-dependent",
+          "automatedRuleIds": [
+            "BreadcrumbsMismatch"
+          ],
+          "reason": "No breadcrumb navigation region was present in the reproducible initial DOM and R1 provides no locator."
+        },
+        {
+          "manualFinding": "Focused elements should not be obscured by a sticky header.",
+          "classification": "detected",
+          "automatedRuleIds": [
+            "StickyHeaderObscuresFocus"
+          ],
+          "occurrences": 1
+        },
+        {
+          "manualFinding": "Aria labels should not override or replace visible text.",
+          "classification": "detected",
+          "automatedRuleIds": [
+            "VisibleTextPartOfAccessibleName"
+          ],
+          "occurrences": 3
+        },
+        {
+          "manualFinding": "An element without main content is tagged as a main landmark.",
+          "classification": "equivalent",
+          "automatedRuleIds": [
+            "RegionMainContentMisuse"
+          ],
+          "occurrences": 1
+        },
+        {
+          "manualFinding": "Each page should include at most one main landmark.",
+          "classification": "detected",
+          "automatedRuleIds": [
+            "RegionMainContentSingle"
+          ],
+          "occurrences": 1
+        },
+        {
+          "manualFinding": "Meta viewport should allow content scaling.",
+          "classification": "detected",
+          "automatedRuleIds": [
+            "MetaViewportScalable"
+          ],
+          "occurrences": 1
+        }
+      ]
+    },
+    "nuChecker": {
+      "classification": "detected",
+      "manual": {
+        "errors": 21,
+        "warnings": 14,
+        "total": 35
+      },
+      "automated": {
+        "raw": {
+          "errors": 21,
+          "warnings": 14,
+          "total": 35
+        },
+        "actionableFixUnits": 30,
+        "ruleFamilies": [
+          "w3c-nested-interactive",
+          "w3c-duplicate-id",
+          "w3c-main-landmark-structure",
+          "w3c-module-defer",
+          "w3c-heading-order",
+          "w3c-viewport-zoom",
+          "w3c-section-heading",
+          "w3c-script-type-unnecessary"
+        ]
+      }
+    },
+    "lighthouseAccessibility": {
+      "classification": "detected",
+      "automated": {
+        "source": "local-fallback",
+        "ruleIds": [
+          "button-name",
+          "heading-order",
+          "meta-viewport",
+          "select-name"
+        ],
+        "manualAuditCount": 10,
+        "note": "Actionable audit failures are normalized independently of performance opportunities. Local results are not PSI-comparable."
+      }
+    },
+    "psiMobile": {
+      "classification": "unsupported",
+      "manual": {
+        "performance": 72,
+        "accessibility": 84,
+        "bestPractices": 96,
+        "seo": 46
+      },
+      "automated": {
+        "requestedSource": "psi-api",
+        "actualSource": "local-fallback",
+        "localScores": {
+          "performance": 61,
+          "accessibility": 84,
+          "bestPractices": 92,
+          "seo": 46
+        },
+        "provenance": {
+          "comparableToPsi": false,
+          "fallbackReason": {
+            "code": "quota-exceeded",
+            "status": 429
+          }
+        }
+      }
+    }
+  },
+  "manualAndStateEvidence": {
+    "lighthouseManualAuditCountPerViewport": 10,
+    "axeIncompleteCountPerViewport": 3,
+    "stateDependentAccessScanFindings": [
+      "TablistRole",
+      "TabMismatch",
+      "TabPanelMismatch",
+      "BreadcrumbsMismatch"
+    ]
+  },
+  "resumeGate": {
+    "eligibleToStartScanReportV2": true,
+    "conditions": [
+      {
+        "id": "scanner-run-metadata",
+        "status": "pass",
+        "evidence": "All scanner runs preserve engine version, page state, viewport where applicable, status, and raw totals."
+      },
+      {
+        "id": "axe-lighthouse-normalization",
+        "status": "pass",
+        "evidence": "Axe and Lighthouse accessibility node failures are emitted as actionable findings with viewport evidence."
+      },
+      {
+        "id": "roleless-tab-detection",
+        "status": "pass",
+        "evidence": "Positive roleless-tab and negative accordion/listbox browser fixtures pass."
+      },
+      {
+        "id": "nu-raw-and-supplemental-accounting",
+        "status": "pass",
+        "evidence": "Nu raw totals, supplemental candidates, additions, and suppressions are recorded separately."
+      },
+      {
+        "id": "stable-nu-rule-families",
+        "status": "pass",
+        "evidence": "Duplicate IDs, nested interactive elements, and main-landmark structure use specific native rule IDs."
+      },
+      {
+        "id": "psi-provenance",
+        "status": "pass",
+        "evidence": "Quota fallback is sanitized and explicitly marked not PSI-comparable."
+      },
+      {
+        "id": "manual-and-state-representation",
+        "status": "pass",
+        "evidence": "Manual Lighthouse audits, axe incomplete totals, and state-dependent accessScan findings remain explicit."
+      },
+      {
+        "id": "complete-r1-classification",
+        "status": "pass",
+        "evidence": "Every R1 baseline finding is classified as detected, equivalent, state-dependent, manual-only, unsupported, or a confirmed scanner defect."
+      }
+    ],
+    "limitations": [
+      "This closes the design-plan R1 resume gate only; it is not official R2 benchmark evidence.",
+      "A new paired R2 run with raw manual exports is still required for release-level parity claims.",
+      "PSI remains unverified in the automated capture because the API quota was exhausted."
+    ]
+  }
+}

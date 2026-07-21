@@ -1,0 +1,18 @@
+{
+  "profile": "standards",
+  "route": "/",
+  "pageState": "initial",
+  "viewport": { "width": 1280, "height": 900 },
+  "findings": [
+    {
+      "ruleId": "ListEmpty",
+      "canonicalRuleId": "ListEmpty",
+      "violationType": "confirmed",
+      "evidence": { "checkId": "lists:list-empty" },
+      "element": {
+        "selector": "main > ul:nth-of-type(1)",
+        "outerHTML": "<ul data-brand=\"mcdonald\"></ul>"
+      }
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "meta": {
+    "provenance": "bruno-derived",
+    "source": "get-models.bru",
+    "note": "Bruno sends bypass_auth=true and an empty model query param (model= with no value)."
+  },
+  "request": {
+    "method": "GET",
+    "path": "/ml/inference/cis/v1alpha1/models",
+    "query": {
+      "bypass_auth": "true",
+      "model": ""
+    },
+    "headers": {
+      "Wd-PCA-Feature-Key": "<redacted-feature-key>"
+    }
+  }
+}

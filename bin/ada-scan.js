@@ -10,6 +10,16 @@ async function run() {
     await runInit(process.argv.slice(3));
     return;
   }
+  if (subcommand === 'fix') {
+    const { runFixSubcommand } = await import('../src/index.js');
+    await runFixSubcommand(process.argv.slice(3));
+    return;
+  }
+  if (subcommand === 'demo') {
+    const { runDemoSubcommand } = await import('../src/index.js');
+    await runDemoSubcommand(process.argv.slice(3));
+    return;
+  }
   const { runCli } = await import('../src/index.js');
   await runCli();
 }

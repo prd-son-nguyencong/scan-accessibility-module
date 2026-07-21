@@ -14,6 +14,11 @@ try {
   /* .env support unavailable — env vars from the shell still apply */
 }
 
+export const DEFAULT_AXE_VIEWPORTS = Object.freeze([
+  { name: 'desktop', width: 1280, height: 900 },
+  { name: 'mobile', width: 390, height: 844 },
+]);
+
 export const DEFAULT_CONFIG = {
   baseUrl: 'http://localhost:1234',
   devCommand: 'pnpm dev',
@@ -35,6 +40,9 @@ export const DEFAULT_CONFIG = {
     selectors: ['.d3afa4', '._72cec8', '.apply-', '[data-testid^="olivia"]'],
     devArtifactTokens: ['{{', '}}', '{%', '%}'],
     chatbotSelector: '.oliviaButton',
+  },
+  axe: {
+    viewports: structuredClone(DEFAULT_AXE_VIEWPORTS),
   },
   pages: [],
   concurrency: 2,

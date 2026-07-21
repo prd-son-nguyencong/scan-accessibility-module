@@ -1,0 +1,38 @@
+/** @typedef {typeof ATTESTATION_REASONS extends Set<infer T> ? T : never} AttestationReason */
+
+export const ATTESTATION_REASONS = Object.freeze(new Set([
+  'LOCAL_SOURCE_REQUIRED',
+  'MISSING_BUILD_REVISION',
+  'MALFORMED_BUILD_REVISION',
+  'BUILD_REVISION_DIRTY',
+  'BUILD_REVISION_MISMATCH',
+  'BUILD_REVISION_INCONSISTENT',
+  'MISSING_INSTRUMENTATION_DIGEST',
+  'MALFORMED_INSTRUMENTATION_DIGEST',
+  'INSTRUMENTATION_DIGEST_MISMATCH',
+  'INSTRUMENTATION_DIGEST_INCONSISTENT',
+  'MISSING_DEPLOYMENT_URL',
+  'MALFORMED_DEPLOYMENT_URL',
+  'DEPLOYMENT_URL_MISMATCH',
+  'DEPLOYMENT_URL_INCONSISTENT',
+  'DUPLICATE_META',
+  'PAGE_ATTESTATION_UNAVAILABLE',
+  'LOCAL_ATTESTATION_MISSING',
+  'ATTESTATION_SIDECAR_STALE',
+  'MALFORMED_ATTESTATION',
+  'MALFORMED_MANIFEST',
+  'MALFORMED_CONFIG',
+  'PATH_TRAVERSAL',
+  'REMOTE_ATTESTATION_INVALID',
+]));
+
+export function sanitizeAttestationReason(reason) {
+  if (reason == null || reason === '') return null;
+  const normalized = String(reason);
+  if (ATTESTATION_REASONS.has(normalized)) return normalized;
+  return 'REMOTE_ATTESTATION_INVALID';
+}
+
+export function isKnownAttestationReason(reason) {
+  return reason != null && ATTESTATION_REASONS.has(String(reason));
+}

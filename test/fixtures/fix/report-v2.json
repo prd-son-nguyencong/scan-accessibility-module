@@ -1,0 +1,234 @@
+{
+  "context": {
+    "generatedAt": "2026-07-15T00:00:00.000Z",
+    "producer": {
+      "name": "ada-scan",
+      "version": "1.0.1",
+      "nodeVersion": "20.18.1"
+    },
+    "target": {
+      "mode": "hybrid",
+      "url": "https://example.test/",
+      "buildRevision": "git:abc123def4567890123456789012345678901234",
+      "instrumentationDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "deploymentUrl": "https://example.test",
+      "attestationStatus": "complete",
+      "attestationReason": null
+    }
+  },
+  "scanResults": [
+    {
+      "page": "homepage",
+      "url": "https://example.test/",
+      "violations": [
+        {
+          "id": "runtime-axe",
+          "ruleId": "select-name",
+          "layer": "axe",
+          "category": "accessibility",
+          "wcagRef": "wcag2a",
+          "impact": "critical",
+          "priority": 1,
+          "count": 1,
+          "foundAt": "2026-07-15T00:01:00.000Z",
+          "element": {
+            "outerHTML": "<select id=\"sort-select\"></select>",
+            "selector": "#sort-select",
+            "scanId": "jobs/sort"
+          },
+          "source": {
+            "mode": "url",
+            "file": "src/partials/jobs/sort.liquid",
+            "line": 12,
+            "snippet": "jobs/sort",
+            "url": "https://example.test/",
+            "confidence": "high",
+            "method": "instrumentation-manifest",
+            "preimageSha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "fix": {
+            "deterministic": false,
+            "hint": "Select element must have an accessible name.",
+            "patch": null
+          },
+          "evidence": {
+            "tags": [
+              "wcag2a"
+            ],
+            "viewports": [
+              {
+                "name": "mobile",
+                "width": 390,
+                "height": 844
+              }
+            ]
+          }
+        },
+        {
+          "id": "runtime-lighthouse",
+          "ruleId": "select-name",
+          "layer": "lighthouse",
+          "category": "accessibility",
+          "wcagRef": null,
+          "impact": "moderate",
+          "priority": 3,
+          "count": 1,
+          "foundAt": "2026-07-15T00:02:00.000Z",
+          "element": {
+            "outerHTML": "<select id=\"sort-select\"></select>",
+            "selector": "#sort-select",
+            "scanId": null
+          },
+          "source": {
+            "mode": "url",
+            "file": "src/partials/jobs/sort.liquid",
+            "line": 12,
+            "snippet": "jobs/sort",
+            "url": "https://example.test/",
+            "confidence": "high",
+            "method": "instrumentation-manifest",
+            "preimageSha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "fix": {
+            "deterministic": false,
+            "hint": "Select elements do not have associated label elements.",
+            "patch": null
+          },
+          "evidence": {
+            "audit": {
+              "score": 0,
+              "weight": 10
+            },
+            "viewports": [
+              {
+                "name": "desktop",
+                "width": 1350,
+                "height": 940
+              }
+            ]
+          }
+        },
+        {
+          "id": "runtime-w3c",
+          "ruleId": "w3c-duplicate-id",
+          "layer": "w3c",
+          "category": "markup",
+          "wcagRef": "WCAG 4.1.1",
+          "impact": "serious",
+          "priority": 2,
+          "count": 2,
+          "foundAt": "2026-07-15T00:03:00.000Z",
+          "element": {
+            "outerHTML": "<div id=\"duplicate\"></div>",
+            "selector": "#duplicate",
+            "scanId": null
+          },
+          "source": {
+            "mode": "url",
+            "file": "src/pages/index.liquid",
+            "line": 30,
+            "snippet": null,
+            "url": "https://example.test/",
+            "confidence": "medium",
+            "method": "rendered-line",
+            "preimageSha256": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "fix": {
+            "deterministic": false,
+            "hint": "Duplicate ID \"duplicate\".",
+            "patch": null
+          }
+        }
+      ],
+      "scannerRuns": [
+        {
+          "layer": "axe",
+          "engine": {
+            "name": "axe-core",
+            "version": "4.12.1"
+          },
+          "viewport": {
+            "name": "mobile",
+            "width": 390,
+            "height": 844
+          },
+          "pageState": "initial",
+          "status": "complete",
+          "evidence": {
+            "issueGroups": 1,
+            "affectedNodes": 1,
+            "incomplete": 0
+          }
+        },
+        {
+          "layer": "lighthouse",
+          "engine": {
+            "name": "Lighthouse",
+            "version": "13.4.0"
+          },
+          "viewport": {
+            "name": "desktop",
+            "width": 1350,
+            "height": 940
+          },
+          "pageState": "initial",
+          "status": "complete",
+          "source": "psi-api",
+          "provenance": {
+            "requestedSource": "psi-api",
+            "actualSource": "psi-api",
+            "comparableToPsi": true,
+            "fallbackReason": null
+          },
+          "evidence": {
+            "scores": {
+              "performance": 72,
+              "accessibility": 84
+            }
+          }
+        }
+      ],
+      "lighthouseScores": {
+        "homepage": {
+          "scores": {
+            "performance": 72,
+            "accessibility": 84
+          },
+          "source": "psi-api",
+          "provenance": {
+            "requestedSource": "psi-api",
+            "actualSource": "psi-api",
+            "comparableToPsi": true,
+            "fallbackReason": null
+          }
+        }
+      },
+      "axeSummary": {
+        "totalIssueGroups": 1,
+        "automaticIssues": 1,
+        "affectedNodes": 1,
+        "incompleteCount": 0,
+        "impact": {
+          "critical": 1,
+          "serious": 0,
+          "moderate": 0,
+          "minor": 0
+        },
+        "viewports": [
+          {
+            "name": "mobile",
+            "width": 390,
+            "height": 844
+          }
+        ],
+        "tags": [
+          "wcag2a"
+        ],
+        "testEngine": {
+          "name": "axe-core",
+          "version": "4.12.1"
+        }
+      }
+    }
+  ]
+}
