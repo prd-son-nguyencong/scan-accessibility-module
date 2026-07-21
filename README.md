@@ -16,7 +16,7 @@ deterministic rules or six AI/IDE fix modes.
 ## Install
 
 ```bash
-pnpm add -D git+https://<your-git-host>/ada-scan.git#v1.0.1
+pnpm add -D git+https://<your-git-host>/ada-scan.git#v1.1.0
 npx ada-scan init
 ```
 

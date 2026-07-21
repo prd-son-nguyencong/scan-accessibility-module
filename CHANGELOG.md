@@ -9,6 +9,8 @@ comparable across upgrades.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-21
+
 ### Added
 - Publish `ScanReportV2` as `scan-reports/latest.json` with stable SHA-256 finding
   and report identities, scanner-run evidence, source tracing confidence and
@@ -27,6 +29,16 @@ comparable across upgrades.
 - Add executable safety, quality, and operational PoC gates backed by real source
   tracing, production scanner closure, shadow builds, persisted telemetry/audit,
   timeout cleanup, and HTTP workflow tests.
+- Add accessScan commercial-parity corpus tooling (`corpus:capture` / `seed` /
+  `verify` / `drift`) with fixture cases and `scripts/scrape-accessscan-dom.mjs`
+  for live oracle scrapes.
+- Add `--no-hydrate-jobs` to block jobs/chat bundles and strip mounts when
+  comparing local shells to staging without third-party hydrate.
+- Commercial parity now emits nested jobs-chrome `RegionMainContentMisuse` via
+  additive `parity:region-main-misuse` (reuses landmark-graph `region-main-misuse`).
+- Nu HTML Checker classifies the three distinct `main` landmark errors as
+  `w3c-main-in-section`, `w3c-main-nested`, and `w3c-multiple-main` so
+  scan-visual Serious counts match the Nu error total.
 
 ### Changed
 - Legacy HTML, ROI, console, and fixer consumers now use a pure V1 compatibility
@@ -92,6 +104,10 @@ comparable across upgrades.
   literal string `"null"`.
 - CIS is advisory-only in the trusted path. Accept records a decision; source
   mutation requires separately verified candidate/diff hashes and explicit Apply.
+- `scan-visual.html` Serious / Total / layer pills sum occurrence counts (including
+  `count > 1`), matching Nu Html Checker and accessScan oracle totals.
+- Nu dedupe keeps distinct validator messages on the same extract/line so multiple
+  `main` errors are not collapsed into a single card.
 
 ### Deprecated
 - `AriaLabelledbyContentMismatch` is no longer emitted. Its valid Label in Name
