@@ -36,16 +36,33 @@ export default defineConfig({
 ## Usage
 
 ```bash
-pnpm scan                      # all pages (local instrumented build + tracing)
-pnpm scan --page /jobs         # single page
-pnpm scan --changed-only       # only pages with modified .liquid files
-npx ada-scan --url https://…   # scan a live URL (no build/config needed)
-npx ada-scan --url https://… --exclude-third-party # opt out of remote widget findings
-npx ada-scan --url https://… --no-hydrate-jobs     # block jobs/chat bundles + strip mounts (implies exclude-third-party)
-pnpm scan:fix                  # scan + interactive terminal fix (claude default)
-pnpm scan:fix:cursor           # write fix context for Cursor / VS Code / Windsurf
-pnpm scan:baseline             # save ROI baseline
-pnpm scan:report               # regenerate reports from last scan
+cd ada-scan
+
+# toàn bộ pages (local instrumented build + tracing)
+npx ada-scan --all --include-third-party --psi --verbose --no-fail
+
+# 1 page
+npx ada-scan --page / --include-third-party --psi --verbose --no-fail
+
+# local URL (sau khi site chạy / tool tự build)
+npx ada-scan --url "http://localhost:1234/" --include-third-party --psi --verbose --no-fail
+
+# Staging shell-only (không hydrate jobs/chat) — so sánh crawl / local shell
+npx ada-scan --url "https://hitachi728.preview.sites.stg.paradox.ai/" \
+  --no-hydrate-jobs --psi --verbose --no-fail
+
+# Local shell-only (không hydrate jobs/chat)
+npx ada-scan --page / --no-hydrate-jobs --psi --verbose --no-fail
+
+# Shortcuts / other modes
+pnpm scan                      # all pages via host package scripts
+pnpm scan --page /jobs
+pnpm scan --changed-only
+npx ada-scan --url https://… --exclude-third-party
+pnpm scan:fix
+pnpm scan:fix:cursor
+pnpm scan:baseline
+pnpm scan:report
 ```
 
 `init` and `fix` are subcommands. Normal scans use flags passed straight through
@@ -55,6 +72,42 @@ whole-page scanners. Local scans still require `--include-third-party`.
 Use `--no-hydrate-jobs` when comparing local Vite shells to staging without
 jobs/search/chat hydration (blocks widget bundles, strips leftover mounts, and
 turns off accessScan scroll activation; also implies exclude-third-party).
+
+## Oracle parity / crawl compare (copy-paste)
+
+Run from `ada-scan/` when diffing against accessiBe accessScan or W3C Nu Html
+Checker. Replace the URL with the staging page under test.
+
+```bash
+cd ada-scan
+
+# 1) Crawl accessScan oracle (get-scan-details + DOM) — authoritative occurrence counts
+node scripts/scrape-accessscan-dom.mjs \
+  --url "https://hitachi728.preview.sites.stg.paradox.ai/" \
+  --out docs/accessscan-hitachi-dom-scrape-demo.json
+
+# 2) Commercial-parity accessScan (jobs/chat hydrate on)
+npx ada-scan --url "https://hitachi728.preview.sites.stg.paradox.ai/" \
+  --layers accessScan --include-third-party --psi --verbose --no-fail
+
+# 3) Nu Html Checker (errors + warnings)
+npx ada-scan --url "https://hitachi728.preview.sites.stg.paradox.ai/" \
+  --layers w3c --include-third-party --psi --verbose --no-fail
+
+# 4) Optional: accessScan + axe
+npx ada-scan --url "https://hitachi728.preview.sites.stg.paradox.ai/" \
+  --layers axe,accessScan --include-third-party --psi --verbose --no-fail
+
+# 5) Staging shell-only (no jobs/chat hydrate) — khớp local --no-hydrate-jobs
+npx ada-scan --url "https://hitachi728.preview.sites.stg.paradox.ai/" \
+  --layers accessScan --no-hydrate-jobs --psi --verbose --no-fail
+```
+
+Reports: `scan-reports/latest.json`, `scan-reports/scan-visual.html`. Diff oracle
+`api.byCategory.*.failures` against V2 finding `count` sums (aliases:
+`FocusNotObscuredHeader` ↔ `StickyHeaderObscuresFocus`, `TabListMisMatch` ↔
+`TablistRole`, `PageMetaViewportValid` ↔ `MetaViewportScalable`). Playbook:
+[docs/accessscan-parity-playbook.md](./docs/accessscan-parity-playbook.md).
 
 ## Trusted CIS review workflow
 
