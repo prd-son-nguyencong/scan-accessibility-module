@@ -30,6 +30,8 @@ import {
   BENCHMARK_MISSING_METRIC,
   rehydrateBenchmarkScore,
 } from '../../src/fix/eval/model-selection.js';
+import { createCisTransportFromConfig, resolveCisConfig } from '../../src/fix/cis/config.js';
+import { insecureDevEnv } from './helpers/cis-ca-fixture.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT_PATH = path.join(__dirname, '../../scripts/cis-benchmark.js');
@@ -88,7 +90,7 @@ function minimalReport(reportId = 'sha256:benchmark-test') {
 test('cis-benchmark script is import-safe and loads host env via config module', async () => {
   const source = readSource(SCRIPT_PATH, 'utf8');
   assert.match(source, /['"]\.\.\/src\/utils\/config\.js['"]/);
-  assert.match(source, /resolveTrustedCisConfig/);
+  assert.match(source, /resolveCisConfig/);
   assert.match(source, /requireModel:\s*false/);
   assert.match(source, /runCisBenchmarkCli/);
   assert.match(source, /runCisModelBenchmark/);
@@ -873,4 +875,19 @@ test('runCisModelBenchmark cross-model cannot_fix becomes unnecessary only when 
   assert.equal(result.ranking[1].modelId, 'model-a');
   assert.equal(result.ranking[1].verifiedResolutionRate, 0);
   assert.equal(result.ranking[1].unnecessaryCannotFixCount, 1);
+});
+
+test('runCisBenchmarkCli uses insecure-dev config factory and exposes transportSecurity label', async () => {
+  const config = resolveCisConfig(insecureDevEnv(), { requireModel: false });
+  assert.equal(config.ok, true);
+  assert.equal(config.transportSecurity, 'insecure-dev');
+
+  const bundle = createCisTransportFromConfig(config);
+  assert.equal(bundle.model, 'anthropic.claude-sonnet-5');
+  const transport = await bundle.importTransport();
+  try {
+    assert.equal(transport.transportSecurity, 'insecure-dev');
+  } finally {
+    await transport.close();
+  }
 });

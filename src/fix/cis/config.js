@@ -111,7 +111,7 @@ export function createCisTransportFromConfig(config, fetchImpl = globalThis.fetc
 
 export function createCisTransportFromTrustedConfig(config, fetchImpl = globalThis.fetch) {
   if (!config?.ok) return null;
-  if (config.transportSecurity === 'insecure-dev' || !config.caPem) return null;
+  if (config.transportSecurity === 'insecure-dev' || !config.caPem || config.devBypassAuth === true) return null;
   return createTrustedTransportBundle(config, fetchImpl);
 }
 
@@ -120,6 +120,7 @@ export function createCisTransportFromTrustedConfig(config, fetchImpl = globalTh
  * @param {typeof fetch} fetchImpl
  */
 function createTrustedTransportBundle(config, fetchImpl) {
+  if (config.devBypassAuth === true) return null;
   return {
     async importTransport() {
       const [{ createCisTransport }, { Agent, fetch: undiciFetch }] = await Promise.all([
@@ -142,7 +143,7 @@ function createTrustedTransportBundle(config, fetchImpl) {
         ownsDispatcher: true,
         fetch: undiciFetch,
         transportSecurity: 'trusted',
-        devBypassAuth: config.devBypassAuth === true,
+        devBypassAuth: false,
       });
     },
     model: config.model,

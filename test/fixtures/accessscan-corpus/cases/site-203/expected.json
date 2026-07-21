@@ -1,0 +1,360 @@
+{
+  "schemaVersion": "1.0.0",
+  "profile": "commercial-parity",
+  "findings": [
+    {
+      "ruleId": "VisibilityMisuse",
+      "canonicalRuleId": "VisibilityMisuse",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:structural-visibility-misuse",
+        "structuralPattern": "empty-custom-element-host"
+      },
+      "element": {
+        "semantic": {
+          "tag": "apply-widget",
+          "role": null,
+          "attributes": {},
+          "landmarkPath": [
+            "main",
+            "section[slice-0]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "IconDiscernible",
+      "canonicalRuleId": "IconDiscernible",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:symbol-icon-discernible",
+        "structuralPattern": "rendered-unnamed-svg-icon"
+      },
+      "element": {
+        "semantic": {
+          "tag": "svg",
+          "role": null,
+          "attributes": {},
+          "landmarkPath": [
+            "main",
+            "section[slice-3]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "IconDiscernible",
+      "canonicalRuleId": "IconDiscernible",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:symbol-icon-discernible",
+        "structuralPattern": "rendered-unnamed-svg-icon"
+      },
+      "element": {
+        "semantic": {
+          "tag": "svg",
+          "role": null,
+          "attributes": {},
+          "landmarkPath": [
+            "main",
+            "section[slice-4]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "ImageMisuse",
+      "canonicalRuleId": "ImageMisuse",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:symbol-image-role",
+        "structuralPattern": "named-inline-symbol-with-image-role"
+      },
+      "element": {
+        "semantic": {
+          "tag": "svg",
+          "role": "neutral-text-0-763f13bf",
+          "attributes": {
+            "aria-label": "neutral-aria-label-0-391dd330",
+            "role": "neutral-text-0-763f13bf"
+          },
+          "landmarkPath": [
+            "main",
+            "section[slice-5]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "ImageMisuse",
+      "canonicalRuleId": "ImageMisuse",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:symbol-image-role",
+        "structuralPattern": "named-inline-symbol-with-image-role"
+      },
+      "element": {
+        "semantic": {
+          "tag": "svg",
+          "role": "neutral-text-0-763f13bf",
+          "attributes": {
+            "aria-label": "neutral-aria-label-0-61e089e2",
+            "role": "neutral-text-0-763f13bf"
+          },
+          "landmarkPath": [
+            "main",
+            "section[slice-6]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "ImageMisuse",
+      "canonicalRuleId": "ImageMisuse",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:symbol-image-role",
+        "structuralPattern": "named-inline-symbol-with-image-role"
+      },
+      "element": {
+        "semantic": {
+          "tag": "svg",
+          "role": "neutral-text-0-763f13bf",
+          "attributes": {
+            "aria-label": "neutral-aria-label-0-50fdd00d",
+            "role": "neutral-text-0-763f13bf"
+          },
+          "landmarkPath": [
+            "main",
+            "section[slice-7]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "ImageMisuse",
+      "canonicalRuleId": "ImageMisuse",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:symbol-image-role",
+        "structuralPattern": "named-inline-symbol-with-image-role"
+      },
+      "element": {
+        "semantic": {
+          "tag": "svg",
+          "role": "neutral-text-0-763f13bf",
+          "attributes": {
+            "aria-label": "neutral-aria-label-0-7e10134f",
+            "role": "neutral-text-0-763f13bf"
+          },
+          "landmarkPath": [
+            "main",
+            "section[slice-8]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "ImageMisuse",
+      "canonicalRuleId": "ImageMisuse",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:symbol-image-role",
+        "structuralPattern": "named-inline-symbol-with-image-role"
+      },
+      "element": {
+        "semantic": {
+          "tag": "svg",
+          "role": "neutral-text-0-763f13bf",
+          "attributes": {
+            "aria-label": "neutral-aria-label-0-01090387",
+            "role": "neutral-text-0-763f13bf"
+          },
+          "landmarkPath": [
+            "main",
+            "section[slice-9]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "ImageMisuse",
+      "canonicalRuleId": "ImageMisuse",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:symbol-image-role",
+        "structuralPattern": "named-inline-symbol-with-image-role"
+      },
+      "element": {
+        "semantic": {
+          "tag": "svg",
+          "role": "neutral-text-0-763f13bf",
+          "attributes": {
+            "aria-label": "neutral-aria-label-0-47f542cf",
+            "role": "neutral-text-0-763f13bf"
+          },
+          "landmarkPath": [
+            "main",
+            "section[slice-10]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "ImageMisuse",
+      "canonicalRuleId": "ImageMisuse",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:symbol-image-role",
+        "structuralPattern": "named-inline-symbol-with-image-role"
+      },
+      "element": {
+        "semantic": {
+          "tag": "svg",
+          "role": "neutral-text-0-763f13bf",
+          "attributes": {
+            "aria-label": "neutral-aria-label-0-94449166",
+            "role": "neutral-text-0-763f13bf"
+          },
+          "landmarkPath": [
+            "main",
+            "section[slice-11]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "ImageMisuse",
+      "canonicalRuleId": "ImageMisuse",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:symbol-image-role",
+        "structuralPattern": "named-inline-symbol-with-image-role"
+      },
+      "element": {
+        "semantic": {
+          "tag": "svg",
+          "role": "neutral-text-0-763f13bf",
+          "attributes": {
+            "aria-label": "neutral-aria-label-0-18447ba0",
+            "role": "neutral-text-0-763f13bf"
+          },
+          "landmarkPath": [
+            "main",
+            "section[slice-12]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "ImageMisuse",
+      "canonicalRuleId": "ImageMisuse",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:symbol-image-role",
+        "structuralPattern": "named-inline-symbol-with-image-role"
+      },
+      "element": {
+        "semantic": {
+          "tag": "svg",
+          "role": "neutral-text-0-763f13bf",
+          "attributes": {
+            "aria-label": "neutral-aria-label-0-fa627f45",
+            "role": "neutral-text-0-763f13bf"
+          },
+          "landmarkPath": [
+            "main",
+            "section[slice-13]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "ImageMisuse",
+      "canonicalRuleId": "ImageMisuse",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:symbol-image-role",
+        "structuralPattern": "named-inline-symbol-with-image-role"
+      },
+      "element": {
+        "semantic": {
+          "tag": "svg",
+          "role": "neutral-text-0-763f13bf",
+          "attributes": {
+            "aria-label": "neutral-aria-label-0-d791a10f",
+            "role": "neutral-text-0-763f13bf"
+          },
+          "landmarkPath": [
+            "main",
+            "section[slice-14]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "VisibleTextPartOfAccessibleName",
+      "canonicalRuleId": "VisibleTextPartOfAccessibleName",
+      "violationType": "potential",
+      "evidence": {
+        "checkId": "aria:visible-text-part-of-accessible-name"
+      },
+      "element": {
+        "semantic": {
+          "tag": "a",
+          "role": null,
+          "attributes": {
+            "aria-label": "neutral-aria-label-0-e5a0d916",
+            "href": "/neutral-text-0-aac3ef75"
+          },
+          "landmarkPath": [
+            "main",
+            "section[slice-2]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    }
+  ]
+}

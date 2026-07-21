@@ -57,3 +57,26 @@ test('mixed partition preserves each unit exactly once', () => {
   assert.equal(seen.size, 3);
   assert.deepEqual([...seen].sort(), ['u-manual', 'u-performance', 'u-safe']);
 });
+
+test('header LinkOpensNewWindow and LinkCurrentPage units are proposable semantic assistance', () => {
+  const units = [
+    unit('u-link-opens-new-window', {
+      canonicalRuleId: 'LinkOpensNewWindow',
+      sourceOwner: { file: 'src/partials/layout/header.liquid', line: 7, preimageSha256: 'sha256:a' },
+    }),
+    unit('u-link-current-page', {
+      canonicalRuleId: 'LinkCurrentPage',
+      sourceOwner: { file: 'src/partials/layout/header.liquid', line: 22, preimageSha256: 'sha256:b' },
+    }),
+  ];
+  const { proposable, blocked, routed } = partitionProposableUnits(units);
+  assert.equal(proposable.length, 2);
+  assert.equal(blocked.length, 0);
+  assert.equal(routed[0].decision.policy, POLICIES.SEMANTIC_ASSISTANCE);
+  assert.equal(routed[0].proposalAllowed, true);
+  assert.equal(routed[1].decision.policy, POLICIES.SEMANTIC_ASSISTANCE);
+  assert.equal(routed[1].proposalAllowed, true);
+  assert.deepEqual(routed[0].decision.requiredManualChecks, [
+    'Confirm the assistive technology announcement matches the intended accessible name or label.',
+  ]);
+});

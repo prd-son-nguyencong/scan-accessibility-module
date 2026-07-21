@@ -7,14 +7,24 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.1.1' },
     severity: { impact: 'serious', priority: 2 },
     automation: 'deterministic',
-    checks: [{
-      id: 'graphics:image-discernible',
-      profiles: ['standards'],
-      evaluator: 'graphics',
-      target: { selector: 'img' },
-      options: { mode: 'image-discernible' },
-      classification: 'confirmed',
-    }],
+    checks: [
+      {
+        id: 'graphics:image-discernible',
+        profiles: ['standards', 'commercial-parity'],
+        evaluator: 'graphics',
+        target: { selector: 'img' },
+        options: { mode: 'image-discernible' },
+        classification: 'confirmed',
+      },
+      {
+        id: 'parity:svg-image-discernible',
+        profiles: ['commercial-parity'],
+        evaluator: 'graphics',
+        target: { selector: 'svg[role="img"]' },
+        options: { mode: 'svg-image-discernible-parity' },
+        classification: 'commercial-parity',
+      },
+    ],
     reporting: {
       title: 'Functional images should have a text alternative',
       requirement: 'Images require a text alternative when the image conveys meaningful content or serves a functional purpose.',
@@ -87,7 +97,7 @@ export default [
       {
         id: 'graphics:icon-discernible',
         profiles: ['standards'],
-        evaluator: 'graphics',
+        evaluator: 'standards-signal',
         target: { selector: 'svg[role="img"]' },
         options: { mode: 'icon-discernible' },
         classification: 'potential',
@@ -104,7 +114,7 @@ export default [
     ],
     reporting: {
       title: 'Meaningful icons should have a label, while decorative icons should be hidden',
-      requirement: 'Smaller graphics used as decorative or complementary elements that do not provide additional information will often add unnecessary clutter.',
+      requirement: 'Smaller graphics used as decorative or complementary elements, such as icons, and that do not provide additional information will often add unnecessary clutter to a screen reader user\'s browsing experience. This makes it harder for users to focus on the main content and understand the purpose of the page.',
       recommendation: 'Add aria-hidden="true" to decorative SVGs, or aria-label for meaningful icons.',
     },
     fix: { deterministic: false, policy: 'manual_only' },

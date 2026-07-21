@@ -6,7 +6,7 @@ import { readSecureFileBytes, resolveSecureSourceFile } from '../candidate/path.
 import { buildSourcePreimage, buildSourcePreimageRange } from '../../tracer/preimage.js';
 import { lookupPolicyDecision } from '../policy/registry.js';
 import { runCisAdvisory } from '../cis/advisory.js';
-import { resolveTrustedCisConfig } from '../cis/config.js';
+import { resolveCisConfig, resolveTrustedCisConfig } from '../cis/config.js';
 import { appendCisTelemetryRecord, sanitizeCisTelemetryRecord } from '../cis/telemetry.js';
 import { CIS_VALIDATION_LIMITS } from '../cis/limits.js';
 
@@ -92,7 +92,7 @@ export async function runTrustedProposal({
     throw new ProposalOrchestratorError('POLICY_BLOCKED', 'Policy blocks proposal generation for this unit.');
   }
 
-  const cisConfig = resolveTrustedCisConfig(env);
+  const cisConfig = resolveCisConfig(env);
   if (!transport) {
     if (!cisConfig.ok) {
       return { ok: false, reason: cisConfig.reason, message: cisConfig.message };
@@ -146,11 +146,6 @@ export async function runTrustedProposal({
       tokens: { prompt: promptTokens || null, completion: completionTokens || null, total: totalTokens || null },
     });
     appendCisTelemetryRecord(reviewState.sessionDir, telemetry);
-    reviewState.recordAuditEvent({
-      type: 'proposal_failed',
-      fixUnitId,
-      reasonCode: error.code || 'ADVISORY_FAILED',
-    });
     throw error;
   }
 
@@ -220,4 +215,4 @@ export async function runTrustedProposal({
   };
 }
 
-export { resolveTrustedCisConfig };
+export { resolveCisConfig, resolveTrustedCisConfig };

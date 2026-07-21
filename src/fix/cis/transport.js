@@ -17,7 +17,10 @@ export class CisTransportError extends Error {
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
 const ALLOWED_MESSAGE_ROLES = new Set(['system', 'user', 'assistant']);
+/** Canonical selectable chat model IDs — no pipe composite registry entries. */
 const MODEL_ID_PATTERN = /^[a-z0-9][a-z0-9._:-]{0,199}$/i;
+/** Bounded pipe-composite registry rows returned by live inventory; skipped, never selectable. */
+export const COMPOSITE_INVENTORY_ID_PATTERN = /^[a-z0-9][a-z0-9._:-]{0,98}\|[a-z0-9][a-z0-9._:-]{0,98}$/i;
 const TLS_ERROR_CODES = new Set([
   'SELF_SIGNED_CERT_IN_CHAIN',
   'DEPTH_ZERO_SELF_SIGNED_CERT',
@@ -140,6 +143,39 @@ function extractModelInventoryRowId(row) {
 }
 
 /**
+ * @param {string | null | undefined} contentTypeHeader
+ */
+function isJsonContentType(contentTypeHeader) {
+  const mediaType = String(contentTypeHeader ?? '').split(';', 1)[0].trim().toLowerCase();
+  return mediaType === 'application/json';
+}
+
+/**
+ * @param {{
+ *   timeoutMs?: number,
+ *   modelInventoryMaxResponseBytes?: number,
+ * }} options
+ */
+export function validateListModelsTransportOptions(options) {
+  const {
+    timeoutMs = CIS_POC_LIMITS.requestTimeoutMs,
+    modelInventoryMaxResponseBytes = CIS_MODEL_DISCOVERY_LIMITS.maxResponseBytes,
+  } = options;
+
+  if (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > CIS_POC_LIMITS.requestTimeoutMs) {
+    throw new CisTransportError('TRANSPORT_INVALID_REQUEST', 'timeoutMs exceeds safe request bounds.');
+  }
+  if (!Number.isInteger(modelInventoryMaxResponseBytes)
+    || modelInventoryMaxResponseBytes <= 0
+    || modelInventoryMaxResponseBytes > CIS_MODEL_DISCOVERY_LIMITS.maxResponseBytes) {
+    throw new CisTransportError(
+      'TRANSPORT_INVALID_REQUEST',
+      'modelInventoryMaxResponseBytes exceeds safe response bounds.',
+    );
+  }
+}
+
+/**
  * @param {unknown} body
  */
 export function extractModelInventory(body) {
@@ -162,7 +198,13 @@ export function extractModelInventory(body) {
   const seen = new Set();
   for (const row of rows) {
     const id = extractModelInventoryRowId(row);
-    if (id === undefined || typeof id !== 'string' || !MODEL_ID_PATTERN.test(id)) {
+    if (id === undefined || typeof id !== 'string') {
+      throw new CisTransportError('TRANSPORT_INVALID_RESPONSE', 'CIS model ID is invalid.');
+    }
+    if (COMPOSITE_INVENTORY_ID_PATTERN.test(id)) {
+      continue;
+    }
+    if (!MODEL_ID_PATTERN.test(id)) {
       throw new CisTransportError('TRANSPORT_INVALID_RESPONSE', 'CIS model ID is invalid.');
     }
     if (!seen.has(id)) {
@@ -230,6 +272,10 @@ export function validateChatCompletionParams(params) {
 
   if (!model?.trim()) {
     throw new CisTransportError('TRANSPORT_INVALID_REQUEST', 'Model id is required.');
+  }
+  const modelId = model.trim();
+  if (!MODEL_ID_PATTERN.test(modelId)) {
+    throw new CisTransportError('TRANSPORT_INVALID_REQUEST', 'Model id is invalid.');
   }
   if (!Array.isArray(messages) || messages.length === 0) {
     throw new CisTransportError('TRANSPORT_INVALID_REQUEST', 'Messages are required.');
@@ -404,6 +450,12 @@ export function createCisTransport(options) {
      */
     async listModels(params = {}) {
       const { signal } = params;
+
+      validateListModelsTransportOptions({
+        timeoutMs,
+        modelInventoryMaxResponseBytes,
+      });
+
       return executeBoundedJsonRequest({
         url: buildModelsRequestUrl(baseUrl, urlOptions),
         method: 'GET',
@@ -494,27 +546,27 @@ async function executeBoundedJsonRequest(params) {
 
     const response = await effectiveFetch(url.toString(), init);
     const elapsedMs = Date.now() - started;
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.toLowerCase().includes('application/json')) {
+    const rawBytes = await readBoundedResponseText(response, maxResponseBytes);
+
+    if (!response.ok) {
+      throw new CisTransportError('TRANSPORT_HTTP_ERROR', messages.httpError, {
+        status: response.status,
+        elapsedMs,
+      });
+    }
+
+    if (!isJsonContentType(response.headers.get('content-type'))) {
       throw new CisTransportError('TRANSPORT_INVALID_RESPONSE', 'CIS response content-type is not JSON.', {
         status: response.status,
         elapsedMs,
       });
     }
 
-    const rawBytes = await readBoundedResponseText(response, maxResponseBytes);
     let parsedBody = null;
     try {
       parsedBody = rawBytes ? JSON.parse(rawBytes) : null;
     } catch {
       throw new CisTransportError('TRANSPORT_INVALID_RESPONSE', 'CIS response is not JSON.', {
-        status: response.status,
-        elapsedMs,
-      });
-    }
-
-    if (!response.ok) {
-      throw new CisTransportError('TRANSPORT_HTTP_ERROR', messages.httpError, {
         status: response.status,
         elapsedMs,
       });

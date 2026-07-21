@@ -28,9 +28,15 @@ import {
 } from '../manual-checks.js';
 import { verifyAndRegisterCandidate } from '../verify/orchestrate.js';
 import { createTrustedVerificationAdapters } from '../verify/adapters.js';
-import { runTrustedProposal, resolveTrustedCisConfig } from '../proposal/orchestrator.js';
-import { createCisTransportFromTrustedConfig } from '../cis/config.js';
+import { runTrustedProposal } from '../proposal/orchestrator.js';
+import {
+  createCisTransportFromConfig,
+  resolveCisConfig,
+} from '../cis/config.js';
 import { redactTransportErrorMessage } from '../cis/transport.js';
+import { normalizeSourcePath } from '../../reporter/fingerprint.js';
+import { validateRelativeCandidatePath, resolveSecureSourceFile } from '../candidate/path.js';
+import { CANDIDATE_LIMITS, CandidateIntentError } from '../candidate/intent.js';
 
 function collectFindings(report) {
   return (report.pages || []).flatMap((page) => page.findings || []);
@@ -80,10 +86,10 @@ function resolveSessionId(sessionId) {
   return value;
 }
 
-function deriveSessionDir(sessionId, localRoot) {
-  const rootCheck = resolveTrustedRoot(localRoot);
+function deriveSessionDir(sessionId, sessionRoot) {
+  const rootCheck = resolveTrustedRoot(sessionRoot);
   if (!rootCheck.ok) {
-    throw new Error(`Cannot derive session directory: ${rootCheck.reason}`);
+    throw new FixControllerError('INVALID_SESSION_ROOT', 'Session root is unavailable.');
   }
 
   const sessionDir = join(rootCheck.localRoot, 'scan-reports', 'fix-sessions', sessionId);
@@ -92,10 +98,38 @@ function deriveSessionDir(sessionId, localRoot) {
 
   const contained = assertPathContainedInRoot(rootCheck.localRoot, sessionDir);
   if (!contained.ok) {
-    throw new Error(`Session directory escaped local root: ${contained.reason}`);
+    throw new FixControllerError('INVALID_SESSION_ROOT', 'Session directory escaped session root.');
   }
 
   return contained.resolvedPath;
+}
+
+function resolveSessionRoot(sessionRoot, localRoot) {
+  const effective = sessionRoot ?? localRoot;
+  const rootCheck = resolveTrustedRoot(effective);
+  if (!rootCheck.ok) {
+    throw new FixControllerError('INVALID_SESSION_ROOT', 'Session root is unavailable.');
+  }
+  return rootCheck.localRoot;
+}
+
+function resolveTargetSourceFile(targetSourceFile, localRoot) {
+  if (targetSourceFile == null || targetSourceFile === '') return null;
+  try {
+    const normalized = validateRelativeCandidatePath(targetSourceFile);
+    resolveSecureSourceFile(localRoot, normalized, { maxBytes: CANDIDATE_LIMITS.maxFileBytes });
+    return normalized;
+  } catch (error) {
+    const code = error instanceof CandidateIntentError ? error.code : 'INVALID_TARGET_FILE';
+    throw new FixControllerError(code, error.message || 'Target source file is invalid.');
+  }
+}
+
+function filterFindingsByTargetSource(findings, targetSourceFile) {
+  if (!targetSourceFile) return findings;
+  return findings.filter(
+    (finding) => normalizeSourcePath(finding.source?.file || '') === targetSourceFile,
+  );
 }
 
 function initialWorkflowState(fixUnits, policyRoutes) {
@@ -241,12 +275,27 @@ export function collectVerificationBaseline(fixUnits = []) {
   return findings;
 }
 
+function cloneAndFreezeVerificationBaseline(findings = []) {
+  const cloned = structuredClone(findings || []);
+  const seen = new WeakSet();
+
+  function freeze(value) {
+    if (!value || typeof value !== 'object' || seen.has(value)) return value;
+    seen.add(value);
+    for (const child of Object.values(value)) freeze(child);
+    return Object.freeze(value);
+  }
+
+  return freeze(cloned);
+}
+
 export function createVerifyRegisteredCandidateOperation({
   reviewState,
   localRoot,
   reportId,
   verification,
   fixUnits = [],
+  verificationBaselineFindings = undefined,
 }) {
   const verifyCandidate = createVerifyCandidateOperation({
     reviewState,
@@ -254,6 +303,11 @@ export function createVerifyRegisteredCandidateOperation({
     reportId,
     verification,
   });
+  const baselineFindings = cloneAndFreezeVerificationBaseline(
+    verificationBaselineFindings === undefined
+      ? collectVerificationBaseline(fixUnits.length > 0 ? fixUnits : reviewState.fixUnits)
+      : verificationBaselineFindings,
+  );
 
   return async function verifyRegisteredCandidate(fixUnitId, {
     acknowledgedCheckIds = [],
@@ -286,9 +340,7 @@ export function createVerifyRegisteredCandidateOperation({
         promptVersion: candidate.promptVersion || '',
         modelId: candidate.modelId || '',
         targetFindingIds: unit?.findingIds || [],
-        baselineFindings: collectVerificationBaseline(
-          fixUnits.length > 0 ? fixUnits : reviewState.fixUnits,
-        ),
+        baselineFindings,
         manualChecks: candidate.manualChecks || [],
         manualChecksAcknowledged: attestations.length === 0 || acknowledgedCheckIds.length === attestations.length,
         acknowledgedCheckIds,
@@ -321,8 +373,10 @@ export function createVerifyRegisteredCandidateOperation({
 export function startFixController({
   report,
   localRoot = null,
+  sessionRoot = null,
   sessionId = null,
   sessionDir: _ignoredSessionDir = null,
+  targetSourceFile = null,
   localRevision: _ignoredRevision = null,
   localInstrumentationDigest: _ignoredDigest = null,
 } = {}) {
@@ -355,6 +409,8 @@ export function startFixController({
   }
 
   const resolvedSessionId = resolveSessionId(sessionId);
+  const resolvedSessionRoot = resolveSessionRoot(sessionRoot, localRoot);
+  const resolvedTargetSourceFile = resolveTargetSourceFile(targetSourceFile, localRoot);
   let session = createFixSession({
     sessionId: resolvedSessionId,
     reportId: report.reportId,
@@ -362,7 +418,7 @@ export function startFixController({
     fixUnits: [],
     policyRoutes: [],
   });
-  const resolvedSessionDir = deriveSessionDir(resolvedSessionId, localRoot);
+  const resolvedSessionDir = deriveSessionDir(resolvedSessionId, resolvedSessionRoot);
 
   const traceInbox = createSourceTraceInbox({
     reportId: report.reportId,
@@ -371,7 +427,24 @@ export function startFixController({
     candidates: buildTraceCandidatesFromFindings(findings),
   });
   const traceResults = traceAllFindings(traceInbox, findings);
-  const sanitizedFindings = applyTraceResultsToFindings(findings, traceResults);
+  let sanitizedFindings = applyTraceResultsToFindings(findings, traceResults);
+  sanitizedFindings = filterFindingsByTargetSource(sanitizedFindings, resolvedTargetSourceFile);
+
+  if (sanitizedFindings.length === 0) {
+    return {
+      status: 'no-findings',
+      reason: resolvedTargetSourceFile ? 'NO_TARGET_FINDINGS' : 'NO_FINDINGS',
+      capability,
+      session: null,
+      fixUnits: [],
+      policyRoutes: [],
+      proposable: [],
+      blocked: [],
+      traceInbox: null,
+      traceResults: [],
+    };
+  }
+
   const fixUnits = buildFixUnits(sanitizedFindings);
   const { routed, proposable, blocked } = partitionProposableUnits(fixUnits);
 
@@ -422,13 +495,16 @@ export function formatCisTransportUnavailableMessage(error) {
 }
 
 /**
- * @param {NonNullable<ReturnType<typeof resolveTrustedCisConfig>>} cisConfig
+ * @param {NonNullable<ReturnType<typeof resolveCisConfig>>} cisConfig
  * @param {{
- *   createCisTransportFromTrustedConfig?: typeof createCisTransportFromTrustedConfig,
+ *   createCisTransportFromTrustedConfig?: typeof createCisTransportFromConfig,
+ *   createCisTransportFromConfig?: typeof createCisTransportFromConfig,
  * }} [deps]
  */
 export async function importTrustedCisTransport(cisConfig, deps = {}) {
-  const createTransport = deps.createCisTransportFromTrustedConfig ?? createCisTransportFromTrustedConfig;
+  const createTransport = deps.createCisTransportFromTrustedConfig
+    ?? deps.createCisTransportFromConfig
+    ?? createCisTransportFromConfig;
   try {
     const bundle = createTransport(cisConfig);
     return await bundle.importTransport();
@@ -474,25 +550,32 @@ export async function runTrustedFixCli(options = {}) {
     reportPath = null,
     report = null,
     localRoot = null,
+    sessionRoot = null,
     sessionId = null,
+    targetSourceFile = null,
     useUI = false,
     verification = null,
     cisTransport = null,
     cisTransportFactory = null,
     cisModel = null,
-    postVerify = null,
+    postVerify = undefined,
     applyHandlerWrap = null,
+    sandboxContext = null,
+    rollbackHandler = null,
   } = options;
 
   const resolvedReport = report || (reportPath ? loadReportFromPath(reportPath) : null);
   if (!resolvedReport) {
     throw new Error('A ScanReportV2 report is required for trusted fix mode.');
   }
+  const verificationBaselineFindings = collectFindings(resolvedReport);
 
   const result = startFixController({
     report: resolvedReport,
     localRoot,
+    sessionRoot,
     sessionId,
+    targetSourceFile,
   });
 
   if (result.status === 'scan-only') {
@@ -509,6 +592,10 @@ export async function runTrustedFixCli(options = {}) {
   console.log(`Policy routing: ${result.proposable.length} proposable, ${result.blocked.length} blocked`);
   console.log(`Review session: ${result.session.sessionId}`);
   if (useUI) {
+    const cisConfig = resolveCisConfig();
+    const transportSecurity = cisConfig.ok ? cisConfig.transportSecurity : 'disabled';
+    const devAuthBypass = cisConfig.ok && cisConfig.devBypassAuth === true;
+
     const reviewState = loadReviewState({
       sessionDir: result.sessionDir,
       reportId: resolvedReport.reportId,
@@ -519,6 +606,10 @@ export async function runTrustedFixCli(options = {}) {
       traceInbox: result.traceInbox,
       localRoot,
       controllerAudit: result.session?.auditLog || [],
+      transportSecurity,
+      devAuthBypass,
+      sandboxContext,
+      verificationBaselineFindings,
     });
     let trustedVerification = verification;
     if (!trustedVerification && localRoot) {
@@ -540,7 +631,6 @@ export async function runTrustedFixCli(options = {}) {
       applyHandler = applyHandlerWrap(applyHandler);
     }
 
-    const cisConfig = resolveTrustedCisConfig();
     let effectiveTransport = cisTransport;
     if (!effectiveTransport && typeof cisTransportFactory === 'function') {
       effectiveTransport = cisTransportFactory({ fixUnits: result.fixUnits, localRoot, report: resolvedReport });
@@ -563,6 +653,7 @@ export async function runTrustedFixCli(options = {}) {
         reportId: resolvedReport.reportId,
         verification: trustedVerification,
         fixUnits: result.fixUnits,
+        verificationBaselineFindings,
       })
       : null;
 
@@ -571,6 +662,7 @@ export async function runTrustedFixCli(options = {}) {
       applyHandler,
       proposeHandler: proposeCandidate,
       verifyHandler: verifyRegisteredCandidate,
+      rollbackHandler,
     });
     console.log(`Review workbench: ${reviewServer.reviewUrl}`);
 

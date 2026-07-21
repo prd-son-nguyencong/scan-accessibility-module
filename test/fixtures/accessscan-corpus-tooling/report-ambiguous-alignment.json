@@ -1,0 +1,20 @@
+{
+  "profile": "standards",
+  "route": "/",
+  "pageState": "initial",
+  "viewport": { "width": 1280, "height": 900 },
+  "findings": [
+    {
+      "ruleId": "ListEmpty",
+      "canonicalRuleId": "ListEmpty",
+      "violationType": "confirmed",
+      "evidence": { "checkId": "lists:list-empty" },
+      "element": {
+        "selector": "main > ul",
+        "outerHTML": "<ul></ul>",
+        "framePath": [],
+        "shadowPath": []
+      }
+    }
+  ]
+}

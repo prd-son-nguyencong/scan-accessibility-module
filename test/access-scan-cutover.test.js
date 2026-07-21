@@ -409,6 +409,92 @@ test('includeThirdParty maps to commercial-parity profile and skipRules works', 
   );
 });
 
+test('commercial AltMisuse excludes shadow-root attributes without weakening standards', async () => {
+  await withPage(
+    `
+      <!doctype html>
+      <html lang="en">
+        <head><title>Shadow scope</title></head>
+        <body>
+          <x-overlay></x-overlay>
+          <script>
+            customElements.define('x-overlay', class extends HTMLElement {
+              connectedCallback() {
+                this.attachShadow({ mode: 'open' }).innerHTML =
+                  '<span id="shadow-alt" alt="Overlay avatar">Avatar</span>';
+              }
+            });
+          </script>
+        </body>
+      </html>
+    `,
+    async (page) => {
+      const registry = await getSharedBuiltInRuleRegistry();
+      const skipRules = registry.getActiveRuleIds().filter((ruleId) => ruleId !== 'AltMisuse');
+      const commercial = await scanWithAccessScan(page, 'fixture://commercial-shadow-alt', {
+        skipNavigation: true,
+        profile: 'commercial-parity',
+        skipRules,
+      });
+      const standards = await scanWithAccessScan(page, 'fixture://standards-shadow-alt', {
+        skipNavigation: true,
+        profile: 'standards',
+        skipRules,
+      });
+
+      assert.equal(commercial.some((violation) => violation.ruleId === 'AltMisuse'), false);
+      assert.equal(standards.some((violation) => violation.ruleId === 'AltMisuse'), true);
+    },
+  );
+});
+
+test('commercial label-in-name excludes shadow-root controls without weakening standards', async () => {
+  await withPage(
+    `
+      <!doctype html>
+      <html lang="en">
+        <head><title>Shadow label scope</title></head>
+        <body>
+          <x-dialog></x-dialog>
+          <script>
+            customElements.define('x-dialog', class extends HTMLElement {
+              connectedCallback() {
+                this.attachShadow({ mode: 'open' }).innerHTML =
+                  '<button id="shadow-label" aria-label="Dismiss dialog">Close</button>';
+              }
+            });
+          </script>
+        </body>
+      </html>
+    `,
+    async (page) => {
+      const registry = await getSharedBuiltInRuleRegistry();
+      const skipRules = registry.getActiveRuleIds().filter(
+        (ruleId) => ruleId !== 'VisibleTextPartOfAccessibleName',
+      );
+      const commercial = await scanWithAccessScan(page, 'fixture://commercial-shadow-label', {
+        skipNavigation: true,
+        profile: 'commercial-parity',
+        skipRules,
+      });
+      const standards = await scanWithAccessScan(page, 'fixture://standards-shadow-label', {
+        skipNavigation: true,
+        profile: 'standards',
+        skipRules,
+      });
+
+      assert.equal(
+        commercial.some((violation) => violation.ruleId === 'VisibleTextPartOfAccessibleName'),
+        false,
+      );
+      assert.equal(
+        standards.some((violation) => violation.ruleId === 'VisibleTextPartOfAccessibleName'),
+        true,
+      );
+    },
+  );
+});
+
 test('buildAccessScanRun records engine profile and execution aggregates additively', () => {
   const run = buildAccessScanRun(
     [{ ruleId: 'ListEmpty', count: 1 }],

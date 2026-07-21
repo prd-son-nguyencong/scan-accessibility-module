@@ -139,11 +139,12 @@ export default {
     if (mode === 'page-title-missing') {
       candidatesScanned = 1;
       const title = headChildren.find((element) => element.tag === 'title');
-      if (!title) {
-        findings.push(elementFinding(syntheticElement(undefined, {
+      const titleText = normalizeText(title?.visibleText || title?.text || '');
+      if (!title || !titleText) {
+        findings.push(elementFinding(syntheticElement(title, {
           outerHTML: '',
           selector: '',
-        })));
+        }), { reason: title ? 'empty' : 'missing' }));
       }
       return { status: 'complete', candidatesScanned, findings };
     }

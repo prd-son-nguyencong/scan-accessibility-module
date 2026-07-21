@@ -27,8 +27,10 @@ export default {
       const excludeTags = new Set(
         /** @type {string[]} */ (check.options?.excludeTags || ['img', 'area']),
       );
+      const excludeShadowRoots = check.options?.excludeShadowRoots === true;
       for (const element of candidates) {
         if (excludeTags.has(element.tag)) continue;
+        if (excludeShadowRoots && element.shadowPath.length > 0) continue;
         if (element.tag === 'input' && element.attributes.type === 'image') continue;
         if (!('alt' in element.attributes)) continue;
         findings.push(elementFinding(element));

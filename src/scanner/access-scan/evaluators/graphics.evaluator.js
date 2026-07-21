@@ -81,7 +81,11 @@ export default {
         if (element.attributes.role === 'presentation' || element.attributes['aria-hidden'] === 'true') {
           continue;
         }
-        if (hasAccessibleName(element)) continue;
+        const hasSemanticImageAlt = (
+          element.attributes.role === 'img'
+          && Boolean(element.attributes.alt?.trim())
+        );
+        if (hasAccessibleName(element) || hasSemanticImageAlt) continue;
         if (getDescendants(snapshot, indexes, element, (child) => child.tag === 'title').length > 0) {
           continue;
         }
@@ -92,10 +96,23 @@ export default {
           || ancestor.tag === 'button'
           || ['button', 'link'].includes(ancestor.attributes.role || '')
         ));
+        const interactiveText = normalizeText(interactive?.visibleText || interactive?.text || '');
+        // Commercial flags unnamed SVGs even inside icon-only controls that already
+        // have an accessible name (e.g. social icon links). Keep skipping only when
+        // fragment controls also expose adjacent visible text (contextual decoration).
         if (
           interactive
           && isFragmentOnlyControl(interactive)
-          && normalizeText(interactive.visibleText || interactive.text || '')
+          && interactiveText
+        ) {
+          continue;
+        }
+
+        // Hide off-viewport carousel chrome icons — commercial samples the in-view
+        // pair, not every duplicated slider control.
+        if (
+          interactive
+          && (interactive.effectiveOpacity <= 0.1 || interactive.rect.width <= 0 || interactive.rect.height <= 0)
         ) {
           continue;
         }
@@ -110,12 +127,36 @@ export default {
     if (mode === 'symbol-image-role-parity') {
       for (const element of candidates) {
         if (element.tag !== 'svg' || !element.rendered || element.hiddenFromAT) continue;
-        if (element.attributes.role !== 'img' || !hasAccessibleName(element)) continue;
+        if (element.attributes.role !== 'img') continue;
+        const named = (
+          hasAccessibleName(element)
+          || Boolean(element.attributes.alt?.trim())
+          || Boolean(element.attributes['aria-label']?.trim())
+        );
+        if (!named) continue;
         if (getDescendants(snapshot, indexes, element, (child) => child.tag === 'use').length === 0) {
           continue;
         }
         findings.push(elementFinding(element, {
           structuralPattern: 'named-inline-symbol-with-image-role',
+        }));
+      }
+      return { status: 'complete', candidatesScanned: candidates.length, findings };
+    }
+
+    if (mode === 'svg-image-discernible-parity') {
+      for (const element of candidates) {
+        if (element.tag !== 'svg' || !element.rendered || element.hiddenFromAT) continue;
+        if (element.attributes.role !== 'img') continue;
+        if (element.attributes['aria-hidden'] === 'true') continue;
+        // Commercial treats native SVG naming as aria-label / title, not HTML alt.
+        if (element.attributes['aria-label']?.trim()) continue;
+        if (element.attributes['aria-labelledby']?.trim()) continue;
+        if (getDescendants(snapshot, indexes, element, (child) => child.tag === 'title').length > 0) {
+          continue;
+        }
+        findings.push(elementFinding(element, {
+          structuralPattern: 'svg-role-img-without-aria-name',
         }));
       }
       return { status: 'complete', candidatesScanned: candidates.length, findings };

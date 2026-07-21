@@ -33,7 +33,12 @@
     "test": "node --test test/*.test.js test/fix/*.test.js",
     "cis:models": "node scripts/cis-models.js",
     "cis:configure": "node scripts/cis-configure.js",
-    "cis:benchmark": "node scripts/cis-benchmark.js"
+    "cis:benchmark": "node scripts/cis-benchmark.js",
+    "cis:demo": "node bin/ada-scan.js demo",
+    "corpus:capture": "node scripts/accessscan-corpus/capture.js",
+    "corpus:seed": "node scripts/accessscan-corpus/seed.js",
+    "corpus:verify": "node scripts/accessscan-corpus/verify.js",
+    "corpus:drift": "node scripts/accessscan-corpus/drift.js"
   },
   "dependencies": {
     "@axe-core/playwright": "4.12.1",

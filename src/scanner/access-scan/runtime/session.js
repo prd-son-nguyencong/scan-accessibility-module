@@ -48,6 +48,10 @@ export async function installRuntimeHooks(page) {
  *   stabilityMinObserveMs?: number,
  *     Bounded minimum observation window before quiet-period exit (default 200ms).
  *     Override for faster static pages or longer deferred-render tolerance.
+ *   configureForkedPage?: (request: {
+ *     page: import('playwright').Page,
+ *     context: import('playwright').BrowserContext | null,
+ *   }) => Promise<void>,
  * }=} options
  */
 export async function createScanSession(page, options = {}) {
@@ -156,9 +160,15 @@ export async function createScanSession(page, options = {}) {
 
       if (canNavigate) {
         await installRuntimeHooks(forkedPage);
+        if (options.configureForkedPage) {
+          await options.configureForkedPage({ page: forkedPage, context: forkContext });
+        }
         await forkedPage.goto(sourceUrl, { waitUntil: 'domcontentloaded' });
       } else {
         await installRuntimeHooks(forkedPage);
+        if (options.configureForkedPage) {
+          await options.configureForkedPage({ page: forkedPage, context: forkContext });
+        }
         const html = await page.content();
         await forkedPage.setContent(html, { waitUntil: 'domcontentloaded' });
       }

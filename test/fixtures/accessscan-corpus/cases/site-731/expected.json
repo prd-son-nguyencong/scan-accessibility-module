@@ -1,0 +1,72 @@
+{
+  "schemaVersion": "1.0.0",
+  "profile": "commercial-parity",
+  "findings": [
+    {
+      "ruleId": "ButtonDiscernible",
+      "canonicalRuleId": "ButtonDiscernible",
+      "violationType": "confirmed",
+      "evidence": {
+        "checkId": "interactive:button-discernible"
+      },
+      "element": {
+        "semantic": {
+          "tag": "button",
+          "role": null,
+          "attributes": {},
+          "landmarkPath": [
+            "main",
+            "section[slice-3]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "ButtonDiscernible",
+      "canonicalRuleId": "ButtonDiscernible",
+      "violationType": "confirmed",
+      "evidence": {
+        "checkId": "interactive:button-discernible"
+      },
+      "element": {
+        "semantic": {
+          "tag": "button",
+          "role": null,
+          "attributes": {},
+          "landmarkPath": [
+            "main",
+            "section[slice-4]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "ButtonDiscernible",
+      "canonicalRuleId": "ButtonDiscernible",
+      "violationType": "confirmed",
+      "evidence": {
+        "checkId": "interactive:button-discernible"
+      },
+      "element": {
+        "semantic": {
+          "tag": "button",
+          "role": null,
+          "attributes": {},
+          "landmarkPath": [
+            "main",
+            "section[slice-5]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    }
+  ]
+}

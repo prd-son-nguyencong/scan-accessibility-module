@@ -1,4 +1,5 @@
 import { normalizeSelector } from '../../reporter/fingerprint.js';
+import { normalizeCorpusRuleId } from '../../reporter/rule-aliases.js';
 
 /**
  * Stable verification identity for finding equivalence during shadow rescan.
@@ -19,10 +20,11 @@ export function stableSelector(finding = {}) {
 }
 
 export function buildRuleRouteKey(finding = {}) {
-  const rule = finding.canonicalRuleId
+  const rawRule = finding.canonicalRuleId
     || finding.ruleId
     || finding.nativeRuleId
     || 'unknown-rule';
+  const rule = normalizeCorpusRuleId(rawRule);
   const route = finding.route || finding.pageRoute || '/';
   const pageState = finding.pageState || 'initial';
   return `${rule}|${route}|${pageState}`;

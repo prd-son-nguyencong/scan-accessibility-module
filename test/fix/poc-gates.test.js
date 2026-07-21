@@ -61,6 +61,55 @@ test('resolveTrustedVerificationConfig reads build and install commands from sca
   }
 });
 
+test('resolveTrustedVerificationConfig returns MALFORMED_CONFIG for untrusted verify commands', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-verify-config-malformed-'));
+  try {
+    writeFileSync(join(root, '.scan-config.json'), JSON.stringify({
+      verifyBuildCommand: { command: 'bash', args: ['-c', 'echo hi'] },
+    }));
+    const config = resolveTrustedVerificationConfig(root);
+    assert.equal(config.ok, false);
+    assert.equal(config.reason, 'MALFORMED_CONFIG');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('resolveTrustedVerificationConfig returns MALFORMED_CONFIG for untrusted verifyInstallCommand', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-verify-config-malformed-install-'));
+  try {
+    writeFileSync(join(root, '.scan-config.json'), JSON.stringify({
+      verifyInstallCommand: { command: 'node', args: ['-e', 'process.exit(0)'] },
+      verifyBuildCommand: { command: 'node', args: ['scripts/build.js'] },
+    }));
+    const config = resolveTrustedVerificationConfig(root);
+    assert.equal(config.ok, false);
+    assert.equal(config.reason, 'MALFORMED_CONFIG');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('resolveTrustedVerificationConfig accepts structured Vite host verify commands', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-verify-config-host-'));
+  try {
+    writeFileSync(join(root, '.scan-config.json'), JSON.stringify({
+      buildCommand: 'pnpm build:vite',
+      buildEnv: { SCAN_MODE: 'true', MINIFY: 'true' },
+      outDir: 'dist',
+      verifyInstallCommand: { command: 'pnpm', args: ['install', '--ignore-scripts'] },
+      verifyBuildCommand: { command: 'pnpm', args: ['build:vite'] },
+    }));
+    const config = resolveTrustedVerificationConfig(root);
+    assert.equal(config.ok, true);
+    assert.equal(config.outDir, 'dist');
+    assert.deepEqual(config.prepare, { command: 'pnpm', args: ['install', '--ignore-scripts'] });
+    assert.deepEqual(config.build, { command: 'pnpm', args: ['build:vite'] });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('verification key prefers stable selector over source line', () => {
   const left = {
     canonicalRuleId: 'button-name',
@@ -152,6 +201,21 @@ test('createTrustedVerificationAdapters uses injectable overrides in tests', () 
     },
   });
   assert.equal(typeof adapters.scanner, 'function');
+});
+
+test('createTrustedVerificationAdapters keeps commandEnv empty even when scan config carries buildEnv', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-verify-command-env-'));
+  writeFileSync(join(root, '.scan-config.json'), JSON.stringify({
+    buildEnv: { SCAN_MODE: 'true', MINIFY: 'true', EXTRA: 'ignored' },
+    verifyBuildCommand: { command: 'node', args: ['scripts/build.js'] },
+    verifyInstallCommand: { command: 'pnpm', args: ['install', '--ignore-scripts'] },
+  }));
+  try {
+    const adapters = createTrustedVerificationAdapters(root);
+    assert.deepEqual(adapters.commandEnv, {});
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('createTrustedVerificationAdapters selects Vite serving for Vite projects', async () => {

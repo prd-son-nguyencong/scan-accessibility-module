@@ -59,24 +59,59 @@ export default {
         const keywords = /** @type {string[]} */ (check.options?.warningKeywords || [
           'email', 'mail',
         ]);
-        if (!includesKeyword(text, keywords)) {
+        // Commercial scores the authored/visible label, not aria-label alone —
+        // "Send email to…" in aria-label still fails when the visible text is
+        // only the address.
+        const visible = normalizeText(element.visibleText || element.text || '');
+        const warningText = visible || text;
+        if (!includesKeyword(warningText, keywords)) {
           findings.push(elementFinding(element, { href, warningInferred: true }));
         }
         continue;
       }
 
       if (mode === 'pdf-href') {
-        const pattern = new RegExp(
-          /** @type {string} */ (check.options?.hrefPattern || '\\.pdf(\\?|$)'),
-          'i',
-        );
-        if (!pattern.test(href)) continue;
+        const isPdfExtension = /\.pdf(\?|$)/i.test(href);
+        const isDocumentPath = /\/document\//i.test(href);
+        if (!isPdfExtension && !isDocumentPath) continue;
         const keywords = /** @type {string[]} */ (check.options?.warningKeywords || [
           'pdf', 'document', 'download',
         ]);
-        if (!includesKeyword(text, keywords)) {
+        const newWindowKeywords = /** @type {string[]} */ (check.options?.newWindowKeywords || [
+          'new window', 'new tab', 'opens in',
+        ]);
+        const visible = normalizeText(element.visibleText || element.text || '');
+
+        if (isPdfExtension) {
+          // Suppress when name already discloses PDF/document download.
+          if (includesKeyword(text, keywords) || includesKeyword(visible, keywords)) {
+            continue;
+          }
+          // New-window suppress for ordinary file hosts. Document-library CDNs
+          // (…/document/…pdf) still warn even when aria mentions a new tab.
+          if (
+            includesKeyword(text, newWindowKeywords)
+            && !/\/document\//i.test(href)
+          ) {
+            continue;
+          }
           findings.push(elementFinding(element, { href, warningInferred: true }));
+          continue;
         }
+
+        // Document-library URLs without .pdf — commercial still flags privacy/terms
+        // even when aria only mentions a new tab.
+        const aria = normalizeText(element.attributes['aria-label'] || '');
+        const label = `${visible} ${text} ${aria}`;
+        if (!/(?:privacy|terms|policy|legal|handbook|agreement|cookie)/i.test(label)) {
+          continue;
+        }
+        // Only suppress when the visible label itself discloses document/PDF —
+        // aria often repeats the destination without a download cue.
+        if (includesKeyword(visible, keywords)) {
+          continue;
+        }
+        findings.push(elementFinding(element, { href, warningInferred: true }));
       }
     }
 

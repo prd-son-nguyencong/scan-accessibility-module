@@ -196,6 +196,22 @@
         .join(' '),
     ).slice(0, 120);
 
+    const childUrlAttrString = (child) => {
+      const parts = [];
+      for (const name of URL_ATTRS) {
+        if (!child.hasAttribute(name)) continue;
+        const raw = child.getAttribute(name) || '';
+        // Prefer the literal attribute (e.g. href="/our-sectors") so report
+        // snippets match commercial accessScan; still redact secret query keys.
+        let display = raw;
+        if (/[?&](?:token|key|api[_-]?key|auth|authorization|session|secret|password|csrf)=/i.test(raw)) {
+          display = redactAttributeValue(child, name, raw);
+        }
+        parts.push(`${name}="${escapeSnippetAttribute(display)}"`);
+      }
+      return parts.length ? ` ${parts.join(' ')}` : '';
+    };
+
     const childMarkers = [...element.children].slice(0, 8).map((child) => {
       const childTag = child.tagName.toLowerCase();
       if (childTag === 'script' || childTag === 'style') {
@@ -210,10 +226,11 @@
           .map((node) => node.textContent || '')
           .join(' '),
       ).slice(0, 80);
+      const childAttrs = childUrlAttrString(child);
       if (inlineTextTags.has(childTag) && childText) {
-        return `<${childTag}>${childText}</${childTag}>`;
+        return `<${childTag}${childAttrs}>${childText}</${childTag}>`;
       }
-      return `<${childTag}>…</${childTag}>`;
+      return `<${childTag}${childAttrs}>…</${childTag}>`;
     });
 
     if (!directText && childMarkers.length === 0) {

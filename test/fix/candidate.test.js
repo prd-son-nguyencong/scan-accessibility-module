@@ -19,7 +19,12 @@ import {
   hashFileContent,
   validateAndBuildCandidate,
 } from '../../src/fix/candidate/intent.js';
-import { attachDiffToCandidate, computeDiffHash } from '../../src/fix/candidate/diff.js';
+import {
+  attachDiffToCandidate,
+  buildCanonicalUnifiedDiff,
+  computeDiffHash,
+} from '../../src/fix/candidate/diff.js';
+import { parseUnifiedDiff } from '../../src/fix/review/diff-view.js';
 
 const REPORT_ID = 'sha256:report-test';
 const POLICY_VERSION = '1';
@@ -236,6 +241,288 @@ test('validateAndBuildCandidate applies unicode edits before oldText using byte 
     const updated = applyEditToText(readFileSync(join(root, 'src/a.liquid'), 'utf8'), candidate.edits[0]);
     assert.match(updated, /aria-label="Go"/);
     assert.match(updated, /^café/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+function diffBodyLines(diff) {
+  return diff.replace(/\n$/, '').split('\n');
+}
+
+function diffChangeLines(diff) {
+  const lines = diffBodyLines(diff);
+  return {
+    hunkHeaders: lines.filter((line) => line.startsWith('@@')),
+    removed: lines.filter((line) => line.startsWith('-') && !line.startsWith('---')),
+    added: lines.filter((line) => line.startsWith('+') && !line.startsWith('+++')),
+  };
+}
+
+function longFileContent(lineCount = 40) {
+  return `${Array.from({ length: lineCount }, (_, index) => `line-${index + 1}`).join('\n')}\n`;
+}
+
+function writeLiquidNoTrailingNewline(root, relPath, content) {
+  const full = join(root, relPath);
+  mkdirSync(join(full, '..'), { recursive: true });
+  writeFileSync(full, content, 'utf8');
+  return full;
+}
+
+function buildCandidateFromEdits(root, edits) {
+  return validateAndBuildCandidate({
+    localRoot: root,
+    reportId: REPORT_ID,
+    policyVersion: POLICY_VERSION,
+    promptVersion: 'p1',
+    modelId: 'model-a',
+    edits,
+  });
+}
+
+function assertNoZeroZeroHunks(diff) {
+  for (const header of diffChangeLines(diff).hunkHeaders) {
+    assert.doesNotMatch(header, /,0 \+[0-9]+,0 @@$/);
+    assert.doesNotMatch(header, /^@@ -[0-9]+,0 \+[0-9]+,0 @@$/);
+  }
+}
+
+test('buildCanonicalUnifiedDiff appends at EOF without trailing newline quickly', { timeout: 500 }, () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-candidate-'));
+  try {
+    const relPath = 'src/append.liquid';
+    const content = 'line-1\nline-2';
+    writeLiquidNoTrailingNewline(root, relPath, content);
+    const edit = editIntentForFile(root, relPath, 2, 'line-2', 'line-2\nAPPENDED');
+    const diff = buildCanonicalUnifiedDiff(buildCandidateFromEdits(root, [edit]));
+    const { hunkHeaders, removed, added } = diffChangeLines(diff);
+    assert.equal(hunkHeaders.length, 1);
+    assert.equal(removed.length, 0);
+    assert.equal(added.length, 1);
+    assert.equal(added[0], '+APPENDED');
+    assertNoZeroZeroHunks(diff);
+    const parsed = parseUnifiedDiff(diff);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.additions, 1);
+    assert.equal(parsed.removals, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('buildCanonicalUnifiedDiff deletes last line at EOF without trailing newline quickly', { timeout: 500 }, () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-candidate-'));
+  try {
+    const relPath = 'src/delete.liquid';
+    const content = 'line-1\nline-2';
+    writeLiquidNoTrailingNewline(root, relPath, content);
+    const preimage = buildSourcePreimageRange(content, 1, 2);
+    const edit = {
+      file: relPath,
+      blockRange: { startLine: 1, endLine: 2 },
+      expectedBlockSha256: preimage.preimageSha256,
+      expectedFileSha256: hashFileContent(content),
+      oldText: 'line-1\nline-2',
+      newText: 'line-1',
+    };
+    const diff = buildCanonicalUnifiedDiff(buildCandidateFromEdits(root, [edit]));
+    const { hunkHeaders, removed, added } = diffChangeLines(diff);
+    assert.equal(hunkHeaders.length, 1);
+    assert.equal(removed.length, 1);
+    assert.equal(added.length, 0);
+    assert.equal(removed[0], '-line-2');
+    assertNoZeroZeroHunks(diff);
+    const parsed = parseUnifiedDiff(diff);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.additions, 0);
+    assert.equal(parsed.removals, 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('buildCanonicalUnifiedDiff clears last line with empty newText and parses', { timeout: 500 }, () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-candidate-'));
+  try {
+    const relPath = 'src/clear.liquid';
+    const content = 'line-1\nline-2\n';
+    writeLiquid(root, relPath, content);
+    const edit = editIntentForFile(root, relPath, 2, 'line-2', '');
+    const diff = buildCanonicalUnifiedDiff(buildCandidateFromEdits(root, [edit]));
+    assertNoZeroZeroHunks(diff);
+    const parsed = parseUnifiedDiff(diff);
+    assert.equal(parsed.ok, true);
+    assert.ok(parsed.removals >= 1 || parsed.additions >= 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('buildCanonicalUnifiedDiff prepends at line 1 with @@ -0,0 +1,1 @@', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-candidate-'));
+  try {
+    const relPath = 'src/prepend.liquid';
+    const content = 'line-2\nline-3\n';
+    writeLiquid(root, relPath, content);
+    const edit = editIntentForFile(root, relPath, 1, 'line-2', 'line-1\nline-2');
+    const diff = buildCanonicalUnifiedDiff(buildCandidateFromEdits(root, [edit]));
+    const { hunkHeaders, removed, added } = diffChangeLines(diff);
+    assert.equal(hunkHeaders.length, 1);
+    assert.equal(removed.length, 0);
+    assert.equal(added.length, 1);
+    assert.equal(added[0], '+line-1');
+    assert.match(hunkHeaders[0], /^@@ -0,0 \+1,1 @@$/);
+    const parsed = parseUnifiedDiff(diff);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.additions, 1);
+    assert.equal(parsed.removals, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('buildCanonicalUnifiedDiff emits minimal hunk for one-line insertion in long file', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-candidate-'));
+  try {
+    const relPath = 'src/long.liquid';
+    const content = longFileContent(40);
+    writeLiquid(root, relPath, content);
+    const edit = editIntentForFile(root, relPath, 19, 'line-19', 'line-19\n            INSERTED-LINE');
+    const candidate = validateAndBuildCandidate({
+      localRoot: root,
+      reportId: REPORT_ID,
+      policyVersion: POLICY_VERSION,
+      promptVersion: 'p1',
+      modelId: 'model-a',
+      edits: [edit],
+    });
+    const diff = buildCanonicalUnifiedDiff(candidate);
+    const { hunkHeaders, removed, added } = diffChangeLines(diff);
+    assert.equal(hunkHeaders.length, 1);
+    assert.equal(removed.length, 0);
+    assert.equal(added.length, 1);
+    assert.equal(added[0], '+            INSERTED-LINE');
+    assert.match(hunkHeaders[0], /^@@ -19,0 \+20,1 @@$/);
+    assert.doesNotMatch(diff, /^-line-40/m);
+    assert.doesNotMatch(diff, /^\+line-40/m);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('buildCanonicalUnifiedDiff emits minimal hunk for one-line replacement', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-candidate-'));
+  try {
+    const relPath = 'src/replace.liquid';
+    const content = longFileContent(25);
+    writeLiquid(root, relPath, content);
+    const edit = editIntentForFile(root, relPath, 10, 'line-10', 'line-10-replaced');
+    const candidate = validateAndBuildCandidate({
+      localRoot: root,
+      reportId: REPORT_ID,
+      policyVersion: POLICY_VERSION,
+      promptVersion: 'p1',
+      modelId: 'model-a',
+      edits: [edit],
+    });
+    const diff = buildCanonicalUnifiedDiff(candidate);
+    const { hunkHeaders, removed, added } = diffChangeLines(diff);
+    assert.equal(hunkHeaders.length, 1);
+    assert.equal(removed.length, 1);
+    assert.equal(added.length, 1);
+    assert.equal(removed[0], '-line-10');
+    assert.equal(added[0], '+line-10-replaced');
+    assert.match(hunkHeaders[0], /^@@ -10,1 \+10,1 @@$/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('buildCanonicalUnifiedDiff emits two minimal hunks for distant edits', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-candidate-'));
+  try {
+    const relPath = 'src/multi.liquid';
+    const content = longFileContent(30);
+    writeLiquid(root, relPath, content);
+    const editA = editIntentForFile(root, relPath, 5, 'line-5', 'line-5-a');
+    const editB = editIntentForFile(root, relPath, 25, 'line-25', 'line-25-b');
+    const candidate = validateAndBuildCandidate({
+      localRoot: root,
+      reportId: REPORT_ID,
+      policyVersion: POLICY_VERSION,
+      promptVersion: 'p1',
+      modelId: 'model-a',
+      edits: [editA, editB],
+    });
+    const diff = buildCanonicalUnifiedDiff(candidate);
+    const { hunkHeaders, removed, added } = diffChangeLines(diff);
+    assert.equal(hunkHeaders.length, 2);
+    assert.equal(removed.length, 2);
+    assert.equal(added.length, 2);
+    assert.deepEqual(removed, ['-line-5', '-line-25']);
+    assert.deepEqual(added, ['+line-5-a', '+line-25-b']);
+    assert.match(hunkHeaders[0], /^@@ -5,1 \+5,1 @@$/);
+    assert.match(hunkHeaders[1], /^@@ -25,1 \+25,1 @@$/);
+    assert.doesNotMatch(diff, /^-line-6/m);
+    assert.doesNotMatch(diff, /^-line-24/m);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('buildCanonicalUnifiedDiff matches live header aria-current insertion shape', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-candidate-'));
+  try {
+    const relPath = 'src/partials/layout/header.liquid';
+    const headerPath = join(process.cwd(), '..', 'src/partials/layout/header.liquid');
+    const content = readFileSync(headerPath, 'utf8');
+    writeLiquid(root, relPath, content);
+    const oldText = [
+      '          <a',
+      '            href="/"',
+      '            class="hocus:after:scale-x-100 relative block after:absolute after:bottom-0 after:left-0 after:h-[0.1rem] after:w-full after:scale-x-0 after:bg-black after:transition-all after:content-[\'\']">',
+      '            Homepage',
+      '          </a>',
+    ].join('\n');
+    const newText = [
+      '          <a',
+      '            href="/"',
+      '            aria-current="page"',
+      '            class="hocus:after:scale-x-100 relative block after:absolute after:bottom-0 after:left-0 after:h-[0.1rem] after:w-full after:scale-x-0 after:bg-black after:transition-all after:content-[\'\']">',
+      '            Homepage',
+      '          </a>',
+    ].join('\n');
+    const preimage = buildSourcePreimageRange(content, 20, 24);
+    const edit = {
+      file: relPath,
+      blockRange: { startLine: 20, endLine: 24 },
+      expectedBlockSha256: preimage.preimageSha256,
+      expectedFileSha256: hashFileContent(content),
+      oldText,
+      newText,
+    };
+    const candidate = validateAndBuildCandidate({
+      localRoot: root,
+      reportId: REPORT_ID,
+      policyVersion: POLICY_VERSION,
+      promptVersion: 'p1',
+      modelId: 'model-a',
+      edits: [edit],
+    });
+    const diff = buildCanonicalUnifiedDiff(candidate);
+    const { hunkHeaders, removed, added } = diffChangeLines(diff);
+    assert.equal(hunkHeaders.length, 1);
+    assert.equal(removed.length, 0);
+    assert.equal(added.length, 1);
+    assert.equal(added[0], '+            aria-current="page"');
+    const parsed = parseUnifiedDiff(diff);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.additions, 1);
+    assert.equal(parsed.removals, 0);
+    const addedRow = parsed.files[0].rows.find((row) => row.kind === 'added');
+    assert.ok(addedRow);
+    assert.equal(addedRow.text, '            aria-current="page"');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

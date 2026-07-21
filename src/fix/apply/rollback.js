@@ -237,6 +237,10 @@ export async function restoreTransactionFiles({
         continue;
       }
     }
+    if (currentHash === snapshotHash) {
+      restored.push({ file, restoredHash: snapshotHash, alreadyRestored: true });
+      continue;
+    }
     if (currentHash && currentHash !== event.postHash) {
       conflicts.push({ file, reason: 'CONCURRENT_EDIT', currentHash, expectedPostHash: event.postHash });
       continue;

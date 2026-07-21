@@ -20,6 +20,47 @@ function esc(str = '') {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+/** Sum occurrence counts so Serious/Total match Nu message totals (not fix-unit cards). */
+export function countIssueOccurrences(violations = []) {
+  return violations.reduce((sum, violation) => {
+    const count = Number.isInteger(violation.count) && violation.count > 0
+      ? violation.count
+      : 1;
+    return sum + count;
+  }, 0);
+}
+
+export function formatAccessScanProfileLabel(profile) {
+  if (profile === 'commercial-parity') {
+    return 'Commercial parity (accessScan oracle)';
+  }
+  if (profile === 'standards') {
+    return 'Standards (WCAG)';
+  }
+  return 'Unknown accessScan profile';
+}
+
+function resolveAccessScanMetadata(report = {}, pages = []) {
+  if (report.runMetadata?.accessScan) {
+    return report.runMetadata.accessScan;
+  }
+
+  for (const page of pages) {
+    for (const run of page.scannerRuns || []) {
+      if (run.layer === 'accessScan' && run.evidence?.profile) {
+        return {
+          profile: run.evidence.profile,
+          includeThirdParty: run.evidence.includeThirdParty === true,
+          comparatorVersion: run.evidence.comparatorVersion || null,
+          execution: run.evidence.execution || null,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
 function prettyHtml(raw) {
   let out = '';
   let indent = 0;
@@ -98,6 +139,20 @@ function scannerRunMetrics(run = {}) {
   add(run.evidence?.accessibility?.manual, 'manual checks');
   add(run.evidence?.accessibility?.notApplicable, 'not applicable');
   add(run.evidence?.accessibility?.incomplete, 'incomplete accessibility audits');
+  if (run.layer === 'accessScan' && run.evidence?.profile) {
+    metrics.push(`Profile: ${formatAccessScanProfileLabel(run.evidence.profile)}`);
+  }
+  if (run.layer === 'accessScan' && run.evidence?.comparatorVersion) {
+    metrics.push(`Comparator: ${run.evidence.comparatorVersion}`);
+  }
+  for (const check of run.evidence?.execution?.perCheck || []) {
+    const statusLabel = check.statusCounts
+      ? `${check.status} (${Object.entries(check.statusCounts).map(([status, count]) => `${status}:${count}`).join(', ')})`
+      : check.status;
+    metrics.push(
+      `${esc(check.checkId)}: ${esc(statusLabel)}, ${check.candidateCount} candidates, ${check.findingCount} findings`,
+    );
+  }
   return metrics;
 }
 
@@ -112,7 +167,7 @@ export function buildScannerRunEvidence(pages = []) {
       ? `${run.viewport.name || 'viewport'}${run.viewport.width && run.viewport.height ? ` · ${run.viewport.width} × ${run.viewport.height}` : ''}`
       : 'Not viewport-specific';
     const state = `${String(run.pageState || 'initial').replace(/[-_]/g, ' ')} state`;
-    const status = ['complete', 'fallback', 'error'].includes(run.status) ? run.status : 'unknown';
+    const status = ['complete', 'fallback', 'error', 'skipped'].includes(run.status) ? run.status : 'unknown';
     const engine = run.engine?.name || run.layer || 'Scanner';
     const metrics = scannerRunMetrics(run);
     return `<article class="scanner-run-card">
@@ -426,7 +481,7 @@ function buildAxeSection(violations) {
     const issueCards = ruleViols.map((v) => {
       const selector = v.element?.selector || '';
       const outerHTML = v.element?.outerHTML || '';
-      return `<div class="violation-card" data-impact="${v.impact}" data-layer="${v.layer}" data-category="${v.category}">
+      return `<div class="violation-card" data-impact="${esc(v.impact)}" data-layer="${esc(v.layer)}" data-category="${esc(v.category)}">
         ${selector ? `<div class="v-location"><span class="location-label">Element Location:</span><code>${esc(selector)}</code></div>` : ''}
         ${outerHTML ? `<pre class="code-snippet">${esc(prettyHtml(outerHTML.slice(0, 500)))}</pre>` : ''}
         <div class="v-fix-row">
@@ -467,7 +522,12 @@ export { getAccessScanRuleRequirement };
 
 export function buildAccessScanRuleCard(ruleId, ruleViols) {
   const first = ruleViols[0];
-  const failCount = ruleViols.length;
+  const failCount = ruleViols.reduce((sum, violation) => {
+    const count = Number.isInteger(violation.count) && violation.count > 0
+      ? violation.count
+      : 1;
+    return sum + count;
+  }, 0);
   const wcagRef = first.wcagRef || '';
   const wcagVersion = wcagRef.match(/WCAG\s*\d+\.?\d*/)?.[0] || 'WCAG 2.0';
   const wcagLevel = wcagRef.match(/(A{1,3})\b/)?.[1] || (wcagRef.includes('Best Practice') ? 'BP' : 'A');
@@ -483,10 +543,11 @@ export function buildAccessScanRuleCard(ruleId, ruleViols) {
   for (const v of ruleViols) {
     const html = v.element?.outerHTML || '';
     const key = html.slice(0, 500) || v.id;
+    const occurrence = Number.isInteger(v.count) && v.count > 0 ? v.count : 1;
     if (dedupMap.has(key)) {
-      dedupMap.get(key).count++;
+      dedupMap.get(key).count += occurrence;
     } else {
-      dedupMap.set(key, { v, html, count: 1 });
+      dedupMap.set(key, { v, html, count: occurrence });
     }
   }
 
@@ -551,7 +612,7 @@ export function buildAccessScanRuleCard(ruleId, ruleViols) {
           : `<div class="as-page-level">Page-level violation &mdash; no specific element to display.</div>`}
         ${successfulContent}`;
 
-  return `<div class="as-rule-card violation-card" data-impact="${first.impact}" data-layer="accessScan" data-category="accessibility">
+  return `<div class="as-rule-card violation-card" data-impact="${esc(first.impact)}" data-layer="accessScan" data-category="accessibility">
     <div class="as-rule-layout">
       <div class="as-rule-left">
         ${leftContent}
@@ -571,11 +632,27 @@ export function buildAccessScanRuleCard(ruleId, ruleViols) {
   </div>`;
 }
 
-function buildAccessScanSection(violations) {
+function buildAccessScanSection(violations, metadata = {}) {
   const totalIssues = violations.length;
   const isCompliant = totalIssues === 0;
+  const profileLabel = metadata.profile
+    ? formatAccessScanProfileLabel(metadata.profile)
+    : null;
 
-  let html = `<div class="as-compliance-bar">
+  let html = '';
+  if (profileLabel) {
+    html += `<div class="as-profile-banner" role="note">
+      <strong>accessScan profile:</strong> ${esc(profileLabel)}
+      ${metadata.comparatorVersion
+        ? `<span class="as-profile-meta">Comparator ${esc(metadata.comparatorVersion)}</span>`
+        : ''}
+      ${metadata.includeThirdParty
+        ? '<span class="as-profile-meta">Legacy includeThirdParty: true</span>'
+        : ''}
+    </div>`;
+  }
+
+  html += `<div class="as-compliance-bar">
     <span class="as-compliance-badge ${isCompliant ? 'compliant' : 'non-compliant'}">
       ${isCompliant ? '&#x2713; Compliant' : '&#x2717; Non-compliant'}
     </span>
@@ -592,7 +669,12 @@ function buildAccessScanSection(violations) {
 
   for (const cat of ACCESSSCAN_CATEGORIES) {
     const catViols = violations.filter((v) => cataloguedRuleIds.has(v.ruleId) && cat.rules.includes(v.ruleId));
-    const catCount = catViols.length;
+    const catCount = catViols.reduce((sum, violation) => {
+      const count = Number.isInteger(violation.count) && violation.count > 0
+        ? violation.count
+        : 1;
+      return sum + count;
+    }, 0);
     const catStatusClass = catCount > 0 ? 'has-issues' : 'no-issues-cat';
 
     const byRule = groupViolations(catViols, (v) => v.ruleId);
@@ -636,7 +718,7 @@ function buildAccessScanSection(violations) {
   return html;
 }
 
-export { buildAccessScanSection };
+export { buildAccessScanSection, buildAxeSection, buildGenericViolationSection };
 
 // ─── Generic violations section (W3C, Links, Behavioral) ────────────────────
 
@@ -652,11 +734,14 @@ function buildGenericViolationSection(violations) {
     const issueCards = ruleViols.map((v) => {
       const outerHTML = v.element?.outerHTML || '';
       const selector = v.element?.selector || '';
-      return `<div class="violation-card" data-impact="${v.impact}" data-layer="${v.layer}" data-category="${v.category}">
+      const occurrence = Number.isInteger(v.count) && v.count > 0 ? v.count : 1;
+      const countBadge = occurrence > 1 ? `<span class="dedup-badge">&times;${occurrence}</span>` : '';
+      return `<div class="violation-card" data-impact="${esc(v.impact)}" data-layer="${esc(v.layer)}" data-category="${esc(v.category)}">
         <div class="v-meta-row">
           ${impactBadge(v.impact)}
           ${v.wcagRef ? `<span class="wcag-tag">${esc(v.wcagRef)}</span>` : ''}
           ${v.fix?.deterministic ? '<span class="fix-auto">Auto-fix</span>' : '<span class="fix-ai">AI-fix</span>'}
+          ${countBadge}
         </div>
         <p class="v-hint">${esc(v.fix?.hint || '')}</p>
         ${selector ? `<div class="v-location"><code>${esc(selector)}</code></div>` : ''}
@@ -665,13 +750,14 @@ function buildGenericViolationSection(violations) {
       </div>`;
     }).join('');
 
+    const ruleOcc = countIssueOccurrences(ruleViols);
     html += `<details class="rule-accordion">
       <summary>
         <div class="rule-summary-left">
           ${impactBadge(first.impact)}
           <span class="rule-title">${esc(ruleId)}</span>
         </div>
-        <span class="rule-count">${ruleViols.length} issue${ruleViols.length === 1 ? '' : 's'}</span>
+        <span class="rule-count">${ruleOcc} issue${ruleOcc === 1 ? '' : 's'}</span>
       </summary>
       <div class="rule-body">${issueCards}</div>
     </details>`;
@@ -681,11 +767,14 @@ function buildGenericViolationSection(violations) {
 
 // ─── Tool section wrapper ────────────────────────────────────────────────────
 
-function buildToolSection(tool, allViolations, lighthouseData) {
+function buildToolSection(tool, allViolations, lighthouseData, accessScanMetadata = null) {
   const toolViols = tool.layers
     ? allViolations.filter((v) => tool.layers.includes(v.layer))
     : allViolations.filter((v) => v.layer === tool.layer);
-  const count = toolViols.length;
+  const count = countIssueOccurrences(toolViols);
+  const toolLabel = tool.id === 'accessScan' && accessScanMetadata?.profile
+    ? `AccessScan — ${formatAccessScanProfileLabel(accessScanMetadata.profile)}`
+    : tool.label;
 
   let content = '';
   if (tool.id === 'performance') {
@@ -697,7 +786,7 @@ function buildToolSection(tool, allViolations, lighthouseData) {
   } else if (tool.id === 'axe') {
     content = buildAxeSection(toolViols);
   } else if (tool.id === 'accessScan') {
-    content = buildAccessScanSection(toolViols);
+    content = buildAccessScanSection(toolViols, accessScanMetadata || {});
   } else {
     content = buildGenericViolationSection(toolViols);
   }
@@ -709,7 +798,7 @@ function buildToolSection(tool, allViolations, lighthouseData) {
       <div class="tool-icon" style="background:${tool.color}10;color:${tool.color}">
         ${svgIcon(tool.icon, 18, tool.color)}
       </div>
-      <h2>${esc(tool.label)}</h2>
+      <h2>${esc(toolLabel)}</h2>
       <span class="tool-total">Total issues: <strong>${count}</strong></span>
       <span class="section-badge" style="background:${count > 0 ? tool.color : '#008a05'}">${count}</span>
       <svg class="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
@@ -720,27 +809,36 @@ function buildToolSection(tool, allViolations, lighthouseData) {
 
 // ─── Main HTML builder ───────────────────────────────────────────────────────
 
-function buildHtml(report) {
+export function buildHtml(report) {
   const allViolations = (report.pages || []).flatMap((p) => p.violations || []);
-  const total = allViolations.length;
+  const total = countIssueOccurrences(allViolations);
   const ts = report.timestamp ? new Date(report.timestamp).toLocaleString() : new Date().toLocaleString();
   const lighthouseData = report.lighthouse || {};
+  const accessScanMetadata = resolveAccessScanMetadata(report, report.pages || []);
   const scannerRunEvidence = buildScannerRunEvidence(report.pages || []);
 
-  const toolCounts = TOOL_CONFIG.map((t) => ({
-    ...t,
-    count: t.layers
-      ? allViolations.filter((v) => t.layers.includes(v.layer)).length
-      : allViolations.filter((v) => v.layer === t.layer).length,
-  }));
+  const toolCounts = TOOL_CONFIG.map((t) => {
+    const toolViols = t.layers
+      ? allViolations.filter((v) => t.layers.includes(v.layer))
+      : allViolations.filter((v) => v.layer === t.layer);
+    return {
+      ...t,
+      count: countIssueOccurrences(toolViols),
+      label: t.id === 'accessScan' && accessScanMetadata?.profile
+        ? `AccessScan — ${formatAccessScanProfileLabel(accessScanMetadata.profile)}`
+        : t.label,
+    };
+  });
 
-  const criticalCount = allViolations.filter((v) => v.impact === 'critical').length;
-  const seriousCount = allViolations.filter((v) => v.impact === 'serious').length;
-  const moderateCount = allViolations.filter((v) => v.impact === 'moderate').length;
+  const criticalCount = countIssueOccurrences(allViolations.filter((v) => v.impact === 'critical'));
+  const seriousCount = countIssueOccurrences(allViolations.filter((v) => v.impact === 'serious'));
+  const moderateCount = countIssueOccurrences(allViolations.filter((v) => v.impact === 'moderate'));
   const healthScore = total === 0 ? 100 : Math.max(0, 100 - criticalCount * 15 - seriousCount * 5 - moderateCount * 2);
   const healthColor = scoreColor(healthScore);
 
-  const sections = TOOL_CONFIG.map((t) => buildToolSection(t, allViolations, lighthouseData)).join('\n');
+  const sections = TOOL_CONFIG.map((t) =>
+    buildToolSection(t, allViolations, lighthouseData, accessScanMetadata)
+  ).join('\n');
 
   const navItems = toolCounts.map((t) =>
     `<button class="nav-pill" onclick="scrollToSection('section-${t.id}')">
@@ -751,13 +849,18 @@ function buildHtml(report) {
 
   const impactOptions = ['all', 'critical', 'serious', 'moderate', 'minor'].map((f) => {
     const colors = { all: '#222222', critical: '#c13515', serious: '#ff385c', moderate: '#6a6a6a', minor: '#929292' };
-    const count = f === 'all' ? total : allViolations.filter((v) => v.impact === f).length;
+    const count = f === 'all'
+      ? total
+      : countIssueOccurrences(allViolations.filter((v) => v.impact === f));
     return `<button class="filter-pill${f === 'all' ? ' active' : ''}" data-filter="${f}" data-group="impact" onclick="setFilter('impact','${f}',this)" style="--fc:${colors[f]}">${f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)} <span class="pill-count">${count}</span></button>`;
   }).join('');
 
   const categoryFilters = [{ id: 'all', label: 'All', color: '#222222' }, ...TOOL_CONFIG.map((t) => ({ id: t.layer || t.id, label: t.label, color: t.color }))];
   const categoryOptions = categoryFilters.map((f) => {
-    const count = f.id === 'all' ? total : allViolations.filter((v) => v.layer === f.id || (f.id === 'behavioral' && ['keyboard', 'focusTrap', 'ariaLive', 'dynamicContent', 'screenReader'].includes(v.layer))).length;
+    const filtered = f.id === 'all'
+      ? allViolations
+      : allViolations.filter((v) => v.layer === f.id || (f.id === 'behavioral' && ['keyboard', 'focusTrap', 'ariaLive', 'dynamicContent', 'screenReader'].includes(v.layer)));
+    const count = countIssueOccurrences(filtered);
     return `<button class="filter-pill${f.id === 'all' ? ' active' : ''}" data-filter="${f.id}" data-group="category-tool" onclick="setFilter('category-tool','${f.id}',this)" style="--fc:${f.color}">${esc(f.label)} <span class="pill-count">${count}</span></button>`;
   }).join('');
 
@@ -1291,6 +1394,7 @@ body { font-family: var(--font); font-size: 14px; color: var(--ink); background:
 .scanner-status--complete { color: #007003; background: #edf7ed; }
 .scanner-status--fallback { color: #6b4200; background: #fff4df; }
 .scanner-status--error { color: #a52e13; background: #fff0ec; }
+.scanner-status--skipped { color: #4a5568; background: #edf2f7; }
 .scanner-status--unknown { color: var(--body); background: var(--surface-strong); }
 .scanner-run-context { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; margin-bottom: 14px; }
 .scanner-run-context dt { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }

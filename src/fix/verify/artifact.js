@@ -19,7 +19,7 @@ import {
 } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { canonicalSha256 } from '../../reporter/fingerprint.js';
+import { canonicalSha256, normalizeSelector } from '../../reporter/fingerprint.js';
 import { assertPathContainedInRoot } from '../controller/local-attestation.js';
 
 export class VerificationArtifactError extends Error {
@@ -33,7 +33,64 @@ export class VerificationArtifactError extends Error {
 export const ARTIFACT_ID_PATTERN = /^verification-\d+-[a-f0-9]{8}$/;
 const MAX_ARTIFACT_BYTES = 128 * 1024;
 const SHA256_PATTERN = /^sha256:[a-f0-9]{64}$/;
+const DIAGNOSTIC_TOKEN_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
+const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/;
+const MAX_DIAGNOSTIC_ID_LENGTH = 128;
+const MAX_LAYER_LENGTH = 64;
+const MAX_ROUTE_LENGTH = 512;
+const MAX_SELECTOR_LENGTH = 512;
 const { O_RDONLY, O_WRONLY, O_CREAT, O_EXCL, O_NOFOLLOW } = constants;
+
+function sanitizeDiagnosticToken(value, maxLength = MAX_DIAGNOSTIC_ID_LENGTH) {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  if (!normalized
+    || normalized.length > maxLength
+    || CONTROL_CHARACTER_PATTERN.test(normalized)
+    || !DIAGNOSTIC_TOKEN_PATTERN.test(normalized)) {
+    return null;
+  }
+  return normalized;
+}
+
+function sanitizeImpact(value) {
+  const normalized = typeof value === 'string' ? value.toLowerCase() : '';
+  return ['critical', 'serious', 'moderate', 'minor'].includes(normalized)
+    ? normalized
+    : 'unknown';
+}
+
+function sanitizeRoute(value) {
+  if (typeof value !== 'string' || CONTROL_CHARACTER_PATTERN.test(value)) return null;
+  const path = value.split(/[?#]/, 1)[0].trim();
+  if (!path.startsWith('/') || path.length > MAX_ROUTE_LENGTH) return null;
+  return path || '/';
+}
+
+function sanitizeSelector(value) {
+  if (typeof value !== 'string' || CONTROL_CHARACTER_PATTERN.test(value)) return null;
+  const normalized = normalizeSelector(value);
+  if (!normalized || normalized.length > MAX_SELECTOR_LENGTH) return null;
+  return normalized;
+}
+
+function sanitizeRegressionFinding(item = {}) {
+  return {
+    findingId: sanitizeDiagnosticToken(item.findingId || item.fingerprint),
+    impact: sanitizeImpact(item.impact),
+    canonicalRuleId: sanitizeDiagnosticToken(
+      item.canonicalRuleId || item.ruleId,
+    ),
+    nativeRuleId: sanitizeDiagnosticToken(
+      item.nativeRuleId || item.ruleId,
+    ),
+    layer: sanitizeDiagnosticToken(item.layer, MAX_LAYER_LENGTH),
+    route: sanitizeRoute(item.route || item.pageRoute),
+    selector: sanitizeSelector(
+      item.selector || item.element?.selector,
+    ),
+  };
+}
 
 function sanitizeArtifact(artifact) {
   return {
@@ -42,10 +99,9 @@ function sanitizeArtifact(artifact) {
     diffHash: artifact.diffHash,
     targetFindingIds: [...(artifact.targetFindingIds || [])].sort(),
     removedTargets: [...(artifact.removedTargets || [])].sort(),
-    newCriticalSerious: (artifact.newCriticalSerious || []).map((item) => ({
-      findingId: item.findingId,
-      impact: item.impact,
-    })),
+    newCriticalSerious: (artifact.newCriticalSerious || []).map(
+      sanitizeRegressionFinding,
+    ),
     build: artifact.build ? { exitCode: artifact.build.exitCode } : null,
     format: artifact.format ? { exitCode: artifact.format.exitCode } : null,
     sourceTraceResolved: artifact.sourceTraceResolved === true,

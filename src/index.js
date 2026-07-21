@@ -8,7 +8,14 @@ import { clearPartialCache, mapViolationToSource } from './tracer/partial-map.js
 import { computeSourcePreimage } from './tracer/preimage.js';
 import { buildAxeEvidence, buildAxePageMetadata, scanPageWithAxe } from './scanner/axe.js';
 import { scanWithAccessScan } from './scanner/access-scan/index.js';
+import { resolveScanProfile, resolveOrchestratorScanProfile } from './scanner/access-scan/engine/profiles.js';
+import { buildAccessScanExecutionTotals } from './scanner/access-scan/engine/execution-totals.js';
+import { CORPUS_COMPARATOR_VERSION } from './scanner/access-scan/corpus/constants.js';
 import { installRuntimeHooks } from './scanner/access-scan/runtime/index.js';
+import {
+  installNoHydrateJobsRoutes,
+  prepareNoHydrateJobsPage,
+} from './scanner/access-scan/runtime/no-hydrate.js';
 import { scanKeyboardNavigation } from './scanner/keyboard.js';
 import { scanFocusTraps } from './scanner/focus-trap.js';
 import { scanAriaLiveRegions } from './scanner/aria-live.js';
@@ -136,21 +143,26 @@ export function buildAxeScannerRuns(axeResult = {}) {
 export function buildAccessScanRun(violations = [], {
   includeThirdParty = false,
   engineVersion = null,
-  profile = includeThirdParty ? 'commercial-parity' : 'standards',
+  profile = resolveScanProfile({ includeThirdParty }),
   execution = null,
+  executionTotals = null,
   sessionMetrics = null,
 } = {}) {
+  const resolvedProfile = profile || resolveScanProfile({ includeThirdParty });
   const evidence = {
     ruleGroups: new Set(violations.map((violation) => violation.ruleId)).size,
     findingOccurrences: countViolationOccurrences(violations),
     fixUnits: violations.length,
     includeThirdParty,
-    profile,
+    profile: resolvedProfile,
+    comparatorVersion: CORPUS_COMPARATOR_VERSION,
   };
 
-  if (execution) {
+  if (executionTotals) {
+    evidence.execution = executionTotals;
+  } else if (execution) {
     evidence.engine = {
-      profile: execution.profile || profile,
+      profile: execution.profile || resolvedProfile,
       rules: {
         complete: execution.complete ?? 0,
         inapplicable: execution.inapplicable ?? 0,
@@ -521,6 +533,59 @@ export function parseSessionIdArg(rawArgs = []) {
   return sessionId;
 }
 
+export function parseRequiredFlagValue(rawArgs = [], flag, code, message) {
+  const index = rawArgs.indexOf(flag);
+  if (index === -1) return null;
+  const value = rawArgs[index + 1];
+  if (!value || value.startsWith('--')) {
+    throw new FixControllerError(code, message);
+  }
+  return value;
+}
+
+export async function runDemoSubcommand(rawArgs = []) {
+  const file = parseRequiredFlagValue(
+    rawArgs,
+    '--file',
+    'DEMO_FILE_REQUIRED',
+    '--file requires a relative source file path.',
+  );
+  if (!file) {
+    throw new FixControllerError('DEMO_FILE_REQUIRED', '--file is required for demo mode.');
+  }
+
+  const source = parseRequiredFlagValue(
+    rawArgs,
+    '--source',
+    'DEMO_SOURCE_REQUIRED',
+    '--source requires a project root path.',
+  ) || PROJECT_ROOT;
+
+  const route = parseRequiredFlagValue(
+    rawArgs,
+    '--route',
+    'DEMO_ROUTE_REQUIRED',
+    '--route requires a page route.',
+  ) || '/';
+
+  const session = parseRequiredFlagValue(
+    rawArgs,
+    '--session',
+    'INVALID_SESSION_ID',
+    '--session requires a session ID.',
+  );
+  const useUI = new Set(rawArgs).has('--ui');
+  const { runCisDemo, generateDefaultDemoSessionId } = await import('./fix/demo/orchestrator.js');
+
+  return runCisDemo({
+    originalRoot: source,
+    targetFile: file,
+    sessionId: session || generateDefaultDemoSessionId(),
+    route,
+    useUI,
+  });
+}
+
 export async function runFixSubcommand(rawArgs = []) {
   const args = new Set(rawArgs);
   const useUI = args.has('--ui');
@@ -565,6 +630,7 @@ export async function runCli() {
   const noFail = args.has('--no-fail');
   const includeThirdPartyRequested = args.has('--include-third-party');
   const excludeThirdPartyRequested = args.has('--exclude-third-party');
+  const noHydrateJobs = args.has('--no-hydrate-jobs');
   const forcePSI = args.has('--psi');
   const noPSI = args.has('--no-psi');
   const failOnViolations = args.has('--fail-on-violations');
@@ -637,7 +703,8 @@ export async function runCli() {
     const includeThirdParty = resolveIncludeThirdParty({
       isRemoteUrl: !isLocalUrl,
       includeRequested: includeThirdPartyRequested,
-      excludeRequested: excludeThirdPartyRequested,
+      // --no-hydrate-jobs implies no third-party widget findings in the compare path
+      excludeRequested: excludeThirdPartyRequested || noHydrateJobs,
     });
     let scanAttestation = null;
     if (isLocalUrl) {
@@ -648,6 +715,9 @@ export async function runCli() {
     } else {
       console.log(`\nRemote URL scan: ${urlArg}`);
     }
+    if (noHydrateJobs) {
+      console.log('NO-HYDRATE-JOBS — blocking jobs/chat bundles and stripping mounts');
+    }
     try {
       await runScan(
         [{ url: urlArg, name: 'remote', path: '/' }],
@@ -656,6 +726,7 @@ export async function runCli() {
         {
           fix, fixMode, useAI, dryRun, baselineMode, useUI, agentMode,
           isUrlMode: !isLocalUrl, noFail, includeThirdParty, failOnViolations,
+          noHydrateJobs,
           scanAttestation, sourceRoot: sourceArg, sessionId,
         }
       );
@@ -716,11 +787,15 @@ export async function runCli() {
     const isSinglePage = pagesToScan.length === 1 || !!pageFilter;
     const includeThirdParty = resolveIncludeThirdParty({
       includeRequested: includeThirdPartyRequested,
-      excludeRequested: excludeThirdPartyRequested,
+      excludeRequested: excludeThirdPartyRequested || noHydrateJobs,
     });
+    if (noHydrateJobs) {
+      console.log('NO-HYDRATE-JOBS — blocking jobs/chat bundles and stripping mounts');
+    }
     await runScan(pagesToScan, config, manifest, {
       fix, fixMode, useAI, dryRun, baselineMode, useUI, agentMode,
       isUrlMode: false, isSinglePage, noFail, includeThirdParty, failOnViolations,
+      noHydrateJobs,
       scanAttestation: scanAttestation || loadScanAttestation(config),
       sourceRoot: PROJECT_ROOT, sessionId,
     });
@@ -874,8 +949,15 @@ async function scanOnePage(pageConfig, config, options = {}) {
   try {
     page = await newPage(browser);
     await installRuntimeHooks(page);
+    if (options.noHydrateJobs) {
+      await installNoHydrateJobsRoutes(page);
+    }
     await resilientGoto(page, url, { timeout });
     await page.waitForTimeout(500);
+    if (options.noHydrateJobs) {
+      await prepareNoHydrateJobsPage(page);
+      await page.waitForTimeout(200);
+    }
 
     if (isRemote) {
       pageAttestation = await extractPageAttestationFromPage(page);
@@ -904,23 +986,23 @@ async function scanOnePage(pageConfig, config, options = {}) {
 
     if (config.layers.accessScan) {
       try {
-        let accessExecution = null;
+        let accessExecutionRecords = null;
         let accessSessionMetrics = null;
+        // Optional profile fields must not be forwarded as `profile: undefined`,
+        // or resolveScanProfile forces standards and ignores includeThirdParty.
+        const resolvedAccessProfile = resolveOrchestratorScanProfile({
+          profile: options.profile,
+          includeThirdParty: options.includeThirdParty,
+        });
         const accessViols = await scanWithAccessScan(page, url, {
           skipRules: config.skipRules,
+          profile: resolvedAccessProfile,
           includeThirdParty: options.includeThirdParty,
           skipNavigation: true,
+          activateContent: options.noHydrateJobs ? false : true,
           externalNavigationCount: 1,
           onExecutionRecords: (records, meta) => {
-            accessExecution = {
-              profile: meta.profile,
-              complete: records.filter((record) => record.status === 'complete').length,
-              inapplicable: records.filter((record) => record.status === 'inapplicable').length,
-              error: records.filter((record) => record.status === 'error').length,
-              timeout: records.filter((record) => record.status === 'timeout').length,
-              candidates: records.reduce((sum, record) => sum + record.candidateCount, 0),
-              findings: records.reduce((sum, record) => sum + record.findingCount, 0),
-            };
+            accessExecutionRecords = records;
             accessSessionMetrics = meta.sessionMetrics;
           },
         });
@@ -928,8 +1010,10 @@ async function scanOnePage(pageConfig, config, options = {}) {
         scannerRuns.push(buildAccessScanRun(accessViols, {
           includeThirdParty: options.includeThirdParty,
           engineVersion: PACKAGE_VERSION,
-          profile: accessExecution?.profile,
-          execution: accessExecution,
+          profile: resolvedAccessProfile,
+          executionTotals: accessExecutionRecords
+            ? buildAccessScanExecutionTotals(accessExecutionRecords)
+            : null,
           sessionMetrics: accessSessionMetrics,
         }));
         console.log(`  [${pageConfig.name}] accessScan: ${accessViols.length} violation${accessViols.length === 1 ? '' : 's'}`);
@@ -1227,6 +1311,7 @@ async function runScan(pages, config, manifest, options) {
   const {
     fix, fixMode, useAI, dryRun, baselineMode, useUI, agentMode, isSinglePage,
     noFail, includeThirdParty, failOnViolations, isUrlMode, sourceRoot, sessionId,
+    noHydrateJobs = false,
   } = options;
   const concurrency = config.concurrency || 2;
 

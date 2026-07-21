@@ -1,12 +1,18 @@
 import { getSharedBuiltInRuleRegistry } from './engine/builtin-registry.js';
 import { runRules } from './engine/runner.js';
-import { PROFILES } from './engine/profiles.js';
+import {
+  PROFILES,
+  resolveScanProfile,
+  AccessScanUnknownProfileError,
+} from './engine/profiles.js';
 import { toViolation } from './engine/finding.js';
 import {
   activateDynamicContent,
   createScanSession,
   installRuntimeHooks,
 } from './runtime/index.js';
+
+export { PROFILES, resolveScanProfile, resolveOrchestratorScanProfile, AccessScanUnknownProfileError } from './engine/profiles.js';
 
 export class AccessScanUnknownRuleError extends Error {
   /**
@@ -95,6 +101,7 @@ function buildSessionMetrics(session, {
  * @param {string} url
  * @param {{
  *   skipRules?: string[],
+ *   profile?: import('./engine/schema.js').ProfileId,
  *   includeThirdParty?: boolean,
  *   skipNavigation?: boolean,
  *   activateContent?: boolean,
@@ -104,6 +111,7 @@ function buildSessionMetrics(session, {
  *   stabilityQuietMs?: number,
  *   stabilityTimeoutMs?: number,
  *   stabilityMinObserveMs?: number,
+ *   session?: Awaited<ReturnType<typeof createScanSession>>,
  *   onExecutionRecords?: (
  *     records: import('./engine/runner.js').RuleExecutionRecord[],
  *     meta: { profile: string, sessionMetrics: Record<string, number> },
@@ -111,9 +119,9 @@ function buildSessionMetrics(session, {
  * }} [options]
  */
 export async function scanWithAccessScan(page, url, options = {}) {
+  const profile = resolveScanProfile(options);
   const {
     skipRules = [],
-    includeThirdParty = false,
     skipNavigation = false,
     activateContent = true,
     externalNavigationCount = 0,
@@ -122,6 +130,7 @@ export async function scanWithAccessScan(page, url, options = {}) {
     stabilityQuietMs,
     stabilityTimeoutMs,
     stabilityMinObserveMs,
+    session: providedSession,
     onExecutionRecords,
   } = options;
 
@@ -136,8 +145,7 @@ export async function scanWithAccessScan(page, url, options = {}) {
     : { frameCount: 0, scrollCount: 0 };
 
   const registry = await getSharedBuiltInRuleRegistry();
-  const profile = includeThirdParty ? PROFILES.COMMERCIAL_PARITY : PROFILES.STANDARDS;
-  const session = await createScanSession(page, {
+  const session = providedSession || await createScanSession(page, {
     stabilityQuietMs,
     stabilityTimeoutMs,
     stabilityMinObserveMs,

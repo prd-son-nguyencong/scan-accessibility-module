@@ -226,7 +226,7 @@ test('buildRuleRegistry restricts custom descriptors to allowlisted evaluators',
   assert.equal(registry.getRule('ListEmpty').checks[0].evaluator, 'allowed');
 });
 
-test('filterChecksForProfile keeps standards checks in both profiles but drops parity-only in standards', () => {
+test('filterChecksForProfile uses exact profile membership', () => {
   const rule = {
     checks: [
       { id: 'both', profiles: ['standards', 'commercial-parity'] },
@@ -239,7 +239,7 @@ test('filterChecksForProfile keeps standards checks in both profiles but drops p
   const parityChecks = filterChecksForProfile(rule.checks, PROFILES.COMMERCIAL_PARITY);
 
   assert.deepEqual(standardsChecks.map((c) => c.id), ['both', 'standards']);
-  assert.deepEqual(parityChecks.map((c) => c.id), ['both', 'parity', 'standards']);
+  assert.deepEqual(parityChecks.map((c) => c.id), ['both', 'parity']);
   assert.equal(isParityOnlyCheck(rule.checks[1]), true);
   assert.equal(isParityOnlyCheck(rule.checks[0]), false);
 });
@@ -374,9 +374,13 @@ test('runRules honors skipRules before execution', async () => {
     skipRules: ['ListEmpty', 'ErrorRule'],
   });
 
-  const ruleIds = result.executionRecords.map((record) => record.ruleId);
-  assert.ok(!ruleIds.includes('ListEmpty'));
-  assert.ok(!ruleIds.includes('ErrorRule'));
+  const listEmpty = result.executionRecords.find((record) => record.ruleId === 'ListEmpty');
+  const errorRule = result.executionRecords.find((record) => record.ruleId === 'ErrorRule');
+  assert.equal(listEmpty?.status, 'skipped');
+  assert.equal(errorRule?.status, 'skipped');
+  assert.ok((listEmpty?.checks || []).every((check) => check.status === 'skipped'));
+  assert.ok((errorRule?.checks || []).every((check) => check.status === 'skipped'));
+  assert.equal(result.findings.length, 0);
 });
 
 test('runRules isolates evaluator failures and continues other checks', async () => {

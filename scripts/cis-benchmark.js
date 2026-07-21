@@ -6,8 +6,8 @@ import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import '../src/utils/config.js';
 import {
-  createCisTransportFromTrustedConfig,
-  resolveTrustedCisConfig,
+  createCisTransportFromConfig,
+  resolveCisConfig,
 } from '../src/fix/cis/config.js';
 import { CisTransportError, redactTransportErrorMessage } from '../src/fix/cis/transport.js';
 import { ModelSelectionError } from '../src/fix/eval/model-selection.js';
@@ -485,8 +485,8 @@ export function writeBenchmarkArtifact(localRoot, timestamp, artifact, {
  *   env?: NodeJS.ProcessEnv,
  *   stdoutWrite?: (chunk: string) => void,
  *   stderrWrite?: (chunk: string) => void,
- *   resolveConfig?: (env: NodeJS.ProcessEnv) => ReturnType<typeof resolveTrustedCisConfig>,
- *   createTransportBundle?: typeof createCisTransportFromTrustedConfig,
+ *   resolveConfig?: (env: NodeJS.ProcessEnv) => ReturnType<typeof resolveCisConfig>,
+ *   createTransportBundle?: typeof createCisTransportFromConfig,
  *   loadReportFromPath?: typeof loadReportFromPath,
  *   resolveDefaultTrustedVerification?: typeof resolveDefaultTrustedVerification,
  *   startFixController?: typeof startFixController,
@@ -503,8 +503,8 @@ export async function runCisBenchmarkCli({
   env = process.env,
   stdoutWrite = (chunk) => process.stdout.write(chunk),
   stderrWrite = (chunk) => process.stderr.write(chunk),
-  resolveConfig = (candidateEnv) => resolveTrustedCisConfig(candidateEnv, { requireModel: false }),
-  createTransportBundle = createCisTransportFromTrustedConfig,
+  resolveConfig = (candidateEnv) => resolveCisConfig(candidateEnv, { requireModel: false }),
+  createTransportBundle = createCisTransportFromConfig,
   loadReportFromPath: loadReportFromPathImpl = loadReportFromPath,
   resolveDefaultTrustedVerification: resolveDefaultTrustedVerificationImpl = resolveDefaultTrustedVerification,
   startFixController: startFixControllerImpl = startFixController,

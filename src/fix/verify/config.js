@@ -38,13 +38,18 @@ function readTrustedScanConfig(localRoot) {
   }
 }
 
-function optionalCommand(config, key) {
-  if (config[key] == null) return null;
-  return parseTrustedCommand(config[key], { field: key });
+function tryOptionalCommand(config, key) {
+  if (config[key] == null) return { ok: true, value: null };
+  try {
+    return { ok: true, value: parseTrustedCommand(config[key], { field: key }) };
+  } catch {
+    return { ok: false, reason: 'MALFORMED_CONFIG' };
+  }
 }
 
 /**
  * Resolve trusted shadow verification commands from host `.scan-config.json` only.
+ * buildEnv in scan config is not exported here; it is consumed by fresh-scan builds.
  */
 export function resolveTrustedVerificationConfig(localRoot) {
   const loaded = readTrustedScanConfig(localRoot);
@@ -60,18 +65,32 @@ export function resolveTrustedVerificationConfig(localRoot) {
 
   let build = DEFAULT_BUILD;
   if (config.verifyBuildCommand != null) {
-    build = optionalCommand(config, 'verifyBuildCommand');
+    const parsed = tryOptionalCommand(config, 'verifyBuildCommand');
+    if (!parsed.ok) return parsed;
+    build = parsed.value;
   } else if (config.buildCommand != null) {
-    build = optionalCommand(config, 'buildCommand');
+    const parsed = tryOptionalCommand(config, 'buildCommand');
+    if (!parsed.ok) return parsed;
+    build = parsed.value;
   }
 
-  const formatter = config.verifyFormatCommand != null
-    ? optionalCommand(config, 'verifyFormatCommand')
-    : (config.formatCommand != null ? optionalCommand(config, 'formatCommand') : DEFAULT_FORMAT);
+  let formatter = DEFAULT_FORMAT;
+  if (config.verifyFormatCommand != null) {
+    const parsed = tryOptionalCommand(config, 'verifyFormatCommand');
+    if (!parsed.ok) return parsed;
+    formatter = parsed.value;
+  } else if (config.formatCommand != null) {
+    const parsed = tryOptionalCommand(config, 'formatCommand');
+    if (!parsed.ok) return parsed;
+    formatter = parsed.value;
+  }
 
-  const prepare = config.verifyInstallCommand != null
-    ? optionalCommand(config, 'verifyInstallCommand')
-    : null;
+  let prepare = null;
+  if (config.verifyInstallCommand != null) {
+    const parsed = tryOptionalCommand(config, 'verifyInstallCommand');
+    if (!parsed.ok) return parsed;
+    prepare = parsed.value;
+  }
 
   return {
     ok: true,

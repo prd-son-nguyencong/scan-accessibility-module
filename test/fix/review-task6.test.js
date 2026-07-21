@@ -66,7 +66,10 @@ function verifiedCandidateRecord(root, sessionDir, relPath, line, oldText, newTe
   };
 }
 
-function bootstrap(root, { includeBlocked = false } = {}) {
+function bootstrap(root, {
+  includeBlocked = false,
+  verificationBaselineFindings = undefined,
+} = {}) {
   mkdirSync(join(root, 'src'), { recursive: true });
   const content = '<button id="apply">Apply</button>\n';
   writeFileSync(join(root, 'src/a.liquid'), content);
@@ -91,7 +94,15 @@ function bootstrap(root, { includeBlocked = false } = {}) {
     sourceOwner: source,
     evidence: [],
     affectedRoutes: ['/'],
-    findings: [{ findingId: 'f1', source, pageState: 'initial', canonicalRuleId: 'button-name' }],
+    findings: [{
+      findingId: 'f1',
+      source,
+      pageState: 'initial',
+      canonicalRuleId: 'button-name',
+      layer: 'accessScan',
+      impact: 'serious',
+      element: { selector: '#apply' },
+    }],
   }];
   if (includeBlocked) {
     fixUnits.push({
@@ -129,6 +140,7 @@ function bootstrap(root, { includeBlocked = false } = {}) {
       ...(includeBlocked ? [{ fixUnitId: 'unit-blocked', proposalAllowed: false }] : []),
     ],
     localRoot: root,
+    verificationBaselineFindings,
   });
 }
 
@@ -219,6 +231,230 @@ test('partial apply passes the full report baseline to post-apply verification',
       receivedBaseline.map((finding) => finding.findingId).sort(),
       ['f-blocked', 'f1'],
     );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('target-filtered review state passes its process-only full baseline to post-apply verification', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-task6-'));
+  try {
+    const unrelatedFinding = {
+      findingId: 'f-unrelated',
+      canonicalRuleId: 'heading-order',
+      layer: 'axe',
+      impact: 'serious',
+      route: '/',
+      pageState: 'initial',
+      source: { file: 'src/layouts/base.liquid', line: 4 },
+      element: { selector: 'main h3' },
+    };
+    const state = bootstrap(root);
+    const targetFinding = structuredClone(state.baseFixUnits[0].findings[0]);
+    const filteredState = bootstrap(root, {
+      verificationBaselineFindings: [targetFinding, unrelatedFinding],
+    });
+    const candidate = verifiedCandidateRecord(
+      root,
+      filteredState.sessionDir,
+      'src/a.liquid',
+      1,
+      '<button id="apply">',
+      '<button id="apply" aria-label="Apply">',
+    );
+    filteredState.registerVerifiedCandidate('unit-a', candidate, { replace: true });
+    filteredState.accept('unit-a', candidate.candidateHash);
+    filteredState.approveExactDiff('unit-a', candidate.candidateHash, candidate.diffHash);
+
+    assert.deepEqual(filteredState.fixUnits.map((unit) => unit.fixUnitId), ['unit-a']);
+    assert.equal(filteredState.getSnapshot().units.length, 1);
+
+    let receivedBaseline = null;
+    await filteredState.applyAcceptedCandidates(async ({ baselineByUnit }) => {
+      receivedBaseline = baselineByUnit.get('unit-a');
+      return { status: 'committed' };
+    });
+
+    assert.deepEqual(
+      receivedBaseline.map((finding) => [finding.findingId, finding.layer]),
+      [
+        ['f1', 'accessScan'],
+        ['f-unrelated', 'axe'],
+      ],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('verification baseline stays process-only, isolated, and caller-supplied after reload', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-task6-'));
+  try {
+    const suppliedBaseline = [{
+      findingId: 'f-reload-only',
+      canonicalRuleId: 'heading-order',
+      layer: 'axe',
+      impact: 'serious',
+      source: { file: 'src/layouts/base.liquid', line: 4 },
+    }];
+    const state = bootstrap(root, { verificationBaselineFindings: suppliedBaseline });
+    persistReviewState(state);
+
+    suppliedBaseline[0].source.file = 'src/mutated-by-caller.liquid';
+    assert.ok(state.raw.verificationBaselineFindings);
+    assert.equal(state.raw.verificationBaselineFindings[0].source.file, 'src/layouts/base.liquid');
+    assert.equal(Object.isFrozen(state.raw.verificationBaselineFindings), true);
+    assert.equal(Object.isFrozen(state.raw.verificationBaselineFindings[0].source), true);
+
+    const sessionPayload = JSON.parse(readFileSync(join(state.sessionDir, 'session.json'), 'utf8'));
+    assert.equal('verificationBaselineFindings' in sessionPayload, false);
+    assert.equal(JSON.stringify(sessionPayload).includes('f-reload-only'), false);
+    assert.equal(JSON.stringify(state.getSnapshot()).includes('f-reload-only'), false);
+
+    const reloadOptions = {
+      sessionDir: state.sessionDir,
+      reportId: REPORT_ID,
+      sessionId: 'task6',
+      fixUnits: state.baseFixUnits,
+      traceResults: [],
+      policyRoutes: [{ fixUnitId: 'unit-a', proposalAllowed: true }],
+      localRoot: root,
+    };
+    const legacyReload = loadReviewState(reloadOptions);
+    assert.deepEqual(
+      legacyReload.raw.verificationBaselineFindings.map((finding) => finding.findingId),
+      ['f1'],
+    );
+
+    const suppliedReload = loadReviewState({
+      ...reloadOptions,
+      verificationBaselineFindings: [{
+        findingId: 'f-reloaded',
+        source: { file: 'src/layouts/reloaded.liquid', line: 2 },
+      }],
+    });
+    assert.deepEqual(
+      suppliedReload.raw.verificationBaselineFindings.map((finding) => finding.findingId),
+      ['f-reloaded'],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('null postVerify cannot disable mandatory trusted apply verification', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-task6-'));
+  try {
+    const state = bootstrap(root);
+    const candidate = verifiedCandidateRecord(
+      root,
+      state.sessionDir,
+      'src/a.liquid',
+      1,
+      '<button id="apply">',
+      '<button id="apply" aria-label="Apply">',
+    );
+    state.registerVerifiedCandidate('unit-a', candidate, { replace: true });
+    state.accept('unit-a', candidate.candidateHash);
+    state.approveExactDiff('unit-a', candidate.candidateHash, candidate.diffHash);
+
+    let scanCalls = 0;
+    const scanner = async () => {
+      scanCalls += 1;
+      return {
+        findings: [],
+        sourceTraceResolved: true,
+        executedLayers: ['axe', 'accessScan'],
+      };
+    };
+    scanner.ownsSiteLifecycle = true;
+
+    const result = await state.applyAcceptedCandidates(createTrustedApplyHandler({
+      localRoot: root,
+      sessionDir: state.sessionDir,
+      reportId: REPORT_ID,
+      verification: { scanner },
+      postVerify: null,
+    }));
+
+    assert.equal(result.postVerified, true);
+    assert.equal(scanCalls, 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('default post-apply comparison rejects a true new critical finding and rolls back', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-task6-'));
+  try {
+    const seedState = bootstrap(root);
+    const targetFinding = structuredClone(seedState.baseFixUnits[0].findings[0]);
+    const unrelatedFinding = {
+      findingId: 'f-existing-unrelated',
+      canonicalRuleId: 'heading-order',
+      layer: 'axe',
+      impact: 'serious',
+      route: '/',
+      pageState: 'initial',
+      source: { file: 'src/layouts/base.liquid', line: 4 },
+      element: { selector: 'main h3' },
+    };
+    const state = bootstrap(root, {
+      verificationBaselineFindings: [targetFinding, unrelatedFinding],
+    });
+    const beforeBytes = readFileSync(join(root, 'src/a.liquid'));
+    const candidate = verifiedCandidateRecord(
+      root,
+      state.sessionDir,
+      'src/a.liquid',
+      1,
+      '<button id="apply">',
+      '<button id="apply" aria-label="Apply">',
+    );
+    state.registerVerifiedCandidate('unit-a', candidate, { replace: true });
+    state.accept('unit-a', candidate.candidateHash);
+    state.approveExactDiff('unit-a', candidate.candidateHash, candidate.diffHash);
+
+    const newCriticalFinding = {
+      findingId: 'f-new-critical',
+      canonicalRuleId: 'image-alt',
+      layer: 'axe',
+      impact: 'critical',
+      route: '/',
+      pageState: 'initial',
+      source: { file: 'src/a.liquid', line: 1 },
+      element: { selector: '#new-critical' },
+    };
+    const scanner = async () => ({
+      findings: [
+        structuredClone(unrelatedFinding),
+        structuredClone(newCriticalFinding),
+      ],
+      sourceTraceResolved: true,
+      executedLayers: ['axe', 'accessScan'],
+    });
+    scanner.ownsSiteLifecycle = true;
+
+    let failure = null;
+    try {
+      await state.applyAcceptedCandidates(createTrustedApplyHandler({
+        localRoot: root,
+        sessionDir: state.sessionDir,
+        reportId: REPORT_ID,
+        verification: { scanner },
+      }));
+    } catch (error) {
+      failure = error;
+    }
+
+    assert.equal(failure?.code, 'POST_VERIFY_FAILED');
+    assert.deepEqual(
+      failure.postVerify.unitResults[0].delta.newCriticalSerious
+        .map((finding) => finding.findingId),
+      ['f-new-critical'],
+    );
+    assert.equal(readFileSync(join(root, 'src/a.liquid')).equals(beforeBytes), true);
+    assert.ok(state.auditLog.some((event) => event.type === 'post_verify_failed'));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -89,8 +89,10 @@ test('classifyW3cRule maps HIT-01 message families to stable native rules', () =
     ['Bad value “button” for attribute “type” on element “a”: Subtype missing.', 'w3c-nested-interactive'],
     ['Duplicate ID “location-label”.', 'w3c-duplicate-id'],
     ['The first occurrence of ID “location-label” was here.', 'w3c-duplicate-id'],
-    ['The “main” element must not appear as a descendant of the “section” element.', 'w3c-main-landmark-structure'],
-    ['A document must not include more than one visible “main” element.', 'w3c-main-landmark-structure'],
+    ['The “main” element must not appear as a descendant of the “section” element.', 'w3c-main-in-section'],
+    ['The “main” element must not appear as a descendant of the “main” element.', 'w3c-main-nested'],
+    ['A document must not include more than one visible “main” element.', 'w3c-multiple-main'],
+    ['Stray end tag “main”.', 'w3c-main-landmark-structure'],
     ['A “script” element with “type=module” must not have a “defer” attribute.', 'w3c-module-defer'],
     ['The heading “h3” follows the heading “h1”, skipping 1 heading level.', 'w3c-heading-order'],
     ['Consider avoiding viewport values that prevent users from resizing documents.', 'w3c-viewport-zoom'],
@@ -109,4 +111,35 @@ test('classifyW3cRule maps HIT-01 message families to stable native rules', () =
     w3c.classifyW3cRule({ message: 'Unknown warning.', type: 'info', subType: 'warning' }),
     'w3c-html-warning',
   );
+});
+
+test('deduplicateW3cViolations keeps distinct Nu messages on the same extract', () => {
+  assert.equal(typeof w3c.deduplicateW3cViolations, 'function');
+  const extract = '<main class="c-jobs__main">';
+  const deduped = w3c.deduplicateW3cViolations([
+    {
+      rule: 'w3c-main-in-section',
+      description: 'The "main" element must not appear as a descendant of the "section" element.',
+      line: 681,
+      element: { extract },
+    },
+    {
+      rule: 'w3c-main-nested',
+      description: 'The "main" element must not appear as a descendant of the "main" element.',
+      line: 681,
+      element: { extract },
+    },
+    {
+      rule: 'w3c-multiple-main',
+      description: 'A document must not include more than one visible "main" element.',
+      line: 681,
+      element: { extract },
+    },
+  ]);
+  assert.equal(deduped.length, 3);
+  assert.deepEqual(deduped.map((item) => item.rule).sort(), [
+    'w3c-main-in-section',
+    'w3c-main-nested',
+    'w3c-multiple-main',
+  ].sort());
 });

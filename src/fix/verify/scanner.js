@@ -2,6 +2,7 @@ import { getBrowser, newPage, closeBrowser } from '../../scanner/browser.js';
 import { scanPageWithAxe } from '../../scanner/axe.js';
 import { scanWithAccessScan } from '../../scanner/access-scan/index.js';
 import { installRuntimeHooks } from '../../scanner/access-scan/runtime/index.js';
+import { normalizeCorpusRuleId } from '../../reporter/rule-aliases.js';
 import { resolveSecureSourceFile } from '../candidate/path.js';
 import { ShadowVerificationError } from './shadow.js';
 import {
@@ -43,7 +44,9 @@ function canonicalizeAccessScanFinding(violation, route) {
   return {
     findingId: violation.findingId || violation.fingerprint || null,
     fingerprint: violation.fingerprint || violation.findingId || null,
-    canonicalRuleId: violation.canonicalRuleId || violation.ruleId,
+    canonicalRuleId: normalizeCorpusRuleId(
+      violation.canonicalRuleId || violation.ruleId,
+    ),
     nativeRuleId: violation.ruleId,
     ruleId: violation.ruleId,
     layer: 'accessScan',

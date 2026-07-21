@@ -41,6 +41,7 @@ pnpm scan --page /jobs         # single page
 pnpm scan --changed-only       # only pages with modified .liquid files
 npx ada-scan --url https://…   # scan a live URL (no build/config needed)
 npx ada-scan --url https://… --exclude-third-party # opt out of remote widget findings
+npx ada-scan --url https://… --no-hydrate-jobs     # block jobs/chat bundles + strip mounts (implies exclude-third-party)
 pnpm scan:fix                  # scan + interactive terminal fix (claude default)
 pnpm scan:fix:cursor           # write fix context for Cursor / VS Code / Windsurf
 pnpm scan:baseline             # save ROI baseline
@@ -51,6 +52,9 @@ pnpm scan:report               # regenerate reports from last scan
 (`--fix`, `--fix-mode`, `--ui`, `--layers`, `--psi/--no-psi`, `--dry-run`, …).
 Remote URL scans include third-party content by default to match commercial
 whole-page scanners. Local scans still require `--include-third-party`.
+Use `--no-hydrate-jobs` when comparing local Vite shells to staging without
+jobs/search/chat hydration (blocks widget bundles, strips leftover mounts, and
+turns off accessScan scroll activation; also implies exclude-third-party).
 
 ## Trusted CIS review workflow
 
@@ -171,16 +175,37 @@ repo:
 
 ## Live CIS operator workflow
 
-Live CIS requires a Workday-approved PEM bundle and `sha256:<64hex>` fingerprint from Trust
-Star/PKI/JAMF — never from an unverified endpoint, never with TLS bypass
-(`NODE_TLS_REJECT_UNAUTHORIZED=0`, `rejectUnauthorized: false`, Bruno
-`sslVerification: false`). Keep `.env` and the CA bundle outside source control.
+**Trusted mode is the default.** Production, CI, and operator acceptance require a
+Workday-approved PEM bundle and `sha256:<64hex>` fingerprint from Trust Star/PKI/JAMF —
+never from an unverified endpoint. Keep `.env` and the CA bundle outside source control.
 
-**Canonical reference:** [docs/cis-contract.md](docs/cis-contract.md) — trust prerequisites,
-config keys, model scoring, activation checklist, troubleshooting codes, implementation
-evidence, redaction policy, and legacy characterization warnings.
+**Canonical reference:** [docs/cis-contract.md](docs/cis-contract.md) — security boundary,
+trust prerequisites, config keys, sandbox demo, model scoring, activation checklist,
+troubleshooting codes, implementation evidence, redaction policy, and legacy
+characterization warnings.
 
-From `ada-scan/`:
+### CIS security boundary
+
+| Rule | Behavior |
+| --- | --- |
+| Default transport | `CIS_TLS_MODE=trusted` (or unset) — pinned CA, `rejectUnauthorized: true` |
+| `insecure-dev` | Local development only; **refused** when `CI` is set or `NODE_ENV=production` |
+| TLS scope | Unverified TLS applies only to the CIS Undici dispatcher — never a global Node setting |
+| TLS version | Current development endpoint requires **TLS 1.2** (`CIS_TLS_MAX_VERSION=TLSv1.2`) |
+| Auth bypass | `bypass_auth=true` query param is sent **only** in `insecure-dev` with `CIS_DEV_BYPASS_AUTH=true` |
+| Forbidden | **`NODE_TLS_REJECT_UNAUTHORIZED` is not supported** — do not set it globally or in `.env` |
+| Model claims | One sandbox demo does **not** prove the best model; use `cis:benchmark` for cross-model evidence |
+| Trusted operation | Official CA bundle + fingerprint remain **required** for trusted/production use |
+
+### Trusted operator commands
+
+**Host root vs nested checkout:** When ada-scan is installed at the host project root
+(`npx ada-scan init` creates `.scan-config.json` there), run `pnpm cis:*` from that root
+and dotenv loads `./.env` automatically. In **this repository's nested checkout**
+(`ada-scan/` inside the host tree, no host `.scan-config.json`), prefix commands with
+`ADA_SCAN_ROOT=..` so dotenv loads the gitignored host `.env` at the repo root.
+
+From `ada-scan/` (nested checkout — source tree layout):
 
 ```bash
 pnpm cis:configure -- \
@@ -188,25 +213,91 @@ pnpm cis:configure -- \
   --env "../.env" \
   --ca-bundle "$APPROVED_CIS_CA_BUNDLE" \
   --ca-sha256 "$APPROVED_CIS_CA_SHA256"
-pnpm cis:models
+ADA_SCAN_ROOT=.. pnpm cis:models
 ```
 
 Benchmark only model IDs returned by `cis:models` (remove absent IDs; never guess aliases):
 
 ```bash
-pnpm cis:benchmark -- \
+ADA_SCAN_ROOT=.. pnpm cis:benchmark -- \
   --report "../scan-reports/latest.json" \
   --local-root ".." \
   --models "anthropic.claude-opus-4-8,anthropic.claude-sonnet-5,anthropic.claude-sonnet-4-20250514-v1:0" \
   --max-units 15
 ```
 
+### Sandbox demo (one-file ADA, local only)
+
+For guarded local development against the current CIS endpoint, set the development controls
+in the gitignored root `.env` (see [cis-contract.md § Development mode](docs/cis-contract.md#development-mode-insecure-dev-local-only)).
+Then from `ada-scan/` (nested checkout — use `ADA_SCAN_ROOT=..` as above):
+
+```bash
+ADA_SCAN_ROOT=.. pnpm cis:models
+ADA_SCAN_ROOT=.. pnpm cis:demo -- \
+  --source .. \
+  --file src/partials/layout/header.liquid \
+  --route / \
+  --session demo-sonnet5-header \
+  --ui
+```
+
+**Session layout** (under host project root):
+
+```text
+scan-reports/fix-sessions/<session-id>/
+  demo-workspace/          # persistent sandbox copy (source edits apply here only)
+  artifacts/
+    candidate.patch
+    fixed/<target-file>    # e.g. fixed/src/partials/layout/header.liquid
+    evidence.json
+  session.json             # review state (no credentials)
+  transaction-<id>/        # apply journal + snapshots
+```
+
+**Workbench action order** (exact sequence):
+
+```text
+Generate proposal
+→ acknowledge every manual check
+→ Run isolated verification
+→ Accept
+→ Approve exact diff
+→ Apply
+→ Rollback sandbox
+```
+
+The workbench shows a persistent warning when `transportSecurity === 'insecure-dev'`.
+Original host source is never modified; apply and rollback operate on `demo-workspace/` only.
+
+**Evidence inspection** (after apply + rollback; from repo root):
+
+```bash
+node -e '
+const fs = require("node:fs");
+const p = "scan-reports/fix-sessions/demo-sonnet5-header/artifacts/evidence.json";
+const evidence = JSON.parse(fs.readFileSync(p, "utf8"));
+if (!evidence.originalUnchangedAfterApply ||
+    !evidence.originalUnchangedAfterRollback ||
+    !evidence.sandboxRestored) process.exit(1);
+console.log(JSON.stringify({
+  model: evidence.modelId,
+  originalUnchangedAfterApply: evidence.originalUnchangedAfterApply,
+  originalUnchangedAfterRollback: evidence.originalUnchangedAfterRollback,
+  sandboxRestored: evidence.sandboxRestored,
+  transactionId: evidence.transactionId,
+}, null, 2));
+'
+```
+
+Expected: all three booleans are `true`. Inspect `artifacts/candidate.patch` and
+`artifacts/fixed/…` for the exported diff and post-apply file; delete
+`scan-reports/fix-sessions/demo-*` when finished (gitignored).
+
 No ADA-specialized model is proven; `CIS_MODEL` is candidate-hash input with no silent
 runtime fallback. Activate only after inventory, minimal prediction, benchmark artifact,
-and one-file review acceptance (proposal → manual review → shadow verify → accept → exact
-diff approve → apply → rollback). Legacy `scripts/cis-characterize.js` uses unpinned
-`bypass_auth` probing and is **not** a substitute for pinned-CA `cis:models`/benchmark
-validation.
+and one-file review acceptance. Legacy `scripts/cis-characterize.js` uses unpinned
+`bypass_auth` probing and is **not** a substitute for `cis:models`/benchmark validation.
 
 **Implementation verification (2026-07-16):** from `ada-scan/`, contract/redaction
 25/25, trusted-fix 491/491, full `pnpm test` 851/851; repository build via
@@ -223,11 +314,15 @@ CIS_AUTH_TOKEN=…
 CIS_ALLOWED_HOSTS=…    # comma-separated explicit allowlist
 CIS_PROVIDER=aws
 CIS_MODEL=…
-CIS_CA_BUNDLE_PATH=…   # approved PEM bundle (outside repo)
-CIS_CA_SHA256=sha256:… # pinned bundle fingerprint
+CIS_CA_BUNDLE_PATH=…   # approved PEM bundle (outside repo; trusted mode only)
+CIS_CA_SHA256=sha256:… # pinned bundle fingerprint (trusted mode only)
+CIS_TLS_MODE=trusted   # or insecure-dev (local only — see cis-contract.md)
+CIS_INSECURE_DEV_ACK=… # exact ALLOW_UNVERIFIED_CIS_TLS when using insecure-dev
+CIS_TLS_MAX_VERSION=…  # TLSv1.2 required for insecure-dev
+CIS_DEV_BYPASS_AUTH=…  # true for insecure-dev only
 ADA_SCAN_DEPLOYMENT_URL=https://careers.example.com # attested hybrid scope
 GOOGLE_API_KEY=…       # PageSpeed Insights — higher rate limits for remote URLs
-ADA_SCAN_ROOT=…        # explicit host root override (useful in monorepos)
+ADA_SCAN_ROOT=…        # explicit host root override (required for nested ada-scan/ checkout)
 ```
 
 ## Notes
@@ -239,5 +334,6 @@ ADA_SCAN_ROOT=…        # explicit host root override (useful in monorepos)
   externally when comparing baselines across upgrades.
 - Requires Node ≥ 20.18.1, ESM host.
 - The trusted CIS transport requires its configured host allowlist and HTTPS
-  (except explicit loopback development); it never sends the PoC
-  `bypass_auth=true` query parameter.
+  (except explicit loopback development); it never sends `bypass_auth=true`.
+  Guarded `insecure-dev` may send `bypass_auth=true` only with every required
+  development guard — see [cis-contract.md](docs/cis-contract.md).

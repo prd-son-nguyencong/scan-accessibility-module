@@ -129,7 +129,7 @@ export default [
     checks: [
       {
         id: 'forms:main-navigation-mismatch',
-        profiles: ['standards'],
+        profiles: ['standards', 'commercial-parity'],
         evaluator: 'form-relationships',
         target: { selector: 'ul, ol' },
         options: { mode: 'main-navigation-mismatch' },

@@ -80,19 +80,34 @@ export default {
             ancestor.tag === 'header' || ancestor.attributes.role === 'banner'
           ))
         );
-        if (!inBanner) continue;
+        const position = navigation.computedStyle.position || '';
+        const isChromeNav = position === 'fixed' || position === 'sticky';
+        if (!inBanner && !isChromeNav) continue;
 
-        const children = indexes.childrenByParentId.get(navigation.id) || [];
-        const layout = children.find((child) => {
+        const layout = getDescendants(snapshot, indexes, navigation, (child) => {
           if (child.tag !== 'div' || child.attributes.role) return false;
-          return getDescendants(snapshot, indexes, child, (descendant) => {
+          if (child.attributes['aria-hidden'] === 'true') return false;
+          if (child.computedStyle.display === 'none') return false;
+          if (child.computedStyle.visibility === 'hidden') return false;
+          // Absolute/fixed submenu shells are flyouts, not the primary nav layout.
+          const position = child.computedStyle.position || '';
+          if (position === 'absolute' || position === 'fixed') return false;
+          // List-based primary nav rows.
+          const listBased = getDescendants(snapshot, indexes, child, (descendant) => {
             if (descendant.tag !== 'ul' && descendant.tag !== 'ol') return false;
             const links = getDescendants(snapshot, indexes, descendant, (link) => (
               link.tag === 'a' && Boolean(link.attributes.href)
             ));
             return links.length >= 3 && isLikelyPrimaryNavigationLinks(links);
           }).length > 0;
-        });
+          if (listBased) return true;
+          // Flex/grid link toolbars without list markup (commercial still wants
+          // the wrapper called out when the landmark itself is misused).
+          const directLinks = getDescendants(snapshot, indexes, child, (link) => (
+            link.tag === 'a' && Boolean(link.attributes.href)
+          ));
+          return directLinks.length >= 3 && isLikelyPrimaryNavigationLinks(directLinks);
+        }).sort((left, right) => left.id - right.id)[0];
         if (!layout) continue;
         findings.push(elementFinding(layout, {
           structuralPattern: 'main-navigation-layout-wrapper',

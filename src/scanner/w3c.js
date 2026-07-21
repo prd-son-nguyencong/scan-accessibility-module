@@ -28,6 +28,17 @@ export function classifyW3cRule(message = {}) {
   if (/duplicate id "|the first occurrence of id "/.test(description)) {
     return 'w3c-duplicate-id';
   }
+  // Keep Nu's three distinct main-landmark errors as separate rule IDs so
+  // report fingerprints / scan-visual cards match the oracle message count.
+  if (/main" element must not appear as a descendant of the "section" element/.test(description)) {
+    return 'w3c-main-in-section';
+  }
+  if (/main" element must not appear as a descendant of the "main" element/.test(description)) {
+    return 'w3c-main-nested';
+  }
+  if (/more than one visible "main" element/.test(description)) {
+    return 'w3c-multiple-main';
+  }
   if (/"main" element must not appear as a descendant|more than one visible "main" element|multiple main landmark|stray end tag "main"/.test(description)) {
     return 'w3c-main-landmark-structure';
   }
@@ -458,16 +469,19 @@ async function runSupplementalChecks(page, apiMessages, rawHtml) {
 }
 
 /**
- * Deduplicate W3C violations by (line, rule, extract-prefix-80).
+ * Deduplicate W3C violations by (rule, line, description, extract-prefix-80).
  * Keeps the first occurrence and increments its count field.
  */
-function deduplicateW3cViolations(violations) {
+export function deduplicateW3cViolations(violations) {
   const seen = new Map();
   const result = [];
 
   for (const v of violations) {
     const extract = (v.element?.extract || v.html || '').replace(/\s+/g, ' ').slice(0, 80);
-    const key = `${v.rule}|${v.line ?? 'null'}|${extract}`;
+    // Include Nu message text so distinct errors on the same extract/line
+    // (e.g. three main-landmark messages on <main class="c-jobs__main">) stay separate.
+    const description = canonicalizeW3cDescription(v.description || v.message || '');
+    const key = `${v.rule}|${v.line ?? 'null'}|${description}|${extract}`;
 
     if (seen.has(key)) {
       seen.get(key).count = (seen.get(key).count || 1) + 1;

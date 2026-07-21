@@ -10,7 +10,7 @@ export default [
     checks: [
       {
         id: 'landmarks:navigation-misuse',
-        profiles: ['standards'],
+        profiles: ['standards', 'commercial-parity'],
         evaluator: 'landmark-graph',
         target: { selector: 'nav, [role="navigation"]', allowPluginFallback: true },
         options: { mode: 'navigation-misuse' },
@@ -27,7 +27,7 @@ export default [
     ],
     reporting: {
       title: 'Navigation landmark does not contain key site navigation links',
-      requirement: 'A navigation landmark should identify a section that contains primary links for moving through the site or page.',
+      requirement: 'A navigation landmark should identify a section that contains primary links for moving through the site or page. Using navigation landmarks for minor or secondary link groups makes it harder for screen reader users to locate the page’s key navigation areas.',
       recommendation: 'Confirm this landmark contains key site navigation links and use list markup when the links form a list.',
     },
     fix: { deterministic: false, policy: 'manual_only' },
@@ -58,7 +58,7 @@ export default [
     ],
     reporting: {
       title: 'A search form should be tagged as a search landmark',
-      requirement: 'Screen reader users rely on landmarks to quickly access important regions of a page.',
+      requirement: 'Screen reader users rely on landmarks to quickly access important regions of a page. Defining a form as a search landmark ensures that users can quickly recognize and navigate to the search form.',
       recommendation: 'Confirm this is a search region, then add role="search" or wrap it in a <search> element.',
     },
     fix: { deterministic: false, policy: 'manual_only' },
@@ -73,7 +73,7 @@ export default [
     checks: [
       {
         id: 'landmarks:region-footer-misuse',
-        profiles: ['standards'],
+        profiles: ['standards', 'commercial-parity'],
         evaluator: 'landmark-graph',
         target: { selector: 'footer, [role="contentinfo"]' },
         options: { mode: 'region-footer-misuse' },
@@ -96,7 +96,7 @@ export default [
     ],
     reporting: {
       title: 'An element without global site information is tagged as a contentinfo landmark',
-      requirement: 'When a region without global site information is tagged as a contentinfo landmark, screen reader users may be misled about its purpose.',
+      requirement: 'When a region without global site information is tagged as a contentinfo landmark, screen reader users may be misled about its purpose and expect website-level details, such as copyright or contact information.',
       recommendation: 'Remove role="contentinfo" from non-footer elements.',
     },
     fix: { deterministic: false, policy: 'manual_only' },
@@ -108,13 +108,24 @@ export default [
     standard: { version: 'Best Practice', level: 'n/a', criterion: 'n/a' },
     severity: { impact: 'moderate', priority: 5 },
     automation: 'heuristic',
-    checks: [{
-      id: 'landmarks:region-footer-single',
-      profiles: ['standards'],
-      evaluator: 'landmark-graph',
-      options: { mode: 'region-footer-single' },
-      classification: 'potential',
-    }],
+    checks: [
+      {
+        id: 'landmarks:region-footer-single',
+        profiles: ['standards'],
+        evaluator: 'landmark-graph',
+        options: { mode: 'region-footer-single' },
+        classification: 'potential',
+      },
+      {
+        // Commercial accessScan counts chat/widget contentinfo against the page
+        // footer even across shadow roots.
+        id: 'parity:region-footer-single-page',
+        profiles: ['commercial-parity'],
+        evaluator: 'landmark-graph',
+        options: { mode: 'region-footer-single-page' },
+        classification: 'commercial-parity',
+      },
+    ],
     reporting: {
       title: 'Each page should include at most one global contentinfo landmark (footer)',
       requirement: 'Each page should normally include only one contentinfo landmark to keep landmark navigation simple and predictable.',
@@ -154,8 +165,8 @@ export default [
       },
     ],
     reporting: {
-      title: 'Global site information should be in a contentinfo landmark (footer)',
-      requirement: 'The contentinfo region provides screen reader users with information about the website, such as copyright, contact details, and legal information.',
+      title: 'Global site information that appears at the end of each page is contained in a contentinfo landmark (footer)',
+      requirement: 'The contentinfo region, typically represented by the <footer> element, is found at the end of each page and provides screen reader users with information about the website, such as copyright, contact details, legal information, and navigation links.',
       recommendation: 'Add global site information or remove the contentinfo landmark.',
     },
     fix: { deterministic: false, policy: 'manual_only' },
@@ -218,7 +229,7 @@ export default [
     ],
     reporting: {
       title: 'Breadcrumb navigation region should have a label',
-      requirement: 'A breadcrumb region presents a trail of links showing the user\'s current page in relation to higher-level pages on a site.',
+      requirement: 'A breadcrumb region presents a trail of links showing the user’s current page in relation to higher-level pages on a site. Without a label, it may be announced by screen reades simply as "navigation", making it hard to distinguish from other navigation regions on the page.',
       recommendation: 'Add aria-label="Breadcrumb" to the breadcrumb <nav> element.',
     },
     fix: { deterministic: false, policy: 'manual_only' },
@@ -232,14 +243,14 @@ export default [
     automation: 'deterministic',
     checks: [{
       id: 'landmarks:region-main-single',
-      profiles: ['standards'],
+      profiles: ['standards', 'commercial-parity'],
       evaluator: 'landmark-graph',
       options: { mode: 'region-main-single' },
       classification: 'confirmed',
     }],
     reporting: {
       title: 'Each page should include at most one main landmark',
-      requirement: 'A page typically presents one central subject, so a single main landmark establishes the boundaries of the primary content for screen reader users.',
+      requirement: 'A page typically presents one central subject, so a single main landmark establishes the boundaries of the primary content for screen reader users. Multiple main landmarks create uncertainty about the scope, leading to confusion and difficulty navigating the page.',
       recommendation: 'Use only one <main> landmark per page.',
     },
     fix: { deterministic: false, policy: 'manual_only' },
@@ -261,6 +272,16 @@ export default [
         classification: 'potential',
       },
       {
+        // Commercial accessScan flags nested/secondary job-chrome <main> the same
+        // way standards region-main-misuse does (nested landmark or thin content).
+        id: 'parity:region-main-misuse',
+        profiles: ['commercial-parity'],
+        evaluator: 'landmark-graph',
+        target: { selector: 'main, [role="main"]' },
+        options: { mode: 'region-main-misuse' },
+        classification: 'commercial-parity',
+      },
+      {
         id: 'parity:credential-gate-region-main-misuse',
         profiles: ['commercial-parity'],
         evaluator: 'commercial-parity',
@@ -277,7 +298,7 @@ export default [
     ],
     reporting: {
       title: 'An element without main content is tagged as a main landmark',
-      requirement: 'Incorrectly tagging the main landmark may cause screen reader users to misunderstand where the primary content begins or ends.',
+      requirement: 'Incorrectly tagging the main landmark may cause screen reader users to misunderstand where the primary content begins or ends, leading to confusion and inefficient navigation.',
       recommendation: 'Remove <main> from minimal content or add primary page content.',
     },
     fix: { deterministic: false, policy: 'manual_only' },
@@ -292,7 +313,7 @@ export default [
     checks: [
       {
         id: 'landmarks:region-main-mismatch',
-        profiles: ['standards'],
+        profiles: ['standards', 'commercial-parity'],
         evaluator: 'landmark-graph',
         options: { mode: 'region-main-mismatch' },
         classification: 'potential',
@@ -304,10 +325,17 @@ export default [
         options: { mode: 'credential-gate-region-main-mismatch' },
         classification: 'commercial-parity',
       },
+      {
+        id: 'parity:nested-main-boundary-mismatch',
+        profiles: ['commercial-parity'],
+        evaluator: 'commercial-parity',
+        options: { mode: 'nested-main-boundary-mismatch' },
+        classification: 'commercial-parity',
+      },
     ],
     reporting: {
-      title: 'All main content should be contained in the main landmark',
-      requirement: 'The main landmark represents the primary content of a page and should include content unique to that page.',
+      title: 'All of the main content on the page is contained in the main landmark',
+      requirement: 'The main landmark represents the primary content of a page. It should include only content unique to that page and must remain separate from repeated elements, such as navigation, header, or footer.',
       recommendation: 'Move significant content inside the <main> landmark so screen readers can locate it.',
     },
     fix: { deterministic: false, policy: 'manual_only' },

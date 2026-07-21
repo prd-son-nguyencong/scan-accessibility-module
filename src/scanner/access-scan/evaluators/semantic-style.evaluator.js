@@ -45,8 +45,13 @@ export default {
     }
 
     if (mode === 'emphasis-mismatch') {
+      const nativeItalicOnly = Boolean(check.options?.nativeItalicOnly);
       for (const element of candidates) {
-        if (!['i', 'span'].includes(element.tag) || element.attributes.role) continue;
+        if (nativeItalicOnly) {
+          if (element.tag !== 'i' || element.attributes.role) continue;
+        } else if (!['i', 'span'].includes(element.tag) || element.attributes.role) {
+          continue;
+        }
         if (!(element.text.trim() || element.visibleText.trim()) || !isItalicStyle(element)) continue;
         if (isTypographicFootnote(element)) continue;
         findings.push(elementFinding(element));

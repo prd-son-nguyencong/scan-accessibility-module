@@ -27,6 +27,20 @@ export default {
           findings.push(elementFinding(element, { successfulElements: successfulButtons }));
           continue;
         }
+        if (isPseudoInteractiveHost(element)) {
+          findings.push(elementFinding(element, {
+            successfulElements: successfulButtons,
+            inferredFrom: 'non-semantic-host-with-href-affordance',
+          }));
+          continue;
+        }
+        if (isFocusableUnsemanticControl(element)) {
+          findings.push(elementFinding(element, {
+            successfulElements: successfulButtons,
+            inferredFrom: 'focusable-unsemantic-control',
+          }));
+          continue;
+        }
         if (isUnsemanticClickableHeadingText(snapshot, indexes, element)) {
           findings.push(elementFinding(element, {
             successfulElements: successfulButtons,
@@ -50,6 +64,45 @@ function isActionAnchor(element) {
   if (element.tag !== 'a' || element.attributes.role === 'button') return false;
   const href = (element.attributes.href ?? '').trim().toLowerCase();
   return href === '' || href === '#' || href.startsWith('javascript:');
+}
+
+/**
+ * Non-anchor hosts that still expose an `href` (and pointer/keyboard affordance)
+ * are treated as untagged button/link controls in commercial scans.
+ *
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function isPseudoInteractiveHost(element) {
+  if (element.tag === 'a' || element.attributes.role) return false;
+  if (!Object.hasOwn(element.attributes, 'href')) return false;
+  return (
+    element.computedStyle.cursor === 'pointer'
+    || element.focusable
+    || element.attributes.tabindex !== undefined
+  );
+}
+
+/**
+ * Focusable non-semantic hosts (job-filter cards, custom tiles) that lack an
+ * explicit widget role are commercial ButtonMismatch samples.
+ *
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function isFocusableUnsemanticControl(element) {
+  if (element.tag === 'a' || element.tag === 'button') return false;
+  if (element.attributes.role) return false;
+  if (element.tag !== 'div' && element.tag !== 'span') return false;
+  if (!element.rendered || !element.focusable) return false;
+  const tabindex = element.attributes.tabindex;
+  if (tabindex === undefined || tabindex === '-1') return false;
+  // Require a control affordance — bare focusable text containers over-fire.
+  return (
+    element.computedStyle.cursor === 'pointer'
+    || Object.hasOwn(element.attributes, 'data-category')
+    || Object.keys(element.attributes).some((name) => (
+      /^data-(?:action|click|toggle|filter)/i.test(name)
+    ))
+  );
 }
 
 /**

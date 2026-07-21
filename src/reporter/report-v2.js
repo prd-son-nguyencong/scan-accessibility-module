@@ -10,6 +10,7 @@ import {
 } from './fingerprint.js';
 import { canonicalizeRuleId } from './rule-aliases.js';
 import { isKnownAttestationReason, sanitizeAttestationReason } from '../tracer/attestation-reasons.js';
+import { mergeAccessScanExecutionTotals } from '../scanner/access-scan/engine/execution-totals.js';
 
 const IMPACT_PRIORITY = {
   critical: 1,
@@ -294,6 +295,41 @@ function buildSummary(pages) {
   };
 }
 
+export function extractAccessScanRunMetadata(scanners = []) {
+  const accessRuns = scanners.filter((scanner) => scanner.layer === 'accessScan');
+  if (accessRuns.length === 0) {
+    return null;
+  }
+
+  const profiles = [...new Set(
+    accessRuns.map((run) => run.evidence?.profile).filter((profile) => typeof profile === 'string'),
+  )];
+  const comparators = [...new Set(
+    accessRuns
+      .map((run) => run.evidence?.comparatorVersion)
+      .filter((version) => typeof version === 'string'),
+  )];
+
+  if (profiles.length !== 1) {
+    throw new Error('Invalid ScanReportV2: accessScan profile must be consistent across scanner runs');
+  }
+  if (comparators.length !== 1) {
+    throw new Error('Invalid ScanReportV2: accessScan comparatorVersion must be consistent across scanner runs');
+  }
+
+  const execution = mergeAccessScanExecutionTotals(
+    accessRuns.map((run) => run.evidence?.execution).filter(Boolean),
+  );
+
+  return {
+    profile: profiles[0],
+    includeThirdParty: accessRuns.some((run) => run.evidence?.includeThirdParty === true),
+    comparatorVersion: comparators[0],
+    execution,
+    pageRunCount: accessRuns.length,
+  };
+}
+
 export function computeReportId(report) {
   return canonicalSha256({
     schemaVersion: report.schemaVersion,
@@ -353,6 +389,10 @@ export function buildScanReportV2(scanResults = [], context = {}) {
     pages,
     summary: buildSummary(pages),
   };
+  const accessScan = extractAccessScanRunMetadata(scanners);
+  if (accessScan) {
+    report.runMetadata = { accessScan };
+  }
   report.reportId = computeReportId(report);
   validateScanReportV2(report);
   return report;
@@ -594,6 +634,20 @@ export function validateScanReportV2(report) {
     canonicalStringify(report.summary) === canonicalStringify(buildSummary(report.pages)),
     'report summary does not match page findings',
   );
+  const hasAccessScanRuns = report.scanners.some((scanner) => scanner.layer === 'accessScan');
+  if (hasAccessScanRuns) {
+    invariant(
+      report.runMetadata?.accessScan,
+      'reports with accessScan scanner runs require runMetadata.accessScan',
+    );
+    const derived = extractAccessScanRunMetadata(report.scanners);
+    invariant(
+      canonicalStringify(derived) === canonicalStringify(report.runMetadata.accessScan),
+      'runMetadata.accessScan must match scanner evidence',
+    );
+  } else if (report.runMetadata?.accessScan) {
+    invariant(false, 'runMetadata.accessScan requires accessScan scanner runs');
+  }
   invariant(report.reportId === computeReportId(report), 'report ID does not match canonical content');
   return true;
 }

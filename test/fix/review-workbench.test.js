@@ -123,3 +123,58 @@ test('workbench exposes exact diff approval and apply actions', () => {
   assert.match(html, /Diff hash:/);
   assert.match(html, /acceptBtn\.disabled = !unit \|\| !unit\.acceptAllowed \|\| !unit\.candidateHash/);
 });
+
+test('workbench renders unified diff with accessible structure and tokens', () => {
+  assert.match(html, /<script type="module" nonce="__NONCE__">/);
+  assert.match(html, /import \{ renderDiffContent \} from '\/review\/diff-view\.js'/);
+  assert.doesNotMatch(html, /function renderUnifiedDiff/);
+  assert.doesNotMatch(html, /function renderDiffContent/);
+  assert.match(html, /diffRenderOptions/);
+  assert.match(html, /snapshotDiffTrimmed/);
+  assert.match(html, /--diff-add-bg/);
+  assert.match(html, /--diff-remove-text/);
+  assert.match(html, /prefers-color-scheme: dark/);
+  assert.match(html, /visually-hidden/);
+  assert.match(html, /diff-scroll/);
+  assert.match(html, /font-size: 0\.8125rem/);
+  assert.match(html, /diff-raw-scroll/);
+  assert.match(html, /white-space: pre/);
+});
+
+test('workbench unified diff uses safe DOM construction for candidate text', () => {
+  assert.match(html, /renderDiffContent\(section, accessibility\.diff/);
+  assert.match(html, /renderDiffContent\(section, plan\.diff/);
+  assert.doesNotMatch(html, /accessibility\.diff\.text.*innerHTML/);
+  assert.doesNotMatch(html, /diff\.view.*innerHTML/);
+  assert.doesNotMatch(html, /JSON\.stringify\(performance\.plan/);
+});
+
+test('workbench exposes insecure-dev security warning banner', () => {
+  assert.match(html, /id="security-warning"/);
+  assert.match(html, /role="alert"/);
+  assert.match(html, /transport !== 'insecure-dev'/);
+  assert.match(html, /Unverified TLS — development only/);
+  assert.match(html, /devAuthBypass/);
+});
+
+test('workbench exposes sandbox status card and rollback dialog', () => {
+  assert.match(html, /id="sandbox-status"/);
+  assert.match(html, /id="rollback-btn"/);
+  assert.match(html, /Rollback sandbox/);
+  assert.match(html, /id="rollback-dialog"/);
+  assert.match(html, /rollbackAvailable/);
+  assert.match(html, /\/api\/sandbox\/rollback/);
+  assert.match(html, /JSON\.stringify\(\{ confirm: true \}\)/);
+  assert.doesNotMatch(html, /transactionId.*rollback/);
+});
+
+test('workbench rollback success announces byte-exact restoration message', () => {
+  assert.match(html, /Sandbox restored byte-for-byte\. Original source remained unchanged\./);
+});
+
+test('workbench rollback disables confirm and main button while aria-busy', () => {
+  assert.match(html, /els\.rollbackBtn\.disabled = true/);
+  assert.match(html, /els\.rollbackDialog\.setAttribute\('aria-busy', 'true'\)/);
+  assert.match(html, /els\.rollbackBtn\.disabled = !state\.snapshot\?\.sandbox\?\.rollbackAvailable/);
+  assert.match(html, /els\.rollbackDialog\.getAttribute\('aria-busy'\) === 'true'/);
+});

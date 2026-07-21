@@ -4,11 +4,14 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { persistReviewState, ReviewStateError } from './state.js';
+import { REVIEW_DIFF_VIEW_PATH } from './diff-view.js';
 
 const TOKEN_HEADER = 'x-review-token';
 const LOOPBACK_HOST = '127.0.0.1';
 const MAX_BODY_BYTES = 64 * 1024;
 const WORKBENCH_PATH = join(dirname(fileURLToPath(import.meta.url)), 'workbench.html');
+const DIFF_VIEW_PATH = join(dirname(fileURLToPath(import.meta.url)), 'diff-view.js');
+const DIFF_VIEW_SOURCE = readFileSync(DIFF_VIEW_PATH, 'utf8');
 
 const PUBLIC_ERROR_MESSAGES = {
   INVALID_FIX_UNIT: 'The requested fix unit is invalid.',
@@ -65,6 +68,12 @@ const PUBLIC_ERROR_MESSAGES = {
   POST_VERIFY_FAILED: 'Post-apply verification failed; changes were rolled back.',
   POST_VERIFY_ROLLBACK_CONFLICTED: 'Post-apply rollback conflicted with concurrent edits.',
   ROLLBACK_CONFLICTED: 'Rollback conflicted with concurrent user edits.',
+  ROLLBACK_HANDLER_REQUIRED: 'Rollback handler is unavailable.',
+  ROLLBACK_NOT_AVAILABLE: 'Sandbox rollback is not available.',
+  ROLLBACK_IN_PROGRESS: 'Sandbox rollback is already in progress.',
+  ROLLBACK_ALREADY_COMPLETED: 'Sandbox rollback has already completed.',
+  ROLLBACK_CONFIRMATION_REQUIRED: 'Sandbox rollback requires explicit confirmation.',
+  ROLLBACK_VERIFICATION_FAILED: 'Sandbox rollback verification failed.',
   APPLY_HANDLER_REQUIRED: 'Apply handler is unavailable.',
   APPLY_STARTED: 'Apply is already in progress.',
   APPLY_IN_PROGRESS: 'Apply is already in progress.',
@@ -97,7 +106,7 @@ function securityHeaders({ nonce = null, contentType = 'application/json; charse
   if (nonce) {
     headers['Content-Security-Policy'] = [
       "default-src 'none'",
-      `script-src 'nonce-${nonce}'`,
+      `script-src 'nonce-${nonce}' 'strict-dynamic'`,
       `style-src 'nonce-${nonce}'`,
       "connect-src 'self'",
       "base-uri 'none'",
@@ -181,6 +190,13 @@ function serveWorkbench(res, nonce) {
   res.end(html);
 }
 
+function serveDiffViewAsset(res) {
+  res.writeHead(200, {
+    ...securityHeaders({ contentType: 'text/javascript; charset=utf-8' }),
+  });
+  res.end(DIFF_VIEW_SOURCE);
+}
+
 function routeMatch(pathname) {
   if (pathname === '/api/snapshot') return { name: 'snapshot', methods: new Set(['GET']) };
   if (pathname === '/api/preferences') return { name: 'preferences', methods: new Set(['POST']) };
@@ -203,6 +219,7 @@ function routeMatch(pathname) {
     return { name: 'verify', methods: new Set(['POST']) };
   }
   if (pathname === '/api/apply') return { name: 'apply', methods: new Set(['POST']) };
+  if (pathname === '/api/sandbox/rollback') return { name: 'sandbox-rollback', methods: new Set(['POST']) };
   return null;
 }
 
@@ -231,13 +248,27 @@ function handleDecision(state, fixUnitId, body) {
   throw Object.assign(new Error('INVALID_DECISION'), { code: 'INVALID_DECISION' });
 }
 
+function validateRollbackBody(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw Object.assign(new Error('ROLLBACK_CONFIRMATION_REQUIRED'), { code: 'ROLLBACK_CONFIRMATION_REQUIRED' });
+  }
+  const keys = Object.keys(body);
+  if (keys.length !== 1 || keys[0] !== 'confirm' || body.confirm !== true) {
+    throw Object.assign(new Error('ROLLBACK_CONFIRMATION_REQUIRED'), { code: 'ROLLBACK_CONFIRMATION_REQUIRED' });
+  }
+}
+
 function mapReviewError(error) {
   const code = error instanceof ReviewStateError ? error.code : error.code;
   if (code === 'SNAPSHOT_TOO_LARGE' || code === 'BODY_TOO_LARGE') {
     return { status: 413, payload: { error: code, message: PUBLIC_ERROR_MESSAGES[code] || 'Request entity too large.' } };
   }
   if (code && PUBLIC_ERROR_MESSAGES[code]) {
-    return { status: 400, payload: { error: code, message: PUBLIC_ERROR_MESSAGES[code] } };
+    const status = code === 'ROLLBACK_HANDLER_REQUIRED' || code === 'APPLY_HANDLER_REQUIRED'
+      || code === 'PROPOSAL_HANDLER_REQUIRED' || code === 'VERIFY_HANDLER_REQUIRED'
+      ? 503
+      : 400;
+    return { status, payload: { error: code, message: PUBLIC_ERROR_MESSAGES[code] } };
   }
   if (code === 'INVALID_JSON' || code === 'BAD_REQUEST') {
     return { status: 400, payload: { error: code, message: PUBLIC_ERROR_MESSAGES[code] || PUBLIC_ERROR_MESSAGES.BAD_REQUEST } };
@@ -252,6 +283,7 @@ export async function startReviewServer({
   applyHandler = null,
   proposeHandler = null,
   verifyHandler = null,
+  rollbackHandler = null,
 } = {}) {
   if (!state) {
     throw new Error('Review state is required to start the review server.');
@@ -277,6 +309,11 @@ export async function startReviewServer({
       if (req.method === 'GET' && (pathname === '/' || pathname === '/index.html')) {
         nonce = randomBytes(16).toString('base64url');
         serveWorkbench(res, nonce);
+        return;
+      }
+
+      if (req.method === 'GET' && pathname === REVIEW_DIFF_VIEW_PATH) {
+        serveDiffViewAsset(res);
         return;
       }
 
@@ -494,6 +531,36 @@ export async function startReviewServer({
         return;
       }
 
+      if (req.method === 'POST' && pathname === '/api/sandbox/rollback') {
+        if (!validateMutation(req, res)) {
+          await drainBody(req);
+          return;
+        }
+        let body;
+        try {
+          body = await readJsonBody(req);
+          validateRollbackBody(body);
+        } catch (error) {
+          if (error.code === 'BODY_TOO_LARGE') throw error;
+          if (error.code === 'INVALID_JSON') throw error;
+          const mapped = mapReviewError(error);
+          sendJson(res, mapped.status, mapped.payload);
+          return;
+        }
+        if (typeof rollbackHandler !== 'function') {
+          sendJson(res, 503, { error: 'ROLLBACK_HANDLER_REQUIRED', message: PUBLIC_ERROR_MESSAGES.ROLLBACK_HANDLER_REQUIRED });
+          return;
+        }
+        try {
+          const result = await state.rollbackSandboxTransaction(rollbackHandler);
+          sendJson(res, 200, { result, snapshot: state.getSnapshot() });
+        } catch (error) {
+          const mapped = mapReviewError(error);
+          sendJson(res, mapped.status, mapped.payload);
+        }
+        return;
+      }
+
       if (needsBody) await drainBody(req);
       const matchedRoute = routeMatch(pathname);
       if (matchedRoute && !matchedRoute.methods.has(req.method || '')) {
@@ -555,4 +622,4 @@ export async function startReviewServer({
   };
 }
 
-export { TOKEN_HEADER, LOOPBACK_HOST, PUBLIC_ERROR_MESSAGES };
+export { TOKEN_HEADER, LOOPBACK_HOST, PUBLIC_ERROR_MESSAGES, REVIEW_DIFF_VIEW_PATH };

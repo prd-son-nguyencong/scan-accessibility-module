@@ -68,3 +68,51 @@ test('unknown accessibility unit without deterministic flag is unsupported', () 
   });
   assert.equal(decision.policy, POLICIES.UNSUPPORTED);
 });
+
+test('LinkOpensNewWindow routes to semantic assistance with manual AT check', () => {
+  const decision = lookupPolicyDecision({
+    fixUnitId: 'u-link-opens-new-window',
+    kind: 'accessibility',
+    canonicalRuleId: 'LinkOpensNewWindow',
+    sourceOwner: { file: 'src/partials/layout/header.liquid', line: 7 },
+    findings: [{
+      canonicalRuleId: 'LinkOpensNewWindow',
+      nativeRuleId: 'LinkOpensNewWindow',
+      fix: { deterministic: false },
+    }],
+  });
+  assert.equal(decision.policy, POLICIES.SEMANTIC_ASSISTANCE);
+  assert.equal(decision.reasonCode, 'SEMANTIC_LABEL_OR_STRUCTURE');
+  assert.deepEqual(decision.requiredManualChecks, [
+    'Confirm the assistive technology announcement matches the intended accessible name or label.',
+  ]);
+});
+
+test('LinkCurrentPage routes to semantic assistance with manual AT check', () => {
+  const decision = lookupPolicyDecision({
+    fixUnitId: 'u-link-current-page',
+    kind: 'accessibility',
+    canonicalRuleId: 'LinkCurrentPage',
+    sourceOwner: { file: 'src/partials/layout/header.liquid', line: 22 },
+    findings: [{
+      canonicalRuleId: 'LinkCurrentPage',
+      nativeRuleId: 'LinkCurrentPage',
+      fix: { deterministic: false },
+    }],
+  });
+  assert.equal(decision.policy, POLICIES.SEMANTIC_ASSISTANCE);
+  assert.equal(decision.reasonCode, 'SEMANTIC_LABEL_OR_STRUCTURE');
+  assert.deepEqual(decision.requiredManualChecks, [
+    'Confirm the assistive technology announcement matches the intended accessible name or label.',
+  ]);
+});
+
+test('unknown PascalCase AccessScan rule stays unsupported', () => {
+  const decision = lookupPolicyDecision({
+    fixUnitId: 'u-unknown-pascal',
+    kind: 'accessibility',
+    canonicalRuleId: 'LinkAnchorAmbiguous',
+    findings: [{ fix: { deterministic: false } }],
+  });
+  assert.equal(decision.policy, POLICIES.UNSUPPORTED);
+});

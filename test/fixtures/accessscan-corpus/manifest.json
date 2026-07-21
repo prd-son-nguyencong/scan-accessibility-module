@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "1.0.0",
+  "description": "Frozen neutral accessScan corpus contract fixtures for element-level parity gates.",
+  "cases": [
+    {
+      "id": "neutral-empty-list",
+      "path": "cases/neutral-empty-list"
+    },
+    {
+      "id": "site-124",
+      "path": "cases/site-124"
+    },
+    {
+      "id": "site-203",
+      "path": "cases/site-203"
+    },
+    {
+      "id": "site-375",
+      "path": "cases/site-375"
+    },
+    {
+      "id": "site-538",
+      "path": "cases/site-538"
+    },
+    {
+      "id": "site-695",
+      "path": "cases/site-695"
+    },
+    {
+      "id": "site-710",
+      "path": "cases/site-710"
+    },
+    {
+      "id": "site-728",
+      "path": "cases/site-728"
+    },
+    {
+      "id": "site-731",
+      "path": "cases/site-731"
+    }
+  ]
+}

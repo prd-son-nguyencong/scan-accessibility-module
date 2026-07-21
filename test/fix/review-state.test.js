@@ -21,6 +21,7 @@ import {
   createReviewState,
   loadReviewState,
   persistReviewState,
+  trimSnapshotPayload,
 } from '../../src/fix/review/state.js';
 import { createSourceTraceInbox, traceAllFindings } from '../../src/fix/trace/inbox.js';
 import { buildTraceCandidatesFromFindings } from '../../src/fix/trace/candidates.js';
@@ -935,6 +936,551 @@ test('apply recovery gate stays closed until explicit reconciliation', () => {
     assert.equal(reloaded.raw.applyRecoveryRequired, true);
     reloaded.raw.applyRecoveryRequired = false;
     assert.equal(reloaded.getApplyEligibility().allowed, false, 'must not auto-reopen without reconciliation');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('createReviewState exposes normalized transportSecurity and devAuthBypass in snapshot', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-transport-labels-'));
+  try {
+    const report = localReport();
+    const sessionDir = join(root, 'scan-reports', 'fix-sessions', 'labels');
+    mkdirSync(sessionDir, { recursive: true, mode: 0o700 });
+    const state = createReviewState({
+      sessionDir,
+      reportId: report.reportId,
+      sessionId: 'labels',
+      fixUnits: [],
+      traceResults: [],
+      policyRoutes: [],
+      localRoot: root,
+      transportSecurity: 'insecure-dev',
+      devAuthBypass: true,
+    });
+
+    const snapshot = state.getSnapshot();
+    assert.equal(snapshot.transportSecurity, 'insecure-dev');
+    assert.equal(snapshot.devAuthBypass, true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('createReviewState normalizes invalid transport labels to disabled and false', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-transport-normalize-'));
+  try {
+    const report = localReport();
+    const sessionDir = join(root, 'scan-reports', 'fix-sessions', 'normalize');
+    mkdirSync(sessionDir, { recursive: true, mode: 0o700 });
+    const state = createReviewState({
+      sessionDir,
+      reportId: report.reportId,
+      sessionId: 'normalize',
+      fixUnits: [],
+      traceResults: [],
+      policyRoutes: [],
+      localRoot: root,
+      transportSecurity: 'evil-mode',
+      devAuthBypass: 'true',
+    });
+
+    const snapshot = state.getSnapshot();
+    assert.equal(snapshot.transportSecurity, 'disabled');
+    assert.equal(snapshot.devAuthBypass, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('transport labels are not persisted in session.json', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-transport-persist-'));
+  try {
+    const report = localReport();
+    const state = bootstrapSession(root, report);
+    state.raw.transportSecurity = 'insecure-dev';
+    state.raw.devAuthBypass = true;
+    state.setPreferences({ search: 'persist-probe' });
+
+    const sessionJson = readFileSync(join(state.sessionDir, 'session.json'), 'utf8');
+    assert.equal(sessionJson.includes('transportSecurity'), false);
+    assert.equal(sessionJson.includes('devAuthBypass'), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('trimSnapshotPayload retains transport labels when snapshot is trimmed', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-transport-trim-'));
+  try {
+    const report = localReport();
+    const state = bootstrapSession(root, report);
+    state.raw.transportSecurity = 'trusted';
+    state.raw.devAuthBypass = false;
+
+    const snapshot = state.getSnapshot();
+    const trimmed = trimSnapshotPayload({
+      ...snapshot,
+      units: Array.from({ length: 500 }, (_, index) => ({
+        ...snapshot.units[0],
+        fixUnitId: `unit-${index}`,
+        title: 'x'.repeat(500),
+        trace: Array.from({ length: 20 }, () => ({
+          findingId: `sha256:${'a'.repeat(64)}`,
+          route: '/',
+          unresolved: false,
+          partials: Array.from({ length: 20 }, () => ({
+            file: 'src/a.liquid',
+            line: 1,
+            confidence: 'high',
+            method: 'attested',
+            preimageSha256: `sha256:${'b'.repeat(64)}`,
+          })),
+        })),
+        editorLinks: ['vscode://file/a'],
+      })),
+    });
+
+    assert.equal(trimmed.transportSecurity, 'trusted');
+    assert.equal(trimmed.devAuthBypass, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('diffForUnit exposes structured view without changing candidate hashes', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-diff-view-'));
+  try {
+    const state = bootstrapSession(root, localReport());
+    const unitId = state.fixUnits[0].fixUnitId;
+    const candidate = state.raw.candidates[unitId];
+    const beforeHash = candidate.candidateHash;
+    const beforeDiffHash = candidate.diffHash;
+    const beforeDiff = candidate.diff;
+
+    const accessibilityUnit = state.getSnapshot().accessibility.sources
+      .flatMap((group) => group.units)
+      .find((unit) => unit.fixUnitId === unitId);
+    assert.ok(accessibilityUnit?.diff);
+    assert.equal(accessibilityUnit.diff.kind, 'candidate');
+    assert.equal(accessibilityUnit.diff.text, beforeDiff);
+    assert.equal(accessibilityUnit.diff.view?.ok, true);
+    assert.ok(Array.isArray(accessibilityUnit.diff.view.files));
+
+    assert.equal(candidate.candidateHash, beforeHash);
+    assert.equal(candidate.diffHash, beforeDiffHash);
+    assert.equal(candidate.diff, beforeDiff);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('diffForUnit malformed candidate diff keeps raw text with failed view', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-diff-malformed-'));
+  try {
+    const state = bootstrapSession(root, localReport());
+    const unitId = state.fixUnits[0].fixUnitId;
+    state.raw.candidates[unitId].diff = 'not-a-valid-unified-diff';
+    const accessibilityUnit = state.getSnapshot().accessibility.sources
+      .flatMap((group) => group.units)
+      .find((unit) => unit.fixUnitId === unitId);
+    assert.equal(accessibilityUnit.diff.text, 'not-a-valid-unified-diff');
+    assert.equal(accessibilityUnit.diff.view?.ok, false);
+    assert.equal(accessibilityUnit.diff.view?.reason, 'MALFORMED_UNIFIED_DIFF');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('trimSnapshotPayload drops structured diff view before canonical text', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-diff-trim-'));
+  try {
+    const state = bootstrapSession(root, localReport());
+    const snapshot = state.getSnapshot();
+    const unitId = state.fixUnits[0].fixUnitId;
+    const canonicalDiff = state.raw.candidates[unitId].diff;
+    const bloated = structuredClone(snapshot);
+    const accessibilityUnit = bloated.accessibility.sources
+      .flatMap((group) => group.units)
+      .find((unit) => unit.fixUnitId === unitId);
+    assert.ok(accessibilityUnit?.diff?.view?.ok);
+    const extraRows = Array.from({ length: 5000 }, (_, index) => ({
+      kind: 'context',
+      oldLine: index + 1,
+      newLine: index + 1,
+      text: 'x'.repeat(40),
+    }));
+    accessibilityUnit.diff.view.files[0].rows.push(...extraRows);
+
+    const trimmed = trimSnapshotPayload(bloated);
+    const trimmedUnit = trimmed.accessibility?.sources
+      ?.flatMap((group) => group.units)
+      ?.find((unit) => unit.fixUnitId === unitId);
+    assert.ok(trimmedUnit?.diff?.text);
+    assert.equal(trimmedUnit.diff.text, canonicalDiff);
+    assert.equal(trimmedUnit.diff.view, null);
+    assert.equal(trimmedUnit.diff.viewTrimmed, true);
+    assert.ok(Buffer.byteLength(JSON.stringify(trimmed), 'utf8') <= 256 * 1024);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('trimSnapshotPayload trims performance plan diff text after structured view removal', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-diff-perf-trim-'));
+  try {
+    const state = bootstrapSession(root, localReport());
+    const snapshot = state.getSnapshot();
+    const sourceDiff = snapshot.accessibility.sources
+      .flatMap((group) => group.units)
+      .find((unit) => unit.diff?.view?.ok)?.diff;
+    assert.ok(sourceDiff);
+    const bloated = structuredClone(snapshot);
+    bloated.performance = {
+      metrics: [{
+        metric: 'lcp',
+        opportunities: [{
+          fixUnitId: 'perf-plan-trim',
+          plan: {
+            files: ['src/partials/jobs/sort.liquid'],
+            diff: structuredClone(sourceDiff),
+          },
+        }],
+      }],
+    };
+    const extraRows = Array.from({ length: 5000 }, (_, index) => ({
+      kind: 'context',
+      oldLine: index + 1,
+      newLine: index + 1,
+      text: 'y'.repeat(40),
+    }));
+    bloated.performance.metrics[0].opportunities[0].plan.diff.view.files[0].rows.push(...extraRows);
+
+    const trimmed = trimSnapshotPayload(bloated);
+    const trimmedDiff = trimmed.performance.metrics[0].opportunities[0].plan.diff;
+    assert.ok(trimmedDiff.text);
+    assert.equal(trimmedDiff.text, sourceDiff.text);
+    assert.equal(trimmedDiff.view, null);
+    assert.equal(trimmedDiff.viewTrimmed, true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+function bootstrapSandboxSession(root, report, { persistedSandbox = null } = {}) {
+  const session = bootstrapSession(root, report);
+  session.raw.sandbox = {
+    enabled: true,
+    targetFile: 'src/partials/jobs/sort.liquid',
+    transactionId: null,
+    artifactPaths: null,
+    artifactError: null,
+    rollbackCompleted: false,
+    rollbackResult: null,
+  };
+  if (persistedSandbox) {
+    persistReviewState(session);
+    const sessionPath = join(session.sessionDir, 'session.json');
+    const parsed = JSON.parse(readFileSync(sessionPath, 'utf8'));
+    parsed.sandbox = persistedSandbox;
+    writeFileSync(sessionPath, `${JSON.stringify(parsed, null, 2)}\n`, { mode: 0o600 });
+    return loadReviewState({
+      sessionDir: session.sessionDir,
+      reportId: report.reportId,
+      sessionId: session.sessionId,
+      fixUnits: session.baseFixUnits,
+      traceResults: session.traceResults,
+      policyRoutes: session.policyRoutes,
+      traceInbox: session.raw.traceInbox,
+      localRoot: root,
+      sandboxContext: { enabled: true, targetFile: 'src/partials/jobs/sort.liquid' },
+      persisted: parsed,
+    });
+  }
+  return session;
+}
+
+test('sandbox rollback persists metadata after apply including artifactError path', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-sandbox-apply-'));
+  try {
+    const report = localReport();
+    const state = bootstrapSandboxSession(root, report);
+    state.raw.applyCompleted = true;
+    state.raw.sandbox.transactionId = 'transaction-1700000000000-deadbeef';
+    state.raw.sandbox.artifactError = 'ARTIFACT_EXPORT_FAILED';
+    persistReviewState(state);
+
+    const reloaded = loadReviewState({
+      sessionDir: state.sessionDir,
+      reportId: report.reportId,
+      sessionId: state.sessionId,
+      fixUnits: state.baseFixUnits,
+      traceResults: state.traceResults,
+      policyRoutes: state.policyRoutes,
+      traceInbox: state.raw.traceInbox,
+      localRoot: root,
+      sandboxContext: { enabled: true, targetFile: 'src/partials/jobs/sort.liquid' },
+      persisted: JSON.parse(readFileSync(join(state.sessionDir, 'session.json'), 'utf8')),
+    });
+
+    const snapshot = reloaded.getSnapshot();
+    assert.equal(snapshot.sandbox.rollbackAvailable, true);
+    assert.equal(snapshot.sandbox.artifactError, 'ARTIFACT_EXPORT_FAILED');
+    assert.equal(snapshot.sandbox.transactionId, 'transaction-1700000000000-deadbeef');
+    assert.equal(reloaded.raw.rollbackInFlight, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('rollbackSandboxTransaction succeeds and rejects replay', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-sandbox-rollback-'));
+  try {
+    const report = localReport();
+    const state = bootstrapSandboxSession(root, report);
+    state.raw.applyCompleted = true;
+    state.raw.sandbox.transactionId = 'transaction-1700000000000-cafebabe';
+
+    const handler = async () => ({
+      transactionId: 'transaction-1700000000000-cafebabe',
+      targetFile: 'src/partials/jobs/sort.liquid',
+      restored: [{ file: 'src/partials/jobs/sort.liquid' }],
+      sandboxRestored: true,
+      originalUnchangedAfterRollback: true,
+    });
+
+    const result = await state.rollbackSandboxTransaction(handler);
+    assert.equal(result.sandboxRestored, true);
+    assert.equal(state.getSnapshot().sandbox.rollbackCompleted, true);
+    assert.equal(state.getSnapshot().sandbox.rollbackAvailable, false);
+
+    await assert.rejects(
+      () => state.rollbackSandboxTransaction(handler),
+      (error) => error instanceof ReviewStateError && error.code === 'ROLLBACK_ALREADY_COMPLETED',
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('rollbackSandboxTransaction dedupes concurrent requests', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-sandbox-concurrent-'));
+  try {
+    const report = localReport();
+    const state = bootstrapSandboxSession(root, report);
+    state.raw.applyCompleted = true;
+    state.raw.sandbox.transactionId = 'transaction-1700000000000-beefbeef';
+
+    let calls = 0;
+    const handler = () => new Promise((resolve) => {
+      calls += 1;
+      setTimeout(() => resolve({
+        transactionId: 'transaction-1700000000000-beefbeef',
+        targetFile: 'src/partials/jobs/sort.liquid',
+        restored: [{ file: 'src/partials/jobs/sort.liquid' }],
+        sandboxRestored: true,
+        originalUnchangedAfterRollback: true,
+      }), 30);
+    });
+
+    const first = state.rollbackSandboxTransaction(handler);
+    const second = state.rollbackSandboxTransaction(handler);
+    await Promise.all([first, second]);
+    assert.equal(calls, 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('non-sandbox sessions omit sandbox snapshot block', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-non-sandbox-'));
+  try {
+    const state = bootstrapSession(root, localReport());
+    assert.equal(state.getSnapshot().sandbox, null);
+    persistReviewState(state);
+    const sessionJson = readFileSync(join(state.sessionDir, 'session.json'), 'utf8');
+    assert.equal(sessionJson.includes('"sandbox"'), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('invalid persisted sandbox block fails hydration', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-sandbox-invalid-'));
+  try {
+    const report = localReport();
+    assert.throws(
+      () => bootstrapSandboxSession(root, report, {
+        persistedSandbox: {
+          enabled: true,
+          targetFile: '../evil.liquid',
+          transactionId: null,
+          artifactPaths: null,
+          artifactError: null,
+          rollbackCompleted: false,
+          rollbackResult: null,
+        },
+      }),
+      (error) => error instanceof ReviewStateError && error.code === 'CORRUPT_SESSION',
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('rollbackSandboxTransaction rejects unavailable, in-flight, and conflict paths', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-sandbox-rollback-guards-'));
+  try {
+    const report = localReport();
+    const state = bootstrapSandboxSession(root, report);
+    const handler = async () => ({
+      transactionId: 'transaction-1700000000000-cafebabe',
+      targetFile: 'src/partials/jobs/sort.liquid',
+      restored: [{ file: 'src/partials/jobs/sort.liquid' }],
+      sandboxRestored: true,
+      originalUnchangedAfterRollback: true,
+    });
+
+    await assert.rejects(
+      () => state.rollbackSandboxTransaction(handler),
+      (error) => error instanceof ReviewStateError && error.code === 'ROLLBACK_NOT_AVAILABLE',
+    );
+
+    state.raw.applyCompleted = true;
+    state.raw.sandbox.transactionId = 'transaction-1700000000000-cafebabe';
+    state.raw.rollbackInFlight = true;
+    await assert.rejects(
+      () => state.rollbackSandboxTransaction(handler),
+      (error) => error instanceof ReviewStateError && error.code === 'ROLLBACK_IN_PROGRESS',
+    );
+
+    state.raw.rollbackInFlight = false;
+    const conflictHandler = async () => {
+      const error = new Error('conflict');
+      error.code = 'ROLLBACK_CONFLICTED';
+      throw error;
+    };
+    await assert.rejects(
+      () => state.rollbackSandboxTransaction(conflictHandler),
+      (error) => error instanceof ReviewStateError && error.code === 'ROLLBACK_CONFLICTED',
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('persisted sandbox artifactPaths reload with deep equality', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-sandbox-artifact-paths-'));
+  try {
+    const report = localReport();
+    const artifactPaths = Object.freeze({
+      patch: 'artifacts/candidate.patch',
+      fixed: 'artifacts/fixed/src/partials/jobs/sort.liquid',
+      evidence: 'artifacts/evidence.json',
+    });
+    const state = bootstrapSandboxSession(root, report, {
+      persistedSandbox: {
+        enabled: true,
+        targetFile: 'src/partials/jobs/sort.liquid',
+        transactionId: 'transaction-1700000000000-feedface',
+        artifactPaths,
+        artifactError: null,
+        rollbackCompleted: false,
+        rollbackResult: null,
+      },
+    });
+    state.raw.applyCompleted = true;
+    persistReviewState(state);
+
+    const reloaded = loadReviewState({
+      sessionDir: state.sessionDir,
+      reportId: report.reportId,
+      sessionId: state.sessionId,
+      fixUnits: state.baseFixUnits,
+      traceResults: state.traceResults,
+      policyRoutes: state.policyRoutes,
+      traceInbox: state.raw.traceInbox,
+      localRoot: root,
+      sandboxContext: { enabled: true, targetFile: 'src/partials/jobs/sort.liquid' },
+      persisted: JSON.parse(readFileSync(join(state.sessionDir, 'session.json'), 'utf8')),
+    });
+
+    const snapshot = reloaded.getSnapshot();
+    assert.deepEqual(snapshot.sandbox.artifactPaths, artifactPaths);
+    assert.notEqual(snapshot.sandbox.artifactPaths, artifactPaths);
+    assert.equal(snapshot.sandbox.rollbackAvailable, true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('rollbackSandboxTransaction rejects handler result that mismatches sandbox transaction or target', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-sandbox-rollback-mismatch-'));
+  try {
+    const report = localReport();
+    const state = bootstrapSandboxSession(root, report);
+    state.raw.applyCompleted = true;
+    state.raw.sandbox.transactionId = 'transaction-1700000000000-cafebabe';
+
+    const wrongTransactionHandler = async () => ({
+      transactionId: 'transaction-1700000000000-deadbeef',
+      targetFile: 'src/partials/jobs/sort.liquid',
+      restored: [{ file: 'src/partials/jobs/sort.liquid' }],
+      sandboxRestored: true,
+      originalUnchangedAfterRollback: true,
+    });
+    await assert.rejects(
+      () => state.rollbackSandboxTransaction(wrongTransactionHandler),
+      (error) => error instanceof ReviewStateError && error.code === 'ROLLBACK_VERIFICATION_FAILED',
+    );
+    assert.equal(state.getSnapshot().sandbox.rollbackCompleted, false);
+    assert.equal(state.raw.rollbackInFlight, false);
+
+    const wrongTargetHandler = async () => ({
+      transactionId: 'transaction-1700000000000-cafebabe',
+      targetFile: 'src/partials/jobs/other.liquid',
+      restored: [{ file: 'src/partials/jobs/other.liquid' }],
+      sandboxRestored: true,
+      originalUnchangedAfterRollback: true,
+    });
+    await assert.rejects(
+      () => state.rollbackSandboxTransaction(wrongTargetHandler),
+      (error) => error instanceof ReviewStateError && error.code === 'ROLLBACK_VERIFICATION_FAILED',
+    );
+    assert.equal(state.getSnapshot().sandbox.rollbackCompleted, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('rollbackSandboxTransaction clears in-flight flag when rollback_started persistence fails', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-sandbox-rollback-persist-start-'));
+  try {
+    const report = localReport();
+    const state = bootstrapSandboxSession(root, report);
+    state.raw.applyCompleted = true;
+    state.raw.sandbox.transactionId = 'transaction-1700000000000-beefbeef';
+    persistReviewState(state);
+
+    const blockedPath = join(root, 'blocked-session-dir');
+    writeFileSync(blockedPath, 'not-a-directory');
+    state.raw.sessionDir = blockedPath;
+
+    const handler = async () => ({
+      transactionId: 'transaction-1700000000000-beefbeef',
+      targetFile: 'src/partials/jobs/sort.liquid',
+      restored: [{ file: 'src/partials/jobs/sort.liquid' }],
+      sandboxRestored: true,
+      originalUnchangedAfterRollback: true,
+    });
+
+    await assert.rejects(
+      () => state.rollbackSandboxTransaction(handler),
+      (error) => error instanceof ReviewStateError && error.code === 'PERSIST_FAILED',
+    );
+    assert.equal(state.raw.rollbackInFlight, false);
+    assert.equal(state.raw.rollbackPromise, null);
+    assert.equal(state.getSnapshot().sandbox.rollbackCompleted, false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

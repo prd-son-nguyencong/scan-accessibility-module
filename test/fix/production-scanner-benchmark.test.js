@@ -65,6 +65,48 @@ test('production scanner benchmark: >=90% closure on committed HTML with >=10 de
   }
 });
 
+test('production scanner canonicalizes native accessScan aliases without rewriting axe rule ids', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-scanner-alias-'));
+  const siteRoot = join(root, 'site');
+  mkdirSync(siteRoot, { recursive: true });
+  writeFileSync(
+    join(siteRoot, 'index.html'),
+    '<!doctype html><html lang="en"><head><title>Viewport identity</title><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"></head><body><main><h1>Viewport identity</h1></main></body></html>',
+  );
+
+  const site = createStaticSiteAdapter({ outDir: '.' });
+  const handle = await site.start(siteRoot);
+  const scanner = createProductionScannerAdapter();
+  try {
+    const result = await scanner({
+      workspaceRoot: siteRoot,
+      siteUrl: handle.url,
+      routes: ['/'],
+      layers: ['accessibility'],
+      targetFindingIds: [],
+    });
+
+    const accessScanFinding = result.findings.find(
+      (finding) => finding.layer === 'accessScan'
+        && finding.nativeRuleId === 'MetaViewportScalable',
+    );
+    assert.ok(accessScanFinding, 'fixture must produce native MetaViewportScalable');
+    assert.equal(accessScanFinding.canonicalRuleId, 'PageMetaViewportValid');
+    assert.equal(accessScanFinding.nativeRuleId, 'MetaViewportScalable');
+
+    const axeFinding = result.findings.find(
+      (finding) => finding.layer === 'axe'
+        && finding.nativeRuleId === 'meta-viewport',
+    );
+    assert.ok(axeFinding, 'fixture must produce axe meta-viewport');
+    assert.equal(axeFinding.canonicalRuleId, 'meta-viewport');
+    assert.equal(axeFinding.nativeRuleId, 'meta-viewport');
+  } finally {
+    await handle.stop();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('production scanner fails closed on unsupported verification layers', async () => {
   const scanner = createProductionScannerAdapter();
   await assert.rejects(

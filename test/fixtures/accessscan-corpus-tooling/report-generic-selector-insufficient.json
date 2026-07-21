@@ -1,0 +1,20 @@
+{
+  "profile": "standards",
+  "route": "/",
+  "pageState": "initial",
+  "viewport": { "width": 1280, "height": 900 },
+  "findings": [
+    {
+      "ruleId": "RegionMainContentMisuse",
+      "canonicalRuleId": "RegionMainContentMisuse",
+      "violationType": "confirmed",
+      "evidence": { "checkId": "landmarks:main-misuse" },
+      "element": {
+        "selector": "main",
+        "outerHTML": "",
+        "framePath": [],
+        "shadowPath": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,246 @@
+{
+  "schemaVersion": "1.0.0",
+  "description": "Tooling-only opaque source manifest for cross-site accessScan corpus seeding. Production src modules must not import this file. oracleEvidenceDigest is auditable without retaining raw artifacts: recapture a fresh oracle payload and run `pnpm corpus:seed --verify-digest --id <site-id> --artifact <path>`; verification fails closed on mismatch and must not leave raw oracle artifacts committed.",
+  "entries": [
+    {
+      "id": "site-124",
+      "label": "Elevance Health 124",
+      "sourceUrl": "https://elevance-health124.preview.sites.stg.paradox.ai/",
+      "seedStatus": "seeded",
+      "caseId": "site-124",
+      "captureProvenance": {
+        "stableCaptureHashes": [
+          "sha256:e5fea372198a2c5ea45e1dd7504717406886cdb1ebb7aaded9bb8a529b8c2d13",
+          "sha256:e5fea372198a2c5ea45e1dd7504717406886cdb1ebb7aaded9bb8a529b8c2d13"
+        ],
+        "captureCount": 2,
+        "captureMode": "oracle-evidence-slice",
+        "oracleEvidenceDigest": "sha256:8f7084cb01216f18f588ff2b58ed241182fe5a1231348f4a7622915ef342e1d3",
+        "seededAt": "[tooling-only-timestamp]"
+      },
+      "limitationNotes": [
+        "VisibilityMisuse: oracle reports 12 failures but only 10 failuresHtml snippets were captured",
+        "VisibleTextPartOfAccessibleName: oracle reports 20 failures but only 10 failuresHtml snippets were captured",
+        "VisibilityMismatch: truncated oracle html snippet skipped at index 2",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 3",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 5",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 7",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 8",
+        "VisibilityMisuse: non-replayable document-level snippet skipped at index 9",
+        "VisibilityMisuse: non-replayable document-level snippet skipped at index 10",
+        "ButtonMismatch: truncated oracle html snippet skipped at index 13",
+        "FocusNotObscuredFooter: truncated oracle html snippet skipped at index 17",
+        "LinkNavigationAmbiguous: truncated oracle html snippet skipped at index 19"
+      ]
+    },
+    {
+      "id": "site-203",
+      "label": "McDonalds 203",
+      "sourceUrl": "https://mcdonalds203.preview.sites.stg.mchire.com/",
+      "seedStatus": "seeded",
+      "caseId": "site-203",
+      "captureProvenance": {
+        "stableCaptureHashes": [
+          "sha256:4e7b4d5f7cc57f15ea67837348282763c14996efcbee146b824564718c164cf0",
+          "sha256:4e7b4d5f7cc57f15ea67837348282763c14996efcbee146b824564718c164cf0"
+        ],
+        "captureCount": 2,
+        "captureMode": "oracle-evidence-slice",
+        "oracleEvidenceDigest": "sha256:8425cee5eb2d52052976dc3bdb49d6b1e45f4269340966df518d42a21a12118f",
+        "seededAt": "[tooling-only-timestamp]"
+      },
+      "limitationNotes": [
+        "ImageMisuse: oracle reports 11 failures but only 10 failuresHtml snippets were captured",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 0",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 1",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 2",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 3",
+        "VisibilityMisuse: non-replayable document-level snippet skipped at index 5",
+        "FocusNotObscuredHeader: truncated oracle html snippet skipped at index 7",
+        "VisibleTextPartOfAccessibleName: truncated oracle html snippet skipped at index 8",
+        "RegionFooterMismatch: truncated oracle html snippet skipped at index 10",
+        "RegionFooterMisuse: truncated oracle html snippet skipped at index 11",
+        "RegionMainContentMismatch: truncated oracle html snippet skipped at index 12",
+        "RegionMainContentMisuse: truncated oracle html snippet skipped at index 13"
+      ]
+    },
+    {
+      "id": "site-375",
+      "label": "Americold 375",
+      "sourceUrl": "https://americold375.sites.stg.paradox.ai/",
+      "seedStatus": "seeded",
+      "caseId": "site-375",
+      "captureProvenance": {
+        "stableCaptureHashes": [
+          "sha256:f6d5f9c747846c38e6ea8b5dd8e7827a07012fb123ad5f2656c341ead8ac37f6",
+          "sha256:f6d5f9c747846c38e6ea8b5dd8e7827a07012fb123ad5f2656c341ead8ac37f6"
+        ],
+        "captureCount": 2,
+        "captureMode": "oracle-evidence-slice",
+        "oracleEvidenceDigest": "sha256:1baba19949b9cc0f8eb841739cc1e82c5106da9e66446a50d047e8ecf980d5ee",
+        "seededAt": "[tooling-only-timestamp]"
+      },
+      "limitationNotes": [
+        "ArticleMisuse: oracle reports 17 failures but only 10 failuresHtml snippets were captured",
+        "IconDiscernible: oracle reports 23 failures but only 10 failuresHtml snippets were captured",
+        "VisibilityMismatch: truncated oracle html snippet skipped at index 8",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 9",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 10",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 11",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 12",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 13",
+        "VisibilityMisuse: non-replayable document-level snippet skipped at index 14",
+        "FocusNotObscuredHeader: truncated oracle html snippet skipped at index 15",
+        "LinkNavigationAmbiguous: truncated oracle html snippet skipped at index 18",
+        "VisibleTextPartOfAccessibleName: truncated oracle html snippet skipped at index 24"
+      ]
+    },
+    {
+      "id": "site-538",
+      "label": "CarMax 538",
+      "sourceUrl": "https://carmax538.preview.sites.stg.paradox.ai/",
+      "seedStatus": "seeded",
+      "caseId": "site-538",
+      "captureProvenance": {
+        "stableCaptureHashes": [
+          "sha256:c97ba2c3ac93c01e79e85b6d58a59e78a4b75f5a01a9f183fe3a9bbf2a646102",
+          "sha256:c97ba2c3ac93c01e79e85b6d58a59e78a4b75f5a01a9f183fe3a9bbf2a646102"
+        ],
+        "captureCount": 2,
+        "captureMode": "oracle-evidence-slice",
+        "oracleEvidenceDigest": "sha256:9339bc5df96edc997c07c50b8dda147daea526e3b5a944f2acbc3464cc26ac8b",
+        "seededAt": "[tooling-only-timestamp]"
+      },
+      "limitationNotes": [
+        "VisibilityMisuse: oracle reports 14 failures but only 10 failuresHtml snippets were captured",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 8",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 9",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 10",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 11",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 12",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 14",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 15",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 16",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 17",
+        "LinkPDFWarning: truncated oracle html snippet skipped at index 19",
+        "SearchFormMismatch: truncated oracle html snippet skipped at index 20"
+      ]
+    },
+    {
+      "id": "site-695",
+      "label": "BNE Testing 695",
+      "sourceUrl": "https://bnetesting695.preview.sites.stg.paradox.ai/",
+      "seedStatus": "seeded",
+      "caseId": "site-695",
+      "captureProvenance": {
+        "stableCaptureHashes": [
+          "sha256:0b7c7751b90d9d0c17254a71eb739476a3022ffa1db9493a1e9521adb731ab89",
+          "sha256:0b7c7751b90d9d0c17254a71eb739476a3022ffa1db9493a1e9521adb731ab89"
+        ],
+        "captureCount": 2,
+        "captureMode": "oracle-evidence-slice",
+        "oracleEvidenceDigest": "sha256:637ef5b185a0c68a1444218036fe837a0ab6112a97f4fb7e6495217795c57588",
+        "seededAt": "[tooling-only-timestamp]"
+      },
+      "limitationNotes": [
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 2",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 3",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 4",
+        "VisibilityMisuse: non-replayable document-level snippet skipped at index 5",
+        "ButtonMismatch: truncated oracle html snippet skipped at index 6",
+        "FocusNotObscuredHeader: truncated oracle html snippet skipped at index 7",
+        "NavigationMisuse: truncated oracle html snippet skipped at index 12",
+        "NavigationMisuse: truncated oracle html snippet skipped at index 13",
+        "SearchFormMismatch: truncated oracle html snippet skipped at index 14",
+        "PageMetaViewportValid: non-replayable document-level snippet skipped at index 15",
+        "PageTitleValid: non-replayable document-level snippet skipped at index 16",
+        "LinkNavigationAmbiguous: oracle snippet bound but not replay-confirmed"
+      ]
+    },
+    {
+      "id": "site-710",
+      "label": "Fresenius 710",
+      "sourceUrl": "https://fresenius710.preview.sites.stg.paradox.ai/",
+      "seedStatus": "seeded",
+      "caseId": "site-710",
+      "captureProvenance": {
+        "stableCaptureHashes": [
+          "sha256:919afba8f6f916161ba97c163d82c3550c4b9f384706f0616b97f28f94e7e7e4",
+          "sha256:919afba8f6f916161ba97c163d82c3550c4b9f384706f0616b97f28f94e7e7e4"
+        ],
+        "captureCount": 2,
+        "captureMode": "oracle-evidence-slice",
+        "oracleEvidenceDigest": "sha256:11cf11ead7bd1ac9d2b6572b69b9d73594502b1d968319478ee2d3fd9f6125b0",
+        "seededAt": "[tooling-only-timestamp]"
+      },
+      "limitationNotes": [
+        "VisibilityMisuse: non-replayable document-level snippet skipped at index 0",
+        "RegionMainContentMismatch: truncated oracle html snippet skipped at index 1",
+        "RegionMainContentMisuse: truncated oracle html snippet skipped at index 2",
+        "PageTitleValid: non-replayable document-level snippet skipped at index 4"
+      ]
+    },
+    {
+      "id": "site-728",
+      "label": "Hitachi 728",
+      "sourceUrl": "https://hitachi728.preview.sites.stg.paradox.ai/",
+      "seedStatus": "seeded",
+      "caseId": "site-728",
+      "captureProvenance": {
+        "stableCaptureHashes": [
+          "sha256:028f222ec65b06257332e0bd2582017d2c9d60db93fd5f03d093403a1af23168",
+          "sha256:028f222ec65b06257332e0bd2582017d2c9d60db93fd5f03d093403a1af23168"
+        ],
+        "captureCount": 2,
+        "captureMode": "oracle-evidence-slice",
+        "oracleEvidenceDigest": "sha256:93a2822e983f3fa82a1fbce9971920bae6302b7b78208b385123696d7a13d8d3",
+        "seededAt": "[tooling-only-timestamp]"
+      },
+      "limitationNotes": [
+        "VisibilityMismatch: oracle reports 14 failures but only 10 failuresHtml snippets were captured",
+        "VisibleTextPartOfAccessibleName: oracle reports 12 failures but only 10 failuresHtml snippets were captured",
+        "VisibilityMismatch: truncated oracle html snippet skipped at index 0",
+        "VisibilityMismatch: truncated oracle html snippet skipped at index 1",
+        "VisibilityMismatch: truncated oracle html snippet skipped at index 2",
+        "VisibilityMismatch: truncated oracle html snippet skipped at index 3",
+        "VisibilityMismatch: truncated oracle html snippet skipped at index 4",
+        "VisibilityMismatch: truncated oracle html snippet skipped at index 5",
+        "VisibilityMismatch: truncated oracle html snippet skipped at index 6",
+        "VisibilityMismatch: truncated oracle html snippet skipped at index 7",
+        "VisibilityMismatch: truncated oracle html snippet skipped at index 8",
+        "VisibilityMismatch: truncated oracle html snippet skipped at index 9"
+      ]
+    },
+    {
+      "id": "site-731",
+      "label": "Fresenius 731",
+      "sourceUrl": "https://fresenius731.preview.sites.stg.paradox.ai/",
+      "seedStatus": "seeded",
+      "caseId": "site-731",
+      "captureProvenance": {
+        "stableCaptureHashes": [
+          "sha256:d6b41d5aef819446f672e41273f06a55812f3c886dd9cdf0a83be1b52d9b3857",
+          "sha256:d6b41d5aef819446f672e41273f06a55812f3c886dd9cdf0a83be1b52d9b3857"
+        ],
+        "captureCount": 2,
+        "captureMode": "oracle-evidence-slice",
+        "oracleEvidenceDigest": "sha256:aaf9959d9ab14bfcbfc52c9b34b48caebe008754bf5b6059b1e05b1345475c14",
+        "seededAt": "[tooling-only-timestamp]"
+      },
+      "limitationNotes": [
+        "VisibilityMisuse: oracle reports 11 failures but only 10 failuresHtml snippets were captured",
+        "VisibilityMismatch: truncated oracle html snippet skipped at index 0",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 1",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 3",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 5",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 7",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 8",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 9",
+        "VisibilityMisuse: truncated oracle html snippet skipped at index 10",
+        "ButtonMismatch: truncated oracle html snippet skipped at index 14",
+        "ButtonMismatch: truncated oracle html snippet skipped at index 15",
+        "FocusNotObscuredHeader: truncated oracle html snippet skipped at index 17"
+      ]
+    }
+  ]
+}

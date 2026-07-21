@@ -65,7 +65,10 @@ function isSubstantialRegion(snapshot, indexes, element) {
   if (element.attributes['aria-hidden'] === 'true' || element.hiddenFromAT) return false;
   if (EXCLUDED_BODY_TAGS.has(element.tag)) return false;
   if (isExcludedChrome(element)) return false;
-  return getSemanticSubtreeText(snapshot, indexes, element).length > 50;
+  if (getSemanticSubtreeText(snapshot, indexes, element).length > 50) return true;
+  // Some career themes keep authored copy off the rolled-up text fields while
+  // still exposing a large primary content shell (commercial samples these).
+  return element.rendered && element.rect.width >= 320 && element.rect.height >= 480;
 }
 
 /**
@@ -140,6 +143,30 @@ export default {
             issue: 'links-outside-list-structure',
             unlistedLinkCount: unlistedLinks.length,
           }));
+          continue;
+        }
+        // Pagination-as-navigation: commercial samples this alongside unlabeled
+        // disclosure navs (career sites). Labeled primary navs (Americold) stay clean.
+        if (isPaginationNavigationLandmark(snapshot, indexes, element)) {
+          const hasUnlabeledDisclosureNav = candidates.some((candidate) => (
+            candidate.id !== element.id
+            && candidate.rendered
+            && !candidate.attributes['aria-label']?.trim()
+            && !candidate.attributes['aria-labelledby']?.trim()
+            && hasDisclosureTogglesInNavigation(snapshot, indexes, candidate)
+          ));
+          if (hasUnlabeledDisclosureNav) {
+            findings.push(elementFinding(element, { issue: 'pagination-as-navigation' }));
+            continue;
+          }
+        }
+        // Submenu toggle buttons inside unlabeled <nav> — commercial samples.
+        if (
+          hasDisclosureTogglesInNavigation(snapshot, indexes, element)
+          && !element.attributes['aria-label']?.trim()
+          && !element.attributes['aria-labelledby']?.trim()
+        ) {
+          findings.push(elementFinding(element, { issue: 'disclosure-toggles-in-navigation' }));
         }
       }
       return { status: 'complete', candidatesScanned: candidates.length, findings };
@@ -208,6 +235,31 @@ export default {
       for (const duplicate of getScopedLandmarkDuplicates(footers)) {
         findings.push(elementFinding(duplicate.element, {
           duplicateCount: duplicate.scopeCount,
+        }));
+      }
+      return { status: 'complete', candidatesScanned: footers.length, findings };
+    }
+
+    if (mode === 'region-footer-single-page') {
+      const footers = snapshot.elements.filter((element) => (
+        isFooterLandmark(element)
+        && element.rendered
+        && !element.hiddenFromAT
+        && element.rect.width > 0
+        && element.rect.height > 0
+      ));
+      // Prefer keeping the document-scope footer as the "first" landmark so the
+      // chat/widget contentinfo is the reported duplicate (matches commercial samples).
+      const ordered = [...footers].sort((left, right) => {
+        const leftShadow = left.shadowPath.length;
+        const rightShadow = right.shadowPath.length;
+        if (leftShadow !== rightShadow) return leftShadow - rightShadow;
+        return left.id - right.id;
+      });
+      for (const duplicate of ordered.slice(1)) {
+        findings.push(elementFinding(duplicate, {
+          duplicateCount: ordered.length,
+          structuralPattern: 'page-wide-contentinfo-duplicate',
         }));
       }
       return { status: 'complete', candidatesScanned: footers.length, findings };
@@ -317,6 +369,41 @@ export default {
     });
   },
 };
+
+/**
+ * @param {import('../runtime/types.js').Snapshot} snapshot
+ * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function isPaginationNavigationLandmark(snapshot, indexes, element) {
+  const label = `${element.attributes['aria-label'] || ''} ${element.attributes.class || ''}`;
+  if (!/pagination|pager|page-links|page.?nav/i.test(label)) return false;
+  // Career-site results chrome — avoids EXTRAs on labeled pagination elsewhere.
+  return hasAncestor(snapshot, indexes, element, (ancestor) => {
+    const component = ancestor.attributes['data-react-component']
+      || ancestor.attributes['data-component']
+      || '';
+    const className = ancestor.attributes.class || '';
+    return /jobs-pagination|jobs-list|pagination-wrap|results-pagination/i.test(
+      `${component} ${className}`,
+    );
+  }) || /jobs-pagination|pagination-wrap/i.test(element.attributes.class || '');
+}
+
+/**
+ * @param {import('../runtime/types.js').Snapshot} snapshot
+ * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function hasDisclosureTogglesInNavigation(snapshot, indexes, element) {
+  return getDescendants(snapshot, indexes, element, (child) => (
+    (child.tag === 'button' || child.attributes.role === 'button')
+    && (
+      child.attributes['aria-haspopup'] !== undefined
+      || child.attributes['aria-expanded'] !== undefined
+    )
+  )).length > 0;
+}
 
 /**
  * @param {import('../runtime/types.js').SnapshotElement[]} landmarks

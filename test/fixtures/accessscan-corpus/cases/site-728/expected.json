@@ -1,0 +1,98 @@
+{
+  "schemaVersion": "1.0.0",
+  "profile": "commercial-parity",
+  "findings": [
+    {
+      "ruleId": "VisibilityMisuse",
+      "canonicalRuleId": "VisibilityMisuse",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:structural-visibility-misuse",
+        "structuralPattern": "repeated-zero-height-empty-placeholder"
+      },
+      "element": {
+        "semantic": {
+          "tag": "div",
+          "role": null,
+          "attributes": {},
+          "landmarkPath": [
+            "main",
+            "section[slice-0]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "VisibilityMisuse",
+      "canonicalRuleId": "VisibilityMisuse",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:structural-visibility-misuse",
+        "structuralPattern": "repeated-zero-height-empty-placeholder"
+      },
+      "element": {
+        "semantic": {
+          "tag": "div",
+          "role": null,
+          "attributes": {},
+          "landmarkPath": [
+            "main",
+            "section[slice-1]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "VisibilityMisuse",
+      "canonicalRuleId": "VisibilityMisuse",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:structural-visibility-misuse",
+        "structuralPattern": "repeated-zero-height-empty-placeholder"
+      },
+      "element": {
+        "semantic": {
+          "tag": "div",
+          "role": null,
+          "attributes": {},
+          "landmarkPath": [
+            "main",
+            "section[slice-2]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "VisibilityMisuse",
+      "canonicalRuleId": "VisibilityMisuse",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:structural-visibility-misuse",
+        "structuralPattern": "repeated-zero-height-empty-placeholder"
+      },
+      "element": {
+        "semantic": {
+          "tag": "div",
+          "role": null,
+          "attributes": {},
+          "landmarkPath": [
+            "main",
+            "section[slice-3]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    }
+  ]
+}

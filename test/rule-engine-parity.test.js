@@ -92,19 +92,244 @@ function elementKey(finding) {
   return `${finding.ruleId}|${selector}|${JSON.stringify(framePath)}|${JSON.stringify(shadowPath)}`;
 }
 
-test('commercial-parity profile is a true overlay over standards checks', async () => {
+test('commercial-parity and standards profiles expose independent check sets', async () => {
   const registry = await loadBuiltInRuleRegistry({ enforceCatalogContract: true });
   const standardsChecks = registry.getChecksForProfile(PROFILES.STANDARDS);
   const parityChecks = registry.getChecksForProfile(PROFILES.COMMERCIAL_PARITY);
   const parityOnly = parityChecks.filter(
     ({ check }) => check.profiles.length === 1 && check.profiles[0] === PROFILES.COMMERCIAL_PARITY,
   );
+  const shared = parityChecks.filter(
+    ({ check }) => check.profiles.includes(PROFILES.STANDARDS)
+      && check.profiles.includes(PROFILES.COMMERCIAL_PARITY),
+  );
+  const standardsOnly = standardsChecks.filter(
+    ({ check }) => !check.profiles.includes(PROFILES.COMMERCIAL_PARITY),
+  );
 
   assert.ok(parityOnly.length >= 12, 'expected parity-only descriptor checks');
-  assert.ok(parityChecks.length > standardsChecks.length);
+  assert.ok(shared.length >= 20, 'expected shared dual-profile checks');
+  assert.ok(standardsOnly.length >= 40, 'expected standards-only checks');
+  assert.ok(parityChecks.length < standardsChecks.length);
   assert.ok(
-    standardsChecks.every(({ check }) => parityChecks.some((entry) => entry.check.id === check.id)),
-    'commercial-parity profile must include every standards check',
+    shared.every(({ check }) => standardsChecks.some((entry) => entry.check.id === check.id)),
+    'shared checks must also be available in standards',
+  );
+  assert.ok(
+    standardsOnly.every(({ check }) => !parityChecks.some((entry) => entry.check.id === check.id)),
+    'standards-only checks must not run in commercial-parity',
+  );
+});
+
+test('commercial parity reports native italic markup as EmphasisMismatch without styled spans', async () => {
+  await withPage(
+    `
+      <main>
+        <p><i id="native-italic">Fortune</i></p>
+        <p><span id="styled-italic" style="font-style: italic">Important</span></p>
+      </main>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['EmphasisMismatch']);
+      const findings = findingsForRule(result, 'EmphasisMismatch');
+      assert.deepEqual(
+        findings.map((finding) => finding.element.selector),
+        ['i#native-italic'],
+      );
+    },
+  );
+});
+
+test('commercial nested main boundary reports wrapper as RegionMainContentMismatch', async () => {
+  await withPage(
+    `
+      <html lang="en">
+        <head><title>Careers</title></head>
+        <body>
+          <header>
+            <nav aria-label="Primary"><a href="/jobs">Jobs</a></nav>
+          </header>
+          <div id="themed-content">
+            <div id="page-content">
+              <main id="home">
+                <h1>Restaurant careers</h1>
+                <p>Find restaurant opportunities, learn about employee benefits, and choose a role that fits your experience and schedule.</p>
+              </main>
+            </div>
+          </div>
+          <footer>
+            <p>© Example Company 2026. All Rights Reserved.</p>
+          </footer>
+        </body>
+      </html>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, [
+        'RegionMainContentMismatch',
+        'RegionMainContentMisuse',
+      ]);
+      const mismatch = findingsForRule(result, 'RegionMainContentMismatch')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+      const misuse = findingsForRule(result, 'RegionMainContentMisuse')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+      assert.equal(mismatch.length, 1);
+      assert.match(mismatch[0].element.outerHTML, /themed-content/);
+      assert.equal(misuse.length, 1);
+      assert.match(misuse[0].element.outerHTML, /id="home"/);
+    },
+  );
+});
+
+test('commercial icon projection honors an authored SVG alt label', async () => {
+  await withPage(
+    `
+      <main>
+        <svg id="brand-mark" role="img" alt="Example brand" width="120" height="60" viewBox="0 0 120 60">
+          <rect width="120" height="60"></rect>
+        </svg>
+        <svg id="utility-icon" alt="Unsupported SVG label" width="24" height="24" viewBox="0 0 24 24">
+          <path d="M2 12h20"></path>
+        </svg>
+      </main>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['AltMisuse', 'IconDiscernible']);
+      assert.equal(findingsForRule(result, 'AltMisuse').length, 2);
+      assert.deepEqual(
+        findingsForRule(result, 'IconDiscernible')
+          .map((finding) => finding.element.selector),
+        ['svg#utility-icon'],
+      );
+    },
+  );
+});
+
+test('commercial icon projection flags unnamed SVGs inside labeled icon-only controls', async () => {
+  await withPage(
+    `
+      <main>
+        <a id="home-link" href="/" aria-label="Go to careers home">
+          <svg id="home-logo" width="143" height="28" viewBox="0 0 143 28">
+            <rect width="143" height="28"></rect>
+          </svg>
+        </a>
+        <a id="social-link" href="https://example.com/social" aria-label="Go to Example on Social">
+          <svg id="social-icon" width="24" height="24" viewBox="0 0 24 24">
+            <use href="#i-social"></use>
+          </svg>
+        </a>
+      </main>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['IconDiscernible']);
+      const icons = findingsForRule(result, 'IconDiscernible');
+      assert.equal(icons.length, 2);
+      assert.ok(icons.some((finding) => /home-logo/.test(finding.element.outerHTML)));
+      assert.ok(icons.some((finding) => /social-icon/.test(finding.element.outerHTML)));
+    },
+  );
+});
+
+test('commercial svg role=img without aria name reports ImageDiscernible and ImageMisuse', async () => {
+  await withPage(
+    `
+      <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" aria-hidden="true">
+        <symbol id="brand-mark" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"></circle></symbol>
+      </svg>
+      <svg id="footer-logo" role="img" class="footer-logo" alt="Brand logo" width="140" height="60">
+        <use href="#brand-mark"></use>
+      </svg>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['ImageDiscernible', 'ImageMisuse']);
+      const discernible = findingsForRule(result, 'ImageDiscernible')
+        .filter((finding) => /footer-logo/.test(finding.element.outerHTML));
+      const misuse = findingsForRule(result, 'ImageMisuse')
+        .filter((finding) => /footer-logo/.test(finding.element.outerHTML));
+      assert.equal(discernible.length, 1);
+      assert.equal(misuse.length, 1);
+    },
+  );
+});
+
+test('commercial visibility misuse reports collapsed list items wrapping hidden disabled controls', async () => {
+  await withPage(
+    `
+      <nav aria-label="Pagination">
+        <ul>
+          <li id="first-page-item">
+            <a class="page-link page-link-first" aria-disabled="true" style="display:none">
+              First
+            </a>
+          </li>
+          <li id="prev-page-item">
+            <a class="page-link page-link-previous" aria-disabled="true" style="display:none">
+              Previous
+            </a>
+          </li>
+          <li id="next-page-item">
+            <a class="page-link page-link-next" href="/page/2" aria-disabled="false">
+              Next
+            </a>
+          </li>
+        </ul>
+      </nav>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['VisibilityMisuse']);
+      const findings = findingsForRule(result, 'VisibilityMisuse')
+        .filter((finding) => finding.violationType === 'commercial-parity')
+        .filter((finding) => (
+          finding.evidence?.structuralPattern === 'collapsed-list-item-hidden-disabled-control'
+        ));
+      assert.equal(findings.length, 2);
+      assert.ok(findings.every((finding) => /^<li\b/.test(finding.element.outerHTML)));
+      assert.ok(findings.some((finding) => /first-page-item/.test(finding.element.outerHTML)));
+      assert.ok(findings.some((finding) => /prev-page-item/.test(finding.element.outerHTML)));
+      assert.ok(!findings.some((finding) => /next-page-item/.test(finding.element.outerHTML)));
+    },
+  );
+});
+
+test('commercial profile emits LinkPDFWarning when name lacks pdf and new-window cues', async () => {
+  await withPage(
+    `
+      <main>
+        <a href="/guide.pdf">Company handbook</a>
+        <a href="/policy.PDF">Policy statement</a>
+        <a href="/legal.pdf" aria-label="Legal PDF (opens in a new tab)">Legal</a>
+      </main>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['LinkPDFWarning']);
+      const findings = findingsForRule(result, 'LinkPDFWarning');
+      assert.equal(findings.length, 2);
+      assert.ok(findings.every((finding) => /\.pdf/i.test(finding.element.outerHTML)));
+      assert.ok(!findings.some((finding) => /legal\.pdf/i.test(finding.element.outerHTML)));
+    },
+  );
+});
+
+test('commercial navigation misuse reports navigation links outside list structure', async () => {
+  await withPage(
+    `
+      <nav id="primary-navigation" aria-label="Main navigation">
+        <a href="/">Home</a>
+        <a href="/jobs">Jobs</a>
+      </nav>
+      <nav id="footer-navigation" aria-label="Footer navigation">
+        <a href="/privacy">Privacy</a>
+      </nav>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['NavigationMisuse']);
+      assert.deepEqual(
+        findingsForRule(result, 'NavigationMisuse')
+          .map((finding) => finding.element.selector)
+          .sort(),
+        ['nav#footer-navigation', 'nav#primary-navigation'],
+      );
+    },
   );
 });
 
@@ -141,7 +366,7 @@ test('standards profile never runs parity-only checks', async () => {
   );
 });
 
-test('neutral credential gate emits four parity findings plus standards ImageDiscernible', async () => {
+test('neutral credential gate emits four parity findings plus captured ImageDiscernible', async () => {
   await withPage(
     `
       <html lang="en"><head><title>Login</title></head><body>
@@ -178,7 +403,7 @@ test('neutral credential gate emits four parity findings plus standards ImageDis
       const image = findingsForRule(result, 'ImageDiscernible');
       assert.equal(image.length, 1);
       assert.equal(image[0].violationType, 'confirmed');
-      assert.notEqual(image[0].violationType, 'commercial-parity');
+      assert.equal(image[0].evidence.checkId, 'graphics:image-discernible');
     },
   );
 });
@@ -1071,6 +1296,81 @@ test('search controls outside search landmark map to SearchFormMismatch parity',
   );
 });
 
+test('hydrated jobs-search chrome without role=search maps to SearchFormMismatch parity', async () => {
+  await withPage(
+    `
+      <main id="page-main"><h1>Careers</h1><p>Primary content for the page.</p></main>
+      <div class="c-jobs">
+        <main class="c-jobs__main">
+          <div class="c-jobs-list-only-wrap jobs-list-only" data-react-component="jobs-list-only">
+            <ul><li><a href="/jobs/1">Role one</a></li></ul>
+          </div>
+        </main>
+        <div
+          class="c-jobs-search custom-search-box c-jobs-search__horizontal"
+          data-testid="jobs-search_container">
+          <div class="c-jobs-search__keyword">
+            <label for="keyword-search">I'm Looking For</label>
+            <input id="keyword-search" type="text" placeholder="Search jobs">
+          </div>
+          <div class="c-jobs-search__location">
+            <label for="location-search">Positions Near</label>
+            <input id="location-search" type="text" placeholder="City or zip">
+          </div>
+          <button type="button" class="c-jobs-search__button-search">Search</button>
+        </div>
+      </div>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, [
+        'SearchFormMismatch',
+        'RegionMainContentSingle',
+      ]);
+      const search = findingsForRule(result, 'SearchFormMismatch')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+      assert.equal(search.length, 1);
+      assert.match(search[0].element.outerHTML, /c-jobs-search|jobs-search_container/);
+
+      const mains = findingsForRule(result, 'RegionMainContentSingle');
+      assert.equal(mains.length, 1);
+      assert.match(mains[0].element.outerHTML, /c-jobs__main/);
+    },
+  );
+});
+
+test('nested jobs-list main landmark maps to RegionMainContentMisuse parity', async () => {
+  await withPage(
+    `
+      <main id="page-main">
+        <h1>Careers</h1>
+        <p>Primary content that establishes the page subject for screen reader users.</p>
+        <div class="c-jobs">
+          <main class="c-jobs__main">
+            <div class="c-jobs-list-only-wrap jobs-list-only" data-react-component="jobs-list-only">
+              <h3>Filter Results</h3>
+              <ul><li><a href="/jobs/1">Role one</a></li></ul>
+            </div>
+          </main>
+        </div>
+      </main>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, [
+        'RegionMainContentMisuse',
+        'RegionMainContentSingle',
+      ]);
+      const misuse = findingsForRule(result, 'RegionMainContentMisuse')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+      assert.equal(misuse.length, 1);
+      assert.match(misuse[0].element.outerHTML, /c-jobs__main/);
+
+      const singles = findingsForRule(result, 'RegionMainContentSingle');
+      assert.equal(singles.length, 1);
+      assert.match(singles[0].element.outerHTML, /c-jobs__main/);
+    },
+  );
+});
+
 test('duplicated responsive search control ids are not synthesized as search-landmark failures', async () => {
   await withPage(
     `
@@ -1289,8 +1589,10 @@ test('commercial landmark parity recognizes generic nested main and footer bound
         'RegionFooterMismatch',
         'RegionFooterMisuse',
       ]);
-      const mainMismatch = findingsForRule(result, 'RegionMainContentMismatch');
-      const mainMisuse = findingsForRule(result, 'RegionMainContentMisuse');
+      const mainMismatch = findingsForRule(result, 'RegionMainContentMismatch')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+      const mainMisuse = findingsForRule(result, 'RegionMainContentMisuse')
+        .filter((finding) => finding.violationType === 'commercial-parity');
       const footerMismatch = findingsForRule(result, 'RegionFooterMismatch')
         .filter((finding) => finding.violationType === 'commercial-parity');
       const footerMisuse = findingsForRule(result, 'RegionFooterMisuse')
@@ -1470,6 +1772,42 @@ test('commercial link parity reports repeated active link text across card conte
   );
 });
 
+test('commercial mismatch parity catches pseudo href hosts, chrome icon links, and deferred deictic CTAs', async () => {
+  await withPage(
+    `
+      <nav aria-label="Primary">
+        <span id="language-toggle" href="#" style="cursor:pointer">Language</span>
+        <a href="/" aria-label="Home">Home</a>
+      </nav>
+      <footer>
+        <a id="social-linkedin" href="https://www.linkedin.com/company/example/">
+          <i class="fa-brands fa-linkedin"></i>
+        </a>
+      </footer>
+      <main>
+        <a id="signup-cta" href="https://example.com/introduceYourself" target="_blank"
+           style="visibility:hidden;opacity:0">Sign up here</a>
+        <a id="unique-learn" href="/only-learn">Learn more</a>
+      </main>
+    `,
+    async (page) => {
+      const buttonResult = await runParityRules(page, ['ButtonMismatch']);
+      const buttons = findingsForRule(buttonResult.result, 'ButtonMismatch');
+      assert.ok(buttons.some((finding) => /language-toggle/.test(finding.element.outerHTML)));
+
+      const discernibleResult = await runParityRules(page, ['LinkNavigationDiscernible']);
+      const discernible = findingsForRule(discernibleResult.result, 'LinkNavigationDiscernible');
+      assert.ok(discernible.some((finding) => /social-linkedin/.test(finding.element.outerHTML)));
+
+      const ambiguousResult = await runParityRules(page, ['LinkNavigationAmbiguous']);
+      const ambiguous = findingsForRule(ambiguousResult.result, 'LinkNavigationAmbiguous')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+      assert.ok(ambiguous.some((finding) => /signup-cta/.test(finding.element.outerHTML)));
+      assert.ok(!ambiguous.some((finding) => /unique-learn/.test(finding.element.outerHTML)));
+    },
+  );
+});
+
 test('commercial visibility parity recognizes hidden action symbols and control state indicators', async () => {
   await withPage(
     `
@@ -1601,12 +1939,12 @@ test('commercial navigation parity preserves layout-wrapper and multi-list landm
       const { result } = await runParityRules(page, ['MainNavigationMismatch', 'NavigationMisuse']);
       const mainLayout = findingsForRule(result, 'MainNavigationMismatch')
         .filter((finding) => finding.violationType === 'commercial-parity');
-      const navigation = findingsForRule(result, 'NavigationMisuse');
+      const navigation = findingsForRule(result, 'NavigationMisuse')
+        .filter((finding) => finding.violationType === 'commercial-parity');
 
       assert.equal(mainLayout.length, 1);
       assert.match(mainLayout[0].element.outerHTML, /main-layout/);
-      assert.equal(navigation.length, 2);
-      assert.ok(navigation.some((finding) => /aria-label="Primary"/.test(finding.element.outerHTML)));
+      assert.equal(navigation.length, 1);
       assert.ok(navigation.some((finding) => /multi-list-nav/.test(finding.element.outerHTML)));
     },
   );
@@ -1712,7 +2050,7 @@ test('commercial visibility parity derives generic lazy, scroll, script, and cus
 
       assert.equal(
         findings.length,
-        7,
+        6,
         findings.map((finding) => finding.element.outerHTML).join('\n'),
       );
       for (const marker of [
@@ -1721,19 +2059,339 @@ test('commercial visibility parity derives generic lazy, scroll, script, and cus
         'scroll-control-shell',
         'script-only-shell',
         'custom-root',
-        'shadow-empty-root',
       ]) {
         assert.ok(
           findings.some((finding) => finding.element.outerHTML.includes(marker)),
           `missing ${marker}`,
         );
       }
+      // Shadow-tree empties are skipped (shadowPath) to avoid chat-widget over-fire;
+      // the custom host itself still counts.
+      assert.ok(!findings.some((finding) => /shadow-empty-root/.test(finding.element.outerHTML)));
       assert.ok(findings.some((finding) => (
         finding.element.framePath.length === 0
         && /^<body/.test(finding.element.outerHTML)
       )));
       assert.ok(!findings.some((finding) => /carousel-track|carousel-slide/.test(finding.element.outerHTML)));
       assert.ok(!findings.some((finding) => /animated-reveal|positionless-parallax/.test(finding.element.outerHTML)));
+    },
+  );
+});
+
+test('commercial visibility parity flags empty opacity overlays without counting opaque content trees', async () => {
+  await withPage(
+    `
+      <div style="position: relative; width: 240px; height: 160px">
+        <img src="/card.jpg" alt="Career card">
+        <div id="empty-opacity-overlay-a"
+          style="position: absolute; inset: 0; opacity: 0; background: rgba(0,80,40,0.4)"> </div>
+        <div id="empty-opacity-overlay-b"
+          style="position: absolute; top: 0; right: 0; bottom: 0; left: 0; opacity: 0"></div>
+        <div id="contentful-opacity-overlay"
+          style="position: absolute; inset: 0; opacity: 0; pointer-events: none">
+          Hover details for assistive technology
+        </div>
+        <div id="static-empty-opacity"
+          style="opacity: 0; width: 40px; height: 40px"></div>
+      </div>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['VisibilityMisuse']);
+      const findings = findingsForRule(result, 'VisibilityMisuse')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+
+      assert.equal(
+        findings.filter((finding) => /empty-opacity-overlay-/.test(finding.element.outerHTML)).length,
+        2,
+      );
+      assert.ok(!findings.some((finding) => /contentful-opacity-overlay/.test(finding.element.outerHTML)));
+      assert.ok(!findings.some((finding) => /static-empty-opacity/.test(finding.element.outerHTML)));
+    },
+  );
+});
+
+test('commercial visibility parity flags collapsed text, dual-state images, and thin presentation dividers', async () => {
+  await withPage(
+    `
+      <video controls width="320" height="180">
+        <source src="/hero.mp4" type="video/mp4">
+        <p id="video-fallback-copy">Your browser does not support HTML5 video.</p>
+      </video>
+      <video id="opacity-hidden-video" src="/clip.mp4"
+        style="width: 320px; height: 180px; opacity: 0"></video>
+      <div style="width: 320px">
+        <p id="collapsed-hover-copy" class="paragraph"
+          style="overflow: auto; max-height: 0; height: 0; margin: 0">
+          Explore open clinical roles across the region.
+        </p>
+      </div>
+      <div style="position: relative; width: 160px; height: 48px">
+        <img id="visible-dual-logo" src="/logo-light.png" alt=""
+          style="position: absolute; inset: 0; width: 160px; height: 48px; opacity: 1">
+        <img id="hidden-dual-logo" src="/logo-dark.png" alt=""
+          style="position: absolute; inset: 0; width: 160px; height: 48px; opacity: 0">
+      </div>
+      <div style="position: relative; width: 80px; height: 80px">
+        <img src="/poster.jpg" alt="">
+        <i id="opacity-play-icon" role="presentation" class="fa-solid fa-play"
+          style="position: absolute; inset: 0; opacity: 0; width: 24px; height: 24px"></i>
+      </div>
+      <div id="thin-presentation-divider" role="presentation"
+        style="width: 2px; height: 173px; background: #ddd"></div>
+      <div id="full-bleed-presentation" role="presentation"
+        style="width: 640px; height: 360px; background: #eee"></div>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['VisibilityMisuse']);
+      const findings = findingsForRule(result, 'VisibilityMisuse')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+
+      for (const marker of [
+        'video-fallback-copy',
+        'opacity-hidden-video',
+        'collapsed-hover-copy',
+        'hidden-dual-logo',
+        'visible-dual-logo',
+        'opacity-play-icon',
+        'thin-presentation-divider',
+      ]) {
+        assert.ok(
+          findings.some((finding) => finding.element.outerHTML.includes(marker)),
+          marker,
+        );
+      }
+      assert.ok(!findings.some((finding) => /full-bleed-presentation/.test(finding.element.outerHTML)));
+    },
+  );
+});
+
+test('descriptive labels ending in Apply Here are not deictic LinkNavigationAmbiguous', async () => {
+  await withPage(
+    `
+      <a id="employee-apply" href="https://example.com/login">Current Employees Apply Here</a>
+      <a id="bare-apply" href="https://example.com/apply">Apply here</a>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['LinkNavigationAmbiguous']);
+      const parity = findingsForRule(result, 'LinkNavigationAmbiguous')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+
+      assert.ok(parity.some((finding) => /bare-apply/.test(finding.element.outerHTML)));
+      assert.ok(!parity.some((finding) => /employee-apply/.test(finding.element.outerHTML)));
+    },
+  );
+});
+
+test('decorated See Jobs and Learn More CTAs are LinkNavigationAmbiguous', async () => {
+  await withPage(
+    `
+      <main>
+        <a id="see-jobs" class="a__btn" href="/jobs">See Jobs ›</a>
+        <a id="learn-more-arrow" class="a__btn" href="/living">Learn More ›</a>
+        <a id="nursing-see" href="/nursing-jobs">Nursing See Jobs ›</a>
+      </main>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['LinkNavigationAmbiguous']);
+      const parity = findingsForRule(result, 'LinkNavigationAmbiguous')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+      assert.ok(parity.some((finding) => /see-jobs/.test(finding.element.outerHTML)));
+      assert.ok(parity.some((finding) => /learn-more-arrow/.test(finding.element.outerHTML)));
+      assert.ok(!parity.some((finding) => /nursing-see/.test(finding.element.outerHTML)));
+      assert.equal(parity.length, 2);
+    },
+  );
+});
+
+test('View Jobs card CTAs and Search Jobs Now inventory links are LinkNavigationAmbiguous', async () => {
+  await withPage(
+    `
+      <main>
+        <a id="view-ops" href="/operations" class="text-teal">View Jobs</a>
+        <a id="view-ops-hover" href="/operations" class="text-teal" style="visibility:hidden;opacity:0">View Jobs</a>
+        <a id="view-corp" href="/corporate" class="text-teal">View Jobs</a>
+        <a id="view-corp-hover" href="/corporate" class="text-teal" style="visibility:hidden;opacity:0">View Jobs</a>
+        <a id="view-care" href="/care" class="text-teal">View Jobs</a>
+        <a id="search-now" href="/jobs" class="button">Search Jobs Now</a>
+        <a id="search-now-mobile" href="/jobs" class="button" style="display:none">Search Jobs Now</a>
+        <a id="view-all" href="/jobs">View All Jobs</a>
+        <a id="search-plain" href="/jobs">Search Jobs</a>
+      </main>
+      <header>
+        <a id="logo-link" href="/"><svg width="100" height="40"><rect width="100" height="40"></rect></svg></a>
+      </header>
+    `,
+    async (page) => {
+      const ambiguousResult = await runParityRules(page, ['LinkNavigationAmbiguous']);
+      const ambiguous = findingsForRule(ambiguousResult.result, 'LinkNavigationAmbiguous')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+
+      assert.ok(ambiguous.some((finding) => /view-ops/.test(finding.element.outerHTML)));
+      assert.ok(ambiguous.some((finding) => /view-corp/.test(finding.element.outerHTML)));
+      assert.ok(ambiguous.some((finding) => /view-care/.test(finding.element.outerHTML)));
+      assert.ok(ambiguous.some((finding) => /search-now/.test(finding.element.outerHTML)));
+      assert.ok(ambiguous.some((finding) => /view-all/.test(finding.element.outerHTML)));
+      assert.ok(!ambiguous.some((finding) => /view-ops-hover|view-corp-hover|search-now-mobile|search-plain/.test(
+        finding.element.outerHTML,
+      )));
+      assert.equal(ambiguous.length, 5);
+
+      const discernibleResult = await runParityRules(page, ['LinkNavigationDiscernible']);
+      const discernible = findingsForRule(discernibleResult.result, 'LinkNavigationDiscernible');
+      assert.ok(discernible.some((finding) => /logo-link/.test(finding.element.outerHTML)));
+    },
+  );
+});
+
+test('page-wide RegionFooterSingle parity flags shadow contentinfo beside a page footer', async () => {
+  await withPage(
+    `
+      <footer id="page-footer">© Example. All rights reserved.</footer>
+      <div id="chat-host"></div>
+      <script>
+        const host = document.getElementById('chat-host');
+        const root = host.attachShadow({ mode: 'open' });
+        root.innerHTML = '<div role="contentinfo" id="chat-footer" style="position:static">Powered by Chat</div>'
+          + '<div id="dock" style="position:fixed;bottom:40px;right:20px;width:300px;height:200px"></div>';
+        root.getElementById('dock').appendChild(root.getElementById('chat-footer'));
+      </script>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['RegionFooterSingle', 'FocusNotObscuredFooter']);
+      const footers = findingsForRule(result, 'RegionFooterSingle');
+      assert.equal(footers.length, 1);
+      assert.match(footers[0].element.outerHTML, /chat-footer|Powered by Chat|contentinfo/);
+
+      const focusFooter = findingsForRule(result, 'FocusNotObscuredFooter')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+      assert.ok(focusFooter.length >= 1);
+    },
+  );
+});
+
+test('empty exposed filter lists are VisibilityMisuse parity', async () => {
+  await withPage(
+    `
+      <div style="height: 40px">
+        <ul id="empty-tag-list" class="jobs-current-searches__tag-list" style="height: 0"></ul>
+      </div>
+      <div data-react-component="jobs-current-searches" style="width: 300px; height: 0">
+        <ul id="collapsed-mount-list" class="jobs-current-searches__tag-list" style="height: 0"></ul>
+      </div>
+      <ul id="populated-list"><li>Remote</li></ul>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['VisibilityMisuse']);
+      const findings = findingsForRule(result, 'VisibilityMisuse')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+      assert.ok(findings.some((finding) => /empty-tag-list/.test(finding.element.outerHTML)));
+      assert.ok(!findings.some((finding) => /collapsed-mount-list|populated-list/.test(finding.element.outerHTML)));
+    },
+  );
+});
+
+test('commercial visibility parity flags absolute display:none disclosure panels with links', async () => {
+  await withPage(
+    `
+      <nav aria-label="Primary">
+        <button aria-expanded="false">Explore</button>
+        <div id="absolute-hidden-menu" class="menu-panel"
+          style="display: none; position: absolute; top: 100%; left: 0">
+          <div id="absolute-hidden-menu-inner">
+            <a href="/nursing">Nursing</a>
+            <a href="/allied">Allied Health</a>
+          </div>
+        </div>
+        <div id="fixed-hidden-menu"
+          style="display: none; position: fixed; top: 0; left: 0; width: 100%">
+          <a href="/a">A</a>
+          <a href="/b">B</a>
+        </div>
+      </nav>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['VisibilityMisuse']);
+      const findings = findingsForRule(result, 'VisibilityMisuse')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+
+      assert.ok(findings.some((finding) => /id="absolute-hidden-menu"/.test(finding.element.outerHTML)));
+      assert.ok(findings.some((finding) => /id="absolute-hidden-menu-inner"/.test(finding.element.outerHTML)));
+      assert.ok(!findings.some((finding) => /id="fixed-hidden-menu"/.test(finding.element.outerHTML)));
+    },
+  );
+});
+
+test('commercial visibility parity does not emit opacity-0 text or overflow-clipped copy by default', async () => {
+  await withPage(
+    `
+      <div style="opacity: 0; width: 200px; height: 40px">
+        <h4 id="opacity-hidden-title">Why Join Our Team?</h4>
+      </div>
+      <a id="opacity-hidden-link" href="https://example.com/widget"
+        style="position: absolute; opacity: 0; width: 120px; height: 32px">Created with</a>
+      <div style="width: 240px; height: 200px; overflow: hidden">
+        <div style="display: flex; width: 480px">
+          <div class="swiper-slide video" style="width: 220px; height: 200px; flex: 0 0 auto">
+            Onscreen video slide copy for the active peer.
+          </div>
+          <div id="clipped-video-slide" class="swiper-slide video"
+            style="width: 220px; height: 200px; flex: 0 0 auto">
+            Hear from our fellows about clinical careers across the region today.
+          </div>
+        </div>
+      </div>
+      <div style="width: 240px; overflow: hidden">
+        <div style="display: flex; width: 720px">
+          <p style="width: 240px; flex: 0 0 auto; margin: 0">Visible slide copy stays here for readers.</p>
+          <p id="clipped-slide-copy" style="width: 240px; flex: 0 0 auto; margin: 0">
+            From thriving cities to quaint small towns, our network offers urban and rural lifestyles.
+          </p>
+          <p style="width: 240px; flex: 0 0 auto; margin: 0">Another offscreen paragraph for the carousel track.</p>
+        </div>
+      </div>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['VisibilityMisuse']);
+      const findings = findingsForRule(result, 'VisibilityMisuse')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+
+      // These helpers over-fire on carousel copy vs commercial occurrence counts.
+      assert.ok(!findings.some((finding) => /opacity-hidden-title/.test(finding.element.outerHTML)));
+      assert.ok(!findings.some((finding) => /opacity-hidden-link/.test(finding.element.outerHTML)));
+      assert.ok(!findings.some((finding) => /clipped-slide-copy/.test(finding.element.outerHTML)));
+      assert.ok(!findings.some((finding) => /clipped-video-slide/.test(finding.element.outerHTML)));
+    },
+  );
+});
+
+test('commercial visibility parity flags carousel media hosts clipped at the overflow edge', async () => {
+  await withPage(
+    `
+      <div class="carousel overflow-hidden" style="width: 300px; height: 220px; overflow: hidden; position: relative">
+        <div style="display: flex; width: 900px">
+          <div id="edge-clipped-media" class="shrink-0"
+            style="width: 300px; height: 220px; flex: 0 0 auto; margin-left: -150px">
+            <img src="/edge.jpg" alt="Half-clipped media" style="width: 100%; height: 100%; object-fit: cover">
+          </div>
+          <div id="onscreen-media" class="shrink-0 current"
+            style="width: 300px; height: 220px; flex: 0 0 auto">
+            <img src="/on.jpg" alt="Onscreen media" style="width: 100%; height: 100%; object-fit: cover">
+          </div>
+          <div id="fully-clipped-media" class="shrink-0"
+            style="width: 300px; height: 220px; flex: 0 0 auto">
+            <img src="/off.jpg" alt="Offscreen media" style="width: 100%; height: 100%; object-fit: cover">
+          </div>
+        </div>
+      </div>
+    `,
+    async (page) => {
+      const { result } = await runParityRules(page, ['VisibilityMisuse']);
+      const findings = findingsForRule(result, 'VisibilityMisuse')
+        .filter((finding) => finding.violationType === 'commercial-parity');
+
+      assert.ok(findings.some((finding) => /edge-clipped-media/.test(finding.element.outerHTML)));
+      assert.ok(findings.some((finding) => /fully-clipped-media/.test(finding.element.outerHTML)));
+      assert.ok(!findings.some((finding) => /onscreen-media/.test(finding.element.outerHTML)));
     },
   );
 });
@@ -2030,6 +2688,8 @@ test('production access-scan sources are free of forbidden tokens', () => {
   const cleanRoots = [
     path.join(__dirname, '../src/scanner/access-scan/index.js'),
     path.join(EVALUATOR_ROOT, 'commercial-parity.evaluator.js'),
+    path.join(__dirname, '../src/scanner/access-scan/signals'),
+    path.join(__dirname, '../src/scanner/access-scan/policies'),
     RULES_ROOT,
     path.join(RUNTIME_ROOT, 'runtime.browser.js'),
     path.join(RUNTIME_ROOT, 'graph-query.js'),

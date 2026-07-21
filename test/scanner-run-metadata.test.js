@@ -57,6 +57,7 @@ test('buildAccessScanRun records internal engine version and occurrence counts',
       fixUnits: 2,
       includeThirdParty: true,
       profile: 'commercial-parity',
+      comparatorVersion: '1.0.0',
     },
   });
 });

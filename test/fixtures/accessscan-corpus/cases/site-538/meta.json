@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "site-538",
+  "profile": "commercial-parity",
+  "route": "/",
+  "captureState": "initial",
+  "viewport": {
+    "width": 1280,
+    "height": 900
+  },
+  "captureMode": "oracle-evidence-slice",
+  "notes": [
+    "Frozen cross-site accessScan oracle evidence slice seeded from tooling source manifest.",
+    "This case is an evidence slice rather than a whole-page baseline.",
+    "Evidence slice contains 20 uniquely alignable oracle snippets with 10 aligned findings.",
+    "Limitation: VisibilityMisuse: oracle reports 14 failures but only 10 failuresHtml snippets were captured",
+    "Limitation: VisibilityMisuse: truncated oracle html snippet skipped at index 8",
+    "Limitation: VisibilityMisuse: truncated oracle html snippet skipped at index 9",
+    "Limitation: VisibilityMisuse: truncated oracle html snippet skipped at index 10",
+    "Limitation: VisibilityMisuse: truncated oracle html snippet skipped at index 11",
+    "Limitation: VisibilityMisuse: truncated oracle html snippet skipped at index 12",
+    "Limitation: VisibilityMisuse: truncated oracle html snippet skipped at index 14",
+    "Limitation: VisibilityMisuse: truncated oracle html snippet skipped at index 15",
+    "Limitation: VisibilityMisuse: truncated oracle html snippet skipped at index 16",
+    "Limitation: VisibilityMisuse: truncated oracle html snippet skipped at index 17",
+    "Limitation: LinkPDFWarning: truncated oracle html snippet skipped at index 19",
+    "Limitation: SearchFormMismatch: truncated oracle html snippet skipped at index 20",
+    "Limitation: LinkMailtoWarning: oracle snippet bound but not replay-confirmed",
+    "Limitation: StrongMismatch: oracle snippet bound but not replay-confirmed",
+    "Limitation: StrongMismatch: oracle snippet bound but not replay-confirmed",
+    "Limitation: StrongMismatch: oracle snippet bound but not replay-confirmed",
+    "Limitation: Reprocess retained 10 replay-confirmed findings after neutralization refresh"
+  ]
+}

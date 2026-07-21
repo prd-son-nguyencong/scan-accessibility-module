@@ -1,5 +1,6 @@
 import { filterChecksForProfile, PROFILES } from './profiles.js';
-import { dedupeFindings, normalizeFinding } from './finding.js';
+import { normalizeFinding } from './finding.js';
+import { projectFindings } from './projection.js';
 import { resolveCheckClassification } from './classification.js';
 import { createRuleDeadline } from './deadline.js';
 
@@ -12,7 +13,7 @@ import { createRuleDeadline } from './deadline.js';
 const DEFAULT_RULE_TIMEOUT_MS = 30_000;
 
 /**
- * @typedef {'complete' | 'inapplicable' | 'error' | 'timeout'} ExecutionStatus
+ * @typedef {'complete' | 'inapplicable' | 'error' | 'timeout' | 'skipped'} ExecutionStatus
  *
  * @typedef {object} CheckExecutionRecord
  * @property {string} checkId
@@ -101,13 +102,16 @@ function deriveRuleStatus(checkRecords) {
   if (checkRecords.length === 0) {
     return 'inapplicable';
   }
+  if (checkRecords.every((check) => check.status === 'skipped')) {
+    return 'skipped';
+  }
   if (checkRecords.some((check) => check.status === 'timeout')) {
     return 'timeout';
   }
   if (checkRecords.some((check) => check.status === 'error')) {
     return 'error';
   }
-  if (checkRecords.every((check) => check.status === 'inapplicable')) {
+  if (checkRecords.every((check) => check.status === 'inapplicable' || check.status === 'skipped')) {
     return 'inapplicable';
   }
   return 'complete';
@@ -159,12 +163,31 @@ export async function runRules({
   const executionRecords = [];
 
   for (const rule of registry.listRules()) {
-    if (skip.has(rule.id) || !registry.isEmittingRule(rule.id)) {
+    if (!registry.isEmittingRule(rule.id)) {
       continue;
     }
 
     const checks = filterChecksForProfile(rule.checks, profile);
     const startedAt = Date.now();
+
+    if (skip.has(rule.id)) {
+      const checkRecords = checks.map((check) => ({
+        checkId: check.id,
+        status: /** @type {ExecutionStatus} */ ('skipped'),
+        durationMs: 0,
+        candidateCount: 0,
+        findingCount: 0,
+      }));
+      executionRecords.push({
+        ruleId: rule.id,
+        status: checkRecords.length > 0 ? 'skipped' : 'inapplicable',
+        durationMs: Date.now() - startedAt,
+        candidateCount: 0,
+        findingCount: 0,
+        checks: checkRecords,
+      });
+      continue;
+    }
 
     if (checks.length === 0) {
       executionRecords.push({
@@ -249,5 +272,5 @@ export async function runRules({
     executionRecords.push(record);
   }
 
-  return { findings: dedupeFindings(findings), executionRecords };
+  return { findings: projectFindings(findings, { profile }), executionRecords };
 }

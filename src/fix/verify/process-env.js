@@ -9,6 +9,7 @@ export const ALLOWED_COMMAND_ENV_KEYS = Object.freeze([
   'LC_CTYPE',
   'CI',
   'NODE',
+  'ADA_SCAN_ROOT',
 ]);
 
 export function buildCommandEnvironment(extra = {}) {

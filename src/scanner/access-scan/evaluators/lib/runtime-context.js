@@ -58,13 +58,18 @@ export function getSnapshot(context) {
  * @returns {ReturnType<typeof buildSnapshotIndexes>}
  */
 export function getIndexes(context) {
-  const existing = /** @type {{ indexes?: ReturnType<typeof buildSnapshotIndexes> }} */ (context);
-  if (existing.indexes) {
+  const snapshot = getSnapshot(context);
+  const existing = /** @type {{
+    indexes?: ReturnType<typeof buildSnapshotIndexes>,
+    indexesSnapshot?: Snapshot,
+  }} */ (context);
+  if (existing.indexes && existing.indexesSnapshot === snapshot) {
     return existing.indexes;
   }
-  const indexes = buildSnapshotIndexes(getSnapshot(context));
+  const indexes = buildSnapshotIndexes(snapshot);
   if (context && typeof context === 'object') {
     existing.indexes = indexes;
+    existing.indexesSnapshot = snapshot;
   }
   return indexes;
 }

@@ -5,6 +5,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertBundleRedacted } from '../../scripts/lib/cis-redaction.js';
 import { CisTransportError } from '../../src/fix/cis/transport.js';
+import { createCisTransportFromConfig, resolveCisConfig } from '../../src/fix/cis/config.js';
+import { insecureDevEnv } from './helpers/cis-ca-fixture.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT_PATH = path.join(__dirname, '../../scripts/cis-models.js');
@@ -31,9 +33,9 @@ function discoveryConfig() {
 test('cis-models script is import-safe and loads host env via config module', async () => {
   const source = readFileSync(SCRIPT_PATH, 'utf8');
   assert.match(source, /['"]\.\.\/src\/utils\/config\.js['"]/);
-  assert.match(source, /resolveTrustedCisConfig/);
+  assert.match(source, /resolveCisConfig/);
   assert.match(source, /requireModel:\s*false/);
-  assert.match(source, /createCisTransportFromTrustedConfig/);
+  assert.match(source, /createCisTransportFromConfig/);
   assert.match(source, /runCisModelsCli/);
   assert.match(source, /listModels/);
   assert.match(source, /isMain/);
@@ -134,4 +136,51 @@ test('runCisModelsCli failure prints stable sanitized code and closes transport 
   assert.equal(output.includes(SENTINEL_TOKEN), false);
   assert.equal(output.includes(SENTINEL_CA_PATH), false);
   assert.equal(output.includes('SENTINEL-CA-BYTES'), false);
+});
+
+test('runCisModelsCli uses insecure-dev config factory and exposes transportSecurity label', async () => {
+  const config = resolveCisConfig(insecureDevEnv(), { requireModel: false });
+  assert.equal(config.ok, true);
+  assert.equal(config.transportSecurity, 'insecure-dev');
+
+  const { runCisModelsCli } = await import('../../scripts/cis-models.js');
+  let closed = false;
+  const stdout = [];
+
+  const code = await runCisModelsCli({
+    env: insecureDevEnv(),
+    resolveConfig: () => config,
+    createTransportBundle: (resolved) => {
+      const bundle = createCisTransportFromConfig(resolved);
+      assert.equal(bundle.model, 'anthropic.claude-sonnet-5');
+      return {
+        async importTransport() {
+          const transport = await bundle.importTransport();
+          assert.equal(transport.transportSecurity, 'insecure-dev');
+          return {
+            async listModels() {
+              return { models: ['anthropic.claude-sonnet-5'] };
+            },
+            async close() {
+              closed = true;
+              await transport.close();
+            },
+          };
+        },
+      };
+    },
+    stdoutWrite: (chunk) => {
+      stdout.push(String(chunk));
+    },
+    stderrWrite: () => {},
+  });
+
+  assert.equal(code, 0);
+  assert.equal(closed, true);
+  assert.deepEqual(JSON.parse(stdout.join('').trim()), {
+    models: ['anthropic.claude-sonnet-5'],
+  });
+  const output = stdout.join('');
+  assert.equal(output.includes(config.baseUrl), false);
+  assert.equal(output.includes('ALLOW_UNVERIFIED_CIS_TLS'), false);
 });

@@ -2,8 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildRuleRouteKey,
+  buildSeverityCountKey,
   buildVerificationKey,
   compareVerificationFindings,
+  findingsEquivalent,
   stableSelector,
 } from '../../src/fix/verify/verification-key.js';
 
@@ -128,4 +130,64 @@ test('nosel findings treat same rule route pageState as unresolved', () => {
   const delta = compareVerificationFindings(baseline, after, ['sha256:old']);
   assert.equal(delta.targetsResolved, false);
   assert.equal(buildRuleRouteKey(baseline[0]), buildRuleRouteKey(after[0]));
+});
+
+test('native and canonical viewport aliases share verification, count, and target-closure identity', () => {
+  const baseline = [{
+    findingId: 'sha256:viewport-baseline',
+    canonicalRuleId: 'PageMetaViewportValid',
+    nativeRuleId: 'MetaViewportScalable',
+    layer: 'accessScan',
+    route: '/',
+    pageState: 'initial',
+    selector: 'html > head > meta[name="viewport"]',
+    impact: 'critical',
+  }];
+  const after = [{
+    findingId: null,
+    canonicalRuleId: 'MetaViewportScalable',
+    nativeRuleId: 'MetaViewportScalable',
+    layer: 'accessScan',
+    route: '/',
+    pageState: 'initial',
+    selector: 'html>head>meta[name="viewport"]',
+    impact: 'critical',
+  }];
+
+  assert.equal(findingsEquivalent(baseline[0], after[0]), true);
+  assert.equal(buildVerificationKey(baseline[0]), buildVerificationKey(after[0]));
+  assert.equal(buildSeverityCountKey(baseline[0]), buildSeverityCountKey(after[0]));
+
+  const delta = compareVerificationFindings(
+    baseline,
+    after,
+    ['sha256:viewport-baseline'],
+  );
+  assert.equal(delta.targetsResolved, false);
+  assert.equal(delta.targetDetails[0].reason, 'CLOSURE_KEY_REMAINING');
+  assert.deepEqual(delta.newCriticalSerious, []);
+});
+
+test('defined aliases normalize while unknown axe rules remain unchanged', () => {
+  const native = finding({
+    rule: 'StickyHeaderObscuresFocus',
+    selector: 'header.sticky',
+  });
+  const canonical = finding({
+    rule: 'FocusNotObscuredHeader',
+    selector: 'header.sticky',
+  });
+  const unknownAxe = {
+    canonicalRuleId: 'meta-viewport',
+    nativeRuleId: 'meta-viewport',
+    layer: 'axe',
+    route: '/',
+    pageState: 'initial',
+    selector: 'html>head>meta[name="viewport"]',
+    impact: 'critical',
+  };
+
+  assert.equal(findingsEquivalent(native, canonical), true);
+  assert.equal(buildSeverityCountKey(native), buildSeverityCountKey(canonical));
+  assert.equal(buildRuleRouteKey(unknownAxe), 'meta-viewport|/|initial');
 });

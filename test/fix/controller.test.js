@@ -11,9 +11,13 @@ import {
 import { buildScanReportV2 } from '../../src/reporter/report-v2.js';
 import {
   collectVerificationBaseline,
+  runTrustedFixCli,
   startFixController,
 } from '../../src/fix/controller/index.js';
+import { hashFileContent } from '../../src/fix/candidate/intent.js';
 import { FixControllerError, SESSION_STATES } from '../../src/fix/controller/session.js';
+import { compareVerificationFindings } from '../../src/fix/verify/verification-key.js';
+import { insecureDevEnv, trustedCisTestEnv } from './helpers/cis-ca-fixture.js';
 
 const DIGEST = 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const REVISION = 'git:abc123def4567890123456789012345678901234';
@@ -392,4 +396,385 @@ test('verification baseline includes every fix-unit finding with selector and co
       { findingId: 'sha256:second', count: 2, selector: 'main>section>a' },
     ],
   );
+});
+
+function withCisEnv(env, fn) {
+  const previous = {};
+  for (const key of Object.keys(env)) {
+    previous[key] = process.env[key];
+    process.env[key] = env[key];
+  }
+  return Promise.resolve(fn()).finally(() => {
+    for (const key of Object.keys(env)) {
+      if (previous[key] === undefined) delete process.env[key];
+      else process.env[key] = previous[key];
+    }
+  });
+}
+
+test('runTrustedFixCli exposes insecure-dev cisConfig and review snapshot labels without secrets', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-controller-cis-insecure-'));
+  let reviewServer = null;
+  await withCisEnv(insecureDevEnv(), async () => {
+    try {
+      const { digest } = writeTempProject(root);
+      const report = localReport(digest);
+      const result = await runTrustedFixCli({
+        report,
+        localRoot: root,
+        useUI: true,
+        cisTransport: {
+          transportSecurity: 'insecure-dev',
+          async chatCompletion() {
+            return { content: '{}', status: 200, elapsedMs: 0 };
+          },
+          async close() {},
+        },
+      });
+      reviewServer = result.reviewServer;
+
+      assert.equal(result.cisConfig.ok, true);
+      assert.equal(result.cisConfig.transportSecurity, 'insecure-dev');
+      const snapshot = result.reviewState.getSnapshot();
+      assert.equal(snapshot.transportSecurity, 'insecure-dev');
+      assert.equal(snapshot.devAuthBypass, true);
+
+      result.reviewState.setPreferences({ search: 'probe' });
+      const sessionJson = readFileSync(join(result.sessionDir, 'session.json'), 'utf8');
+      assert.equal(sessionJson.includes('CIS_PROXY_URL'), false);
+      assert.equal(sessionJson.includes('CIS_AUTH_TOKEN'), false);
+      assert.equal(sessionJson.includes('ALLOW_UNVERIFIED_CIS_TLS'), false);
+      assert.equal(sessionJson.includes('transportSecurity'), false);
+    } finally {
+      if (reviewServer) await reviewServer.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+test('runTrustedFixCli trusted defaults keep transportSecurity trusted in snapshot', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-controller-cis-trusted-'));
+  let reviewServer = null;
+  await withCisEnv(trustedCisTestEnv(), async () => {
+    try {
+      const { digest } = writeTempProject(root);
+      const report = localReport(digest);
+      const result = await runTrustedFixCli({
+        report,
+        localRoot: root,
+        useUI: true,
+        cisTransport: {
+          transportSecurity: 'trusted',
+          async chatCompletion() {
+            return { content: '{}', status: 200, elapsedMs: 0 };
+          },
+          async close() {},
+        },
+      });
+      reviewServer = result.reviewServer;
+
+      assert.equal(result.cisConfig.ok, true);
+      assert.equal(result.cisConfig.transportSecurity, 'trusted');
+      const snapshot = result.reviewState.getSnapshot();
+      assert.equal(snapshot.transportSecurity, 'trusted');
+      assert.equal(snapshot.devAuthBypass, false);
+    } finally {
+      if (reviewServer) await reviewServer.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+test('runTrustedFixCli disabled CIS config yields disabled snapshot labels', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-controller-cis-disabled-'));
+  let reviewServer = null;
+  try {
+    const { digest } = writeTempProject(root);
+    const report = localReport(digest);
+    const result = await runTrustedFixCli({
+      report,
+      localRoot: root,
+      useUI: true,
+    });
+    reviewServer = result.reviewServer;
+
+    assert.equal(result.cisConfig.ok, false);
+    const snapshot = result.reviewState.getSnapshot();
+    assert.equal(snapshot.transportSecurity, 'disabled');
+    assert.equal(snapshot.devAuthBypass, false);
+  } finally {
+    if (reviewServer) await reviewServer.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('session metadata derives from sessionRoot while trace uses sandbox localRoot', () => {
+  const originalRoot = mkdtempSync(join(tmpdir(), 'ada-controller-session-root-'));
+  const sandboxRoot = mkdtempSync(join(tmpdir(), 'ada-controller-sandbox-root-'));
+  try {
+    writeTempProject(originalRoot);
+    const { digest } = writeTempProject(sandboxRoot);
+    const report = localReport(digest);
+    const result = startFixController({
+      report,
+      localRoot: sandboxRoot,
+      sessionRoot: originalRoot,
+      sessionId: 'demo-session-root',
+    });
+    assert.equal(result.status, 'pending');
+    assert.ok(result.sessionDir.startsWith(realpathSync(originalRoot)));
+    assert.equal(realpathSync(result.traceInbox.localRoot), realpathSync(sandboxRoot));
+  } finally {
+    rmSync(originalRoot, { recursive: true, force: true });
+    rmSync(sandboxRoot, { recursive: true, force: true });
+  }
+});
+
+test('targetSourceFile retains only exact normalized source matches', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-controller-target-file-'));
+  try {
+    const { digest } = writeTempProject(root);
+    const sourceMap = writeVerifiedFixtureSources(root);
+    const scanResults = patchScanResultsSources(structuredClone(baseFixture.scanResults), sourceMap);
+    const report = buildScanReportV2(scanResults, {
+      ...baseFixture.context,
+      target: {
+        mode: 'local-only',
+        url: 'http://localhost:1234/',
+        buildRevision: REVISION,
+        instrumentationDigest: digest,
+      },
+    });
+    const all = startFixController({ report, localRoot: root });
+    const filtered = startFixController({
+      report,
+      localRoot: root,
+      targetSourceFile: 'src/partials/jobs/sort.liquid',
+    });
+    assert.ok(all.fixUnits.length > filtered.fixUnits.length);
+    assert.ok(filtered.fixUnits.every((unit) => unit.sourceOwner?.file === 'src/partials/jobs/sort.liquid'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('target-file verification receives an immutable full-report cross-layer baseline', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-controller-full-baseline-'));
+  let reviewServer = null;
+  try {
+    const { digest } = writeTempProject(root);
+    const sourceMap = writeVerifiedFixtureSources(root);
+    const scanResults = patchScanResultsSources(structuredClone(baseFixture.scanResults), sourceMap);
+    const targetFile = 'src/partials/jobs/sort.liquid';
+    const unrelatedFile = 'src/pages/index.liquid';
+    const targetViolation = {
+      ...structuredClone(scanResults[0].violations[0]),
+      id: 'accessscan-link-new-window',
+      ruleId: 'LinkOpensNewWindow',
+      canonicalRuleId: 'LinkOpensNewWindow',
+      layer: 'accessScan',
+      impact: 'serious',
+      element: {
+        outerHTML: '<a id="target-link" target="_blank">Jobs</a>',
+        selector: '#target-link',
+      },
+      fix: {
+        deterministic: false,
+        hint: 'Link opens a new window without warning.',
+        patch: null,
+      },
+    };
+    const unrelatedViolation = {
+      ...structuredClone(scanResults[0].violations[2]),
+      id: 'axe-button-name',
+      ruleId: 'button-name',
+      canonicalRuleId: 'button-name',
+      layer: 'axe',
+      impact: 'critical',
+      count: 1,
+      element: {
+        outerHTML: '<button id="unrelated-button"></button>',
+        selector: '#unrelated-button',
+      },
+      fix: {
+        deterministic: false,
+        hint: 'Button must have discernible text.',
+        patch: null,
+      },
+    };
+    scanResults[0].violations = [targetViolation, unrelatedViolation];
+    const report = buildScanReportV2(scanResults, {
+      ...baseFixture.context,
+      target: {
+        mode: 'local-only',
+        url: 'http://localhost:1234/',
+        buildRevision: REVISION,
+        instrumentationDigest: digest,
+      },
+    });
+    const expectedBaseline = structuredClone(
+      report.pages.flatMap((page) => page.findings),
+    );
+    assert.equal(expectedBaseline.length, 2);
+    assert.deepEqual(
+      expectedBaseline.reduce((counts, finding) => ({
+        ...counts,
+        [finding.layer]: (counts[finding.layer] || 0) + 1,
+      }), {}),
+      { accessScan: 1, axe: 1 },
+    );
+    const targetFinding = expectedBaseline.find((finding) => finding.source.file === targetFile);
+    const unrelatedFinding = expectedBaseline.find((finding) => finding.source.file === unrelatedFile);
+    assert.ok(targetFinding);
+    assert.ok(unrelatedFinding);
+    const buildScript = join(root, 'build-ok.js');
+    writeFileSync(buildScript, 'process.exit(0);\n');
+
+    let receivedBaseline = null;
+    const scanner = async () => ({
+      findings: [structuredClone(unrelatedFinding)],
+      sourceTraceResolved: true,
+      sourceTraceByTarget: [],
+      executedLayers: ['axe', 'accessScan'],
+      compareFindings(baselineFindings, afterFindings, targetFindingIds) {
+        receivedBaseline = baselineFindings;
+        return compareVerificationFindings(
+          baselineFindings,
+          afterFindings,
+          targetFindingIds,
+        );
+      },
+    });
+    scanner.ownsSiteLifecycle = true;
+
+    const result = await runTrustedFixCli({
+      report,
+      localRoot: root,
+      targetSourceFile: targetFile,
+      useUI: true,
+      verification: {
+        build: {
+          command: process.execPath,
+          args: [buildScript],
+        },
+        scanner,
+      },
+      cisTransport: {
+        async chatCompletion() {
+          throw new Error('CIS transport must not be called by this test.');
+        },
+        async close() {},
+      },
+    });
+    reviewServer = result.reviewServer;
+
+    assert.deepEqual(
+      report.pages.flatMap((page) => page.findings),
+      expectedBaseline,
+    );
+    assert.equal(result.fixUnits.length, 1);
+    assert.ok(result.fixUnits.every((unit) => unit.sourceOwner.file === targetFile));
+    assert.equal(result.reviewState.fixUnits.length, 1);
+    assert.ok(result.reviewState.fixUnits.every((unit) => unit.sourceOwner.file === targetFile));
+    const reviewSnapshot = result.reviewState.getSnapshot();
+    assert.equal(reviewSnapshot.units.length, 1);
+    assert.equal(reviewSnapshot.units[0].sourceFile, targetFile);
+    assert.equal(
+      reviewSnapshot.units.some((unit) => unit.sourceFile === unrelatedFile),
+      false,
+    );
+
+    const targetContent = readFileSync(join(root, targetFile), 'utf8');
+    const registered = result.reviewState.registerCandidate(result.fixUnits[0].fixUnitId, {
+      policyVersion: '1',
+      promptVersion: 'controller-baseline-test',
+      modelId: 'deterministic-stub',
+      editIntents: [{
+        file: targetFile,
+        blockRange: { startLine: 12, endLine: 12 },
+        expectedBlockSha256: sourceMap[targetFile].preimageSha256,
+        expectedFileSha256: hashFileContent(targetContent),
+        oldText: '<select id="sort-select"></select>',
+        newText: '<select id="sort-select" aria-label="Sort jobs"></select>',
+      }],
+      manualChecks: [],
+    });
+    assert.ok(registered.candidateHash);
+
+    report.pages[0].findings[0].layer = 'mutated-report-layer';
+    report.pages[0].findings[0].source.file = 'src/pages/mutated.liquid';
+    result.fixUnits[0].findings[0].layer = 'mutated-fix-unit-layer';
+
+    const verified = await result.verifyRegisteredCandidate(result.fixUnits[0].fixUnitId);
+
+    assert.deepEqual(receivedBaseline, expectedBaseline);
+    assert.equal(Object.isFrozen(receivedBaseline), true);
+    assert.ok(receivedBaseline.every((finding) => Object.isFrozen(finding)));
+    assert.ok(receivedBaseline.every((finding) => Object.isFrozen(finding.source)));
+    assert.throws(
+      () => receivedBaseline.push(structuredClone(unrelatedFinding)),
+      TypeError,
+    );
+    assert.throws(
+      () => {
+        receivedBaseline[0].source.file = 'src/pages/injected.liquid';
+      },
+      TypeError,
+    );
+    assert.equal(verified.ok, true);
+  } finally {
+    if (reviewServer) await reviewServer.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('targetSourceFile with no matching findings returns NO_TARGET_FINDINGS', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-controller-no-target-'));
+  try {
+    const { digest } = writeTempProject(root);
+    mkdirSync(join(root, 'src', 'pages'), { recursive: true });
+    writeFileSync(join(root, 'src', 'pages', 'other.liquid'), '<div>Other</div>\n');
+    const report = localReport(digest);
+    const result = startFixController({
+      report,
+      localRoot: root,
+      targetSourceFile: 'src/pages/other.liquid',
+    });
+    assert.equal(result.status, 'no-findings');
+    assert.equal(result.reason, 'NO_TARGET_FINDINGS');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('targetSourceFile rejects traversal paths', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-controller-target-traversal-'));
+  try {
+    const { digest } = writeTempProject(root);
+    const report = localReport(digest);
+    assert.throws(
+      () => startFixController({
+        report,
+        localRoot: root,
+        targetSourceFile: '../escape.liquid',
+      }),
+      (error) => error instanceof FixControllerError && error.code === 'PATH_TRAVERSAL',
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('default controller behavior unchanged without sessionRoot or targetSourceFile', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-controller-defaults-'));
+  try {
+    const { digest } = writeTempProject(root);
+    const report = localReport(digest);
+    const result = startFixController({ report, localRoot: root });
+    assert.equal(result.status, 'pending');
+    assert.ok(result.sessionDir.startsWith(realpathSync(root)));
+    assert.equal(realpathSync(result.traceInbox.localRoot), realpathSync(root));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

@@ -9,14 +9,24 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '4.1.2' },
     severity: { impact: 'serious', priority: 2 },
     automation: 'deterministic',
-    checks: [{
-      id: 'interactive:button-discernible',
-      profiles: ['standards', 'commercial-parity'],
-      evaluator: 'accessible-name',
-      target: { selector: 'button' },
-      options: { mode: 'button-missing-name' },
-      classification: 'confirmed',
-    }],
+    checks: [
+      {
+        id: 'interactive:button-discernible',
+        profiles: ['standards'],
+        evaluator: 'accessible-name',
+        target: { selector: 'button' },
+        options: { mode: 'button-missing-name' },
+        classification: 'confirmed',
+      },
+      {
+        id: 'interactive:button-discernible-authored',
+        profiles: ['commercial-parity'],
+        evaluator: 'accessible-name',
+        target: { selector: 'button' },
+        options: { mode: 'button-missing-name', authoredNameOnly: true },
+        classification: 'confirmed',
+      },
+    ],
     reporting: {
       title: 'Buttons should have a label',
       requirement: 'Buttons that do not contain visible text should be assigned labels that inform screen reader users of their purpose.',
@@ -77,7 +87,7 @@ export default [
     automation: 'heuristic',
     checks: [{
       id: 'interactive:link-opens-new-window',
-      profiles: ['standards', 'commercial-parity'],
+      profiles: ['standards'],
       evaluator: 'link-warnings',
       target: { selector: 'a[target="_blank"]' },
       options: { mode: 'new-window' },
@@ -129,7 +139,7 @@ export default [
     }],
     reporting: {
       title: 'ARIA relationship attributes should only be applied to elements with appropriate roles',
-      requirement: 'Interactive elements that trigger additional content should only have relationship and state ARIA attributes if they have interactive roles, such as button, tab, or combobox.',
+      requirement: 'Interactive elements that trigger additional content should only have relationship and state ARIA attributes, such as aria-expanded and aria-controls, if they have interactive roles, such as button, tab, combobox and in rarer cases, link.',
       recommendation: 'Menu trigger must be a <button> or have tabindex and role="button" for keyboard access.',
     },
     fix: { deterministic: true, policy: 'mechanically_safe' },
@@ -231,7 +241,7 @@ export default [
     automation: 'heuristic',
     checks: [{
       id: 'interactive:link-image-warning',
-      profiles: ['standards', 'commercial-parity'],
+      profiles: ['standards'],
       evaluator: 'link-warnings',
       target: { selector: 'a[href]' },
       options: { mode: 'image-href' },
@@ -297,9 +307,9 @@ export default [
     automation: 'heuristic',
     checks: [{
       id: 'interactive:button-mismatch',
-      profiles: ['standards'],
+      profiles: ['standards', 'commercial-parity'],
       evaluator: 'interactive-semantics',
-      target: { selector: 'a, span' },
+      target: { selector: 'a, span, div' },
       options: { mode: 'button-mismatch' },
       classification: 'potential',
     }],
@@ -401,13 +411,22 @@ export default [
     standard: { version: 'WCAG 2.2', level: 'AA', criterion: '2.4.11' },
     severity: { impact: 'critical', priority: 1 },
     automation: 'behavioral',
-    checks: [{
-      id: 'interactive:focus-not-obscured-footer',
-      profiles: ['standards'],
-      evaluator: 'focus-obscuration',
-      options: { mode: 'focus-not-obscured-footer' },
-      classification: 'confirmed',
-    }],
+    checks: [
+      {
+        id: 'interactive:focus-not-obscured-footer',
+        profiles: ['standards'],
+        evaluator: 'focus-obscuration',
+        options: { mode: 'focus-not-obscured-footer' },
+        classification: 'confirmed',
+      },
+      {
+        id: 'parity:sticky-footer-semantic',
+        profiles: ['commercial-parity'],
+        evaluator: 'commercial-parity',
+        options: { mode: 'sticky-footer-semantic' },
+        classification: 'commercial-parity',
+      },
+    ],
     reporting: {
       title: 'Focused elements should not be obscured by a sticky footer',
       requirement: 'A sticky footer remains anchored to the bottom of the screen while the rest of the page content can be scrolled. If it is not offset from interactive elements, it can overlap and obscure the item in focus.',

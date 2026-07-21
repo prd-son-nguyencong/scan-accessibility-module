@@ -39,7 +39,7 @@ export default [
     ],
     reporting: {
       title: 'Tablists should be tagged for assistive technology',
-      requirement: 'A tablist without role="tablist" is not announced as a group of related tabs, preventing screen reader users from recognizing the structure.',
+      requirement: 'A tablist without role="tablist" is not announced as a group of related tabs, which prevents screen reader users from recognizing the structure and purpose of the component. This makes it harder to navigate between tabs and understand that the controls belong to a single set.',
       recommendation: 'Wrap the tab controls in a container with role="tablist".',
     },
     fix: { deterministic: false, policy: 'manual_only' },
@@ -146,7 +146,7 @@ export default [
     ],
     reporting: {
       title: 'Tab controls should be tagged for assistive technology',
-      requirement: 'Custom tabs must be explicitly defined for screen readers since there are no native HTML tab elements.',
+      requirement: 'Custom tabs must be explicitly defined for screen readers since there are no native HTML tab elements. Without assigning role="tab" to the interactive elements, assistive technology will not identify them as tabs, preventing users from understanding their function or navigating them as part of a tab interface.',
       recommendation: 'Add role="tab" and the required selected/focus states.',
     },
     fix: { deterministic: false, policy: 'manual_only' },

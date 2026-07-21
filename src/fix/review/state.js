@@ -13,7 +13,7 @@ import {
   writeSync,
   readdirSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { LOCK_NAME } from '../apply/lock.js';
 import { normalizeSourcePath } from '../../reporter/fingerprint.js';
@@ -45,6 +45,8 @@ import {
   buildManualCheckAttestations,
   validateAcknowledgedManualCheckIds,
 } from '../manual-checks.js';
+import { getCandidateDiffView } from './diff-view.js';
+import { validateRelativeCandidatePath } from '../candidate/path.js';
 
 export class ReviewStateError extends Error {
   constructor(code, message) {
@@ -69,6 +71,247 @@ const MAX_SEVERITY_FILTER_LENGTH = 32;
 const VALID_DECISIONS = new Set(['pending', 'accepted', 'rejected']);
 const VALID_STATUS_FILTERS = new Set(['all', 'pending', 'accepted', 'rejected', 'blocked', 'verified']);
 const VALID_TABS = new Set(['source', 'list', 'review']);
+const VALID_TRANSPORT_SECURITY = new Set(['trusted', 'insecure-dev', 'disabled']);
+const TRANSACTION_ID_PATTERN = /^transaction-\d+-[a-f0-9]+$/;
+const SANDBOX_ARTIFACT_ERROR_PATTERN = /^[A-Z][A-Z0-9_]{0,63}$/;
+const MAX_ARTIFACT_PATH_LENGTH = 512;
+
+function normalizeTransportSecurity(value) {
+  const normalized = String(value ?? 'disabled').trim();
+  return VALID_TRANSPORT_SECURITY.has(normalized) ? normalized : 'disabled';
+}
+
+function normalizeDevAuthBypass(value) {
+  return value === true;
+}
+
+function defaultSandboxBlock() {
+  return {
+    enabled: false,
+    targetFile: null,
+    transactionId: null,
+    artifactPaths: null,
+    artifactError: null,
+    rollbackCompleted: false,
+    rollbackResult: null,
+  };
+}
+
+function normalizeProcessSandboxContext(sandboxContext) {
+  if (!sandboxContext || typeof sandboxContext !== 'object') {
+    return defaultSandboxBlock();
+  }
+  if (sandboxContext.enabled !== true) {
+    return defaultSandboxBlock();
+  }
+  const targetFile = validateRelativeCandidatePath(sandboxContext.targetFile);
+  return {
+    enabled: true,
+    targetFile,
+    transactionId: null,
+    artifactPaths: null,
+    artifactError: null,
+    rollbackCompleted: false,
+    rollbackResult: null,
+  };
+}
+
+function validateRelativeArtifactPath(value) {
+  const normalized = validateRelativeCandidatePath(value);
+  if (normalized.length > MAX_ARTIFACT_PATH_LENGTH) {
+    throw new ReviewStateError('CORRUPT_SESSION', 'Sandbox artifact path exceeds allowed length.');
+  }
+  return normalized;
+}
+
+function validateSandboxArtifactPaths(artifactPaths) {
+  if (artifactPaths == null) return null;
+  if (typeof artifactPaths !== 'object' || Array.isArray(artifactPaths)) {
+    throw new ReviewStateError('CORRUPT_SESSION', 'Sandbox artifact paths are invalid.');
+  }
+  const normalized = {};
+  for (const [key, value] of Object.entries(artifactPaths)) {
+    if (typeof key !== 'string' || !key || key.length > 64) {
+      throw new ReviewStateError('CORRUPT_SESSION', 'Sandbox artifact path key is invalid.');
+    }
+    normalized[key] = validateRelativeArtifactPath(value);
+  }
+  return normalized;
+}
+
+function validateSandboxArtifactError(value) {
+  if (value == null) return null;
+  const code = String(value);
+  if (!SANDBOX_ARTIFACT_ERROR_PATTERN.test(code)) {
+    throw new ReviewStateError('CORRUPT_SESSION', 'Sandbox artifact error code is invalid.');
+  }
+  return code;
+}
+
+function validateSandboxTransactionId(value) {
+  if (value == null) return null;
+  const id = String(value);
+  if (!TRANSACTION_ID_PATTERN.test(id)) {
+    throw new ReviewStateError('CORRUPT_SESSION', 'Sandbox transaction ID is invalid.');
+  }
+  return id;
+}
+
+function validateSandboxRollbackResult(result) {
+  if (result == null) return null;
+  if (typeof result !== 'object' || Array.isArray(result)) {
+    throw new ReviewStateError('CORRUPT_SESSION', 'Sandbox rollback result is invalid.');
+  }
+  if (typeof result.transactionId !== 'string' || !TRANSACTION_ID_PATTERN.test(result.transactionId)) {
+    throw new ReviewStateError('CORRUPT_SESSION', 'Sandbox rollback result transaction ID is invalid.');
+  }
+  validateRelativeCandidatePath(result.targetFile);
+  if (typeof result.sandboxRestored !== 'boolean' || typeof result.originalUnchangedAfterRollback !== 'boolean') {
+    throw new ReviewStateError('CORRUPT_SESSION', 'Sandbox rollback result verification flags are invalid.');
+  }
+  if (result.restored != null) {
+    if (!Array.isArray(result.restored)) {
+      throw new ReviewStateError('CORRUPT_SESSION', 'Sandbox rollback restored files are invalid.');
+    }
+    for (const entry of result.restored) {
+      if (!entry || typeof entry !== 'object' || typeof entry.file !== 'string') {
+        throw new ReviewStateError('CORRUPT_SESSION', 'Sandbox rollback restored file entry is invalid.');
+      }
+      validateRelativeCandidatePath(entry.file);
+    }
+  }
+  return {
+    transactionId: result.transactionId,
+    targetFile: validateRelativeCandidatePath(result.targetFile),
+    restored: Array.isArray(result.restored)
+      ? result.restored.map((entry) => ({ file: validateRelativeCandidatePath(entry.file) }))
+      : [],
+    sandboxRestored: result.sandboxRestored,
+    originalUnchangedAfterRollback: result.originalUnchangedAfterRollback,
+  };
+}
+
+function validatePersistedSandboxBlock(persistedSandbox, processSandbox) {
+  if (persistedSandbox == null) {
+    return processSandbox.enabled ? clone(processSandbox) : defaultSandboxBlock();
+  }
+  if (typeof persistedSandbox !== 'object' || Array.isArray(persistedSandbox)) {
+    throw new ReviewStateError('CORRUPT_SESSION', 'Persisted sandbox block is invalid.');
+  }
+  if (!processSandbox.enabled) {
+    throw new ReviewStateError('CORRUPT_SESSION', 'Persisted sandbox block is not allowed without process sandbox context.');
+  }
+  if (persistedSandbox.enabled !== true) {
+    throw new ReviewStateError('CORRUPT_SESSION', 'Persisted sandbox block must be enabled when present.');
+  }
+  let targetFile;
+  try {
+    targetFile = validateRelativeCandidatePath(persistedSandbox.targetFile);
+  } catch {
+    throw new ReviewStateError('CORRUPT_SESSION', 'Persisted sandbox target is invalid.');
+  }
+  if (processSandbox.enabled && processSandbox.targetFile !== targetFile) {
+    throw new ReviewStateError('CORRUPT_SESSION', 'Persisted sandbox target does not match process context.');
+  }
+  if (typeof persistedSandbox.rollbackCompleted !== 'boolean') {
+    throw new ReviewStateError('CORRUPT_SESSION', 'Persisted sandbox rollbackCompleted is invalid.');
+  }
+  return {
+    enabled: true,
+    targetFile,
+    transactionId: validateSandboxTransactionId(persistedSandbox.transactionId),
+    artifactPaths: validateSandboxArtifactPaths(persistedSandbox.artifactPaths),
+    artifactError: validateSandboxArtifactError(persistedSandbox.artifactError),
+    rollbackCompleted: persistedSandbox.rollbackCompleted,
+    rollbackResult: validateSandboxRollbackResult(persistedSandbox.rollbackResult),
+  };
+}
+
+function serializeSandboxBlock(raw) {
+  if (!raw.sandbox?.enabled) return undefined;
+  return {
+    enabled: true,
+    targetFile: raw.sandbox.targetFile,
+    transactionId: raw.sandbox.transactionId,
+    artifactPaths: raw.sandbox.artifactPaths ? clone(raw.sandbox.artifactPaths) : null,
+    artifactError: raw.sandbox.artifactError,
+    rollbackCompleted: raw.sandbox.rollbackCompleted === true,
+    rollbackResult: raw.sandbox.rollbackResult ? clone(raw.sandbox.rollbackResult) : null,
+  };
+}
+
+function extractTransactionIdFromApplyResult(result) {
+  if (!result?.transactionDir) return null;
+  const id = basename(String(result.transactionDir));
+  return TRANSACTION_ID_PATTERN.test(id) ? id : null;
+}
+
+function captureSandboxApplyMetadata(raw, result) {
+  if (!raw.sandbox?.enabled) return;
+  raw.sandbox.transactionId = extractTransactionIdFromApplyResult(result);
+  if (result?.artifacts && typeof result.artifacts === 'object') {
+    raw.sandbox.artifactPaths = validateSandboxArtifactPaths(result.artifacts);
+  }
+  if (result?.artifactError != null) {
+    raw.sandbox.artifactError = validateSandboxArtifactError(result.artifactError);
+  }
+}
+
+function buildSandboxSnapshot(raw) {
+  if (!raw.sandbox?.enabled) return null;
+  const hasTransaction = TRANSACTION_ID_PATTERN.test(raw.sandbox.transactionId || '');
+  return {
+    enabled: true,
+    targetFile: raw.sandbox.targetFile,
+    transactionId: raw.sandbox.transactionId,
+    artifactPaths: raw.sandbox.artifactPaths ? clone(raw.sandbox.artifactPaths) : null,
+    artifactError: raw.sandbox.artifactError || null,
+    rollbackAvailable: Boolean(
+      raw.applyCompleted
+      && hasTransaction
+      && !raw.sandbox.rollbackCompleted
+      && !raw.rollbackInFlight,
+    ),
+    rollbackInFlight: Boolean(raw.rollbackInFlight),
+    rollbackCompleted: raw.sandbox.rollbackCompleted === true,
+    rollbackResult: raw.sandbox.rollbackResult ? clone(raw.sandbox.rollbackResult) : null,
+  };
+}
+
+function sanitizeRollbackHandlerResult(result) {
+  if (!result || typeof result !== 'object') {
+    throw new ReviewStateError('ROLLBACK_VERIFICATION_FAILED', 'Rollback result is invalid.');
+  }
+  validateRelativeCandidatePath(result.targetFile);
+  if (!TRANSACTION_ID_PATTERN.test(String(result.transactionId || ''))) {
+    throw new ReviewStateError('ROLLBACK_VERIFICATION_FAILED', 'Rollback transaction ID is invalid.');
+  }
+  if (result.sandboxRestored !== true || result.originalUnchangedAfterRollback !== true) {
+    throw new ReviewStateError('ROLLBACK_VERIFICATION_FAILED', 'Rollback verification failed.');
+  }
+  const restored = Array.isArray(result.restored)
+    ? result.restored.map((entry) => ({ file: validateRelativeCandidatePath(entry.file) }))
+    : [];
+  if (restored.length === 0) {
+    throw new ReviewStateError('ROLLBACK_VERIFICATION_FAILED', 'Rollback did not restore any files.');
+  }
+  return {
+    transactionId: result.transactionId,
+    targetFile: result.targetFile,
+    restored,
+    sandboxRestored: true,
+    originalUnchangedAfterRollback: true,
+  };
+}
+
+function assertRollbackResultMatchesSandbox(raw, sanitized) {
+  if (sanitized.transactionId !== raw.sandbox.transactionId) {
+    throw new ReviewStateError('ROLLBACK_VERIFICATION_FAILED', 'Rollback transaction ID does not match session.');
+  }
+  if (sanitized.targetFile !== raw.sandbox.targetFile) {
+    throw new ReviewStateError('ROLLBACK_VERIFICATION_FAILED', 'Rollback target file does not match session.');
+  }
+}
 
 function validateFixUnits(fixUnits = []) {
   const unitIds = new Set();
@@ -344,7 +587,7 @@ function readSessionFile(sessionDir) {
 }
 
 function serializeState(state) {
-  return {
+  const payload = {
     schemaVersion: REVIEW_STATE_SCHEMA,
     reportId: state.reportId,
     sessionId: state.sessionId,
@@ -359,6 +602,9 @@ function serializeState(state) {
     manualMappings: clone(state.manualMappings),
     auditLog: clone(state.auditLog),
   };
+  const sandbox = serializeSandboxBlock(state);
+  if (sandbox) payload.sandbox = sandbox;
+  return payload;
 }
 
 function backupMutableState(raw) {
@@ -374,6 +620,9 @@ function backupMutableState(raw) {
     auditLog: clone(raw.auditLog),
     traceResults: clone(raw.traceResults),
     stateRevision: raw.stateRevision,
+    sandbox: clone(raw.sandbox),
+    rollbackInFlight: raw.rollbackInFlight,
+    rollbackPromise: raw.rollbackPromise,
   };
 }
 
@@ -578,6 +827,9 @@ function validatePersistedState(persisted, { reportId, sessionId, baseFixUnits, 
   }
   if (persisted.mergeOverlays != null && !Array.isArray(persisted.mergeOverlays)) {
     throw new ReviewStateError('CORRUPT_SESSION', 'mergeOverlays must be an array.');
+  }
+  if (persisted.sandbox != null) {
+    validatePersistedSandboxBlock(persisted.sandbox, { enabled: true, targetFile: persisted.sandbox.targetFile });
   }
 
   const unitIds = new Set(baseFixUnits.map((unit) => unit.fixUnitId));
@@ -808,21 +1060,26 @@ function snippetsForUnit(unit) {
 
 function diffForUnit(unit, candidate) {
   if (candidate?.diff) {
-    return { kind: 'candidate', text: candidate.diff };
+    return {
+      kind: 'candidate',
+      text: candidate.diff,
+      view: getCandidateDiffView(candidate),
+    };
   }
   const patches = (unit.findings || []).map((finding) => finding.fix?.patch).filter(Boolean);
   if (patches.length > 0) {
-    return { kind: 'patch', text: JSON.stringify(patches, null, 2) };
+    return { kind: 'patch', text: JSON.stringify(patches, null, 2), view: null };
   }
   const hints = [...new Set((unit.findings || []).map((finding) => finding.fix?.hint).filter(Boolean))];
   if (hints.length > 0) {
-    return { kind: 'hint', text: hints.join('\n') };
+    return { kind: 'hint', text: hints.join('\n'), view: null };
   }
   return {
     kind: 'none',
     text: candidate
       ? 'Candidate registered. Run shadow verification before accept and exact diff approval.'
       : 'No candidate diff yet. Proposal generation is pending.',
+    view: null,
   };
 }
 
@@ -1128,6 +1385,68 @@ function buildApplyGate(state) {
   };
 }
 
+function trimDiffViews(snapshot) {
+  if (!snapshot?.accessibility?.sources) return;
+  for (const group of snapshot.accessibility.sources) {
+    for (const unit of group.units || []) {
+      if (unit.diff?.view) {
+        unit.diff = {
+          ...unit.diff,
+          view: null,
+          viewTrimmed: true,
+        };
+      }
+    }
+  }
+  if (snapshot.performance?.metrics) {
+    for (const metric of snapshot.performance.metrics) {
+      for (const opportunity of metric.opportunities || []) {
+        if (opportunity.plan?.diff?.view) {
+          opportunity.plan.diff = {
+            ...opportunity.plan.diff,
+            view: null,
+            viewTrimmed: true,
+          };
+        }
+      }
+    }
+  }
+}
+
+function trimDiffText(snapshot) {
+  if (snapshot?.accessibility?.sources) {
+    for (const group of snapshot.accessibility.sources) {
+      for (const unit of group.units || []) {
+        if (unit.diff?.text && unit.diff.kind === 'candidate') {
+          unit.diff = {
+            kind: unit.diff.kind,
+            text: String(unit.diff.text).slice(0, 4096) + (unit.diff.text.length > 4096 ? '\n… [diff truncated]' : ''),
+            view: unit.diff.view?.ok === false
+              ? unit.diff.view
+              : null,
+            viewTrimmed: unit.diff.viewTrimmed || null,
+          };
+        }
+      }
+    }
+  }
+  if (snapshot?.performance?.metrics) {
+    for (const metric of snapshot.performance.metrics) {
+      for (const opportunity of metric.opportunities || []) {
+        const diff = opportunity.plan?.diff;
+        if (diff?.text && diff.kind === 'candidate') {
+          opportunity.plan.diff = {
+            kind: diff.kind,
+            text: String(diff.text).slice(0, 4096) + (diff.text.length > 4096 ? '\n… [diff truncated]' : ''),
+            view: diff.view?.ok === false ? diff.view : null,
+            viewTrimmed: diff.viewTrimmed || null,
+          };
+        }
+      }
+    }
+  }
+}
+
 function trimSnapshotPayload(snapshot) {
   const measure = (payload) => Buffer.byteLength(JSON.stringify(payload), 'utf8');
 
@@ -1153,6 +1472,20 @@ function trimSnapshotPayload(snapshot) {
     delete unit.editorLinks;
   }
   if (measure(payload) <= MAX_SNAPSHOT_BYTES) {
+    return payload;
+  }
+
+  payload = clone(snapshot);
+  trimDiffViews(payload);
+  if (measure(payload) <= MAX_SNAPSHOT_BYTES) {
+    return payload;
+  }
+
+  payload = clone(snapshot);
+  trimDiffViews(payload);
+  trimDiffText(payload);
+  if (measure(payload) <= MAX_SNAPSHOT_BYTES) {
+    payload.snapshotDiffTrimmed = true;
     return payload;
   }
 
@@ -1222,6 +1555,34 @@ function commitMutation(api, mutateFn) {
   }
 }
 
+function collectVerificationBaselineFindings(fixUnits = []) {
+  const findings = [];
+  const seenFindingIds = new Set();
+  for (const unit of fixUnits) {
+    for (const finding of unit.findings || []) {
+      const findingId = finding.findingId || finding.fingerprint || null;
+      if (findingId && seenFindingIds.has(findingId)) continue;
+      if (findingId) seenFindingIds.add(findingId);
+      findings.push(finding);
+    }
+  }
+  return findings;
+}
+
+function cloneAndFreeze(value) {
+  const cloned = clone(value);
+  const seen = new WeakSet();
+
+  function freezeDeep(current) {
+    if (!current || typeof current !== 'object' || seen.has(current)) return current;
+    seen.add(current);
+    for (const child of Object.values(current)) freezeDeep(child);
+    return Object.freeze(current);
+  }
+
+  return freezeDeep(cloned);
+}
+
 export function createReviewState({
   sessionDir,
   reportId,
@@ -1234,6 +1595,10 @@ export function createReviewState({
   preferences = null,
   persisted = null,
   controllerAudit = [],
+  transportSecurity = 'disabled',
+  devAuthBypass = false,
+  sandboxContext = null,
+  verificationBaselineFindings = undefined,
 } = {}) {
   validateFixUnits(fixUnits);
   assertSessionDirSafe(sessionDir);
@@ -1248,6 +1613,11 @@ export function createReviewState({
     localRoot,
     traceInbox,
     baseFixUnits: clone(fixUnits),
+    verificationBaselineFindings: cloneAndFreeze(
+      Array.isArray(verificationBaselineFindings)
+        ? verificationBaselineFindings
+        : collectVerificationBaselineFindings(fixUnits),
+    ),
     traceResults: clone(traceResults),
     policyRoutes: clone(policyRoutes),
     stateRevision: 0,
@@ -1262,6 +1632,11 @@ export function createReviewState({
     mergeOverlays: [],
     manualMappings: { ...auditMappings },
     auditLog: clone(controllerAudit),
+    transportSecurity: normalizeTransportSecurity(transportSecurity),
+    devAuthBypass: normalizeDevAuthBypass(devAuthBypass),
+    sandbox: normalizeProcessSandboxContext(sandboxContext),
+    rollbackInFlight: false,
+    rollbackPromise: null,
   };
 
   hydrateCandidates(state, state.baseFixUnits);
@@ -1327,6 +1702,7 @@ export function createReviewState({
     state.diffApprovals = clone(persisted.diffApprovals || {});
     state.mergeOverlays = clone(persisted.mergeOverlays || []);
     state.manualMappings = { ...auditMappings, ...clone(persisted.manualMappings || {}) };
+    state.sandbox = validatePersistedSandboxBlock(persisted.sandbox, state.sandbox);
     for (const unit of state.baseFixUnits) {
       const saved = persisted.decisions[unit.fixUnitId];
       state.decisions[unit.fixUnitId] = {
@@ -1618,16 +1994,7 @@ function wrapReviewState(raw) {
       });
       try {
         appendAudit(raw, { type: 'post_verify_started', units: eligibility.units.map((u) => u.fixUnitId) });
-        const fullBaseline = [];
-        const seenFindingIds = new Set();
-        for (const unit of raw.baseFixUnits) {
-          for (const finding of unit.findings || []) {
-            const findingId = finding.findingId || finding.fingerprint || null;
-            if (findingId && seenFindingIds.has(findingId)) continue;
-            if (findingId) seenFindingIds.add(findingId);
-            fullBaseline.push(clone(finding));
-          }
-        }
+        const fullBaseline = clone(raw.verificationBaselineFindings);
         const baselineMap = baselineByUnit || new Map(
           eligibility.units.map((unit) => [unit.fixUnitId, clone(fullBaseline)]),
         );
@@ -1658,6 +2025,7 @@ function wrapReviewState(raw) {
           raw.applyInFlight = false;
           raw.applyCompleted = true;
           raw.applyRecoveryRequired = false;
+          captureSandboxApplyMetadata(raw, result);
           appendAudit(raw, {
             type: result.postVerified ? 'post_verify_completed' : 'post_verify_skipped',
             units: eligibility.units.map((u) => u.fixUnitId),
@@ -1676,6 +2044,72 @@ function wrapReviewState(raw) {
         });
         throw error;
       }
+    },
+
+    async rollbackSandboxTransaction(rollbackHandler) {
+      if (typeof rollbackHandler !== 'function') {
+        throw new ReviewStateError('ROLLBACK_HANDLER_REQUIRED', 'Rollback requires a trusted handler callback.');
+      }
+      if (!raw.sandbox?.enabled) {
+        throw new ReviewStateError('ROLLBACK_NOT_AVAILABLE', 'Sandbox rollback is not available for this session.');
+      }
+      if (!raw.applyCompleted || !TRANSACTION_ID_PATTERN.test(raw.sandbox.transactionId || '')) {
+        throw new ReviewStateError('ROLLBACK_NOT_AVAILABLE', 'Sandbox rollback requires a committed apply transaction.');
+      }
+      if (raw.sandbox.rollbackCompleted) {
+        throw new ReviewStateError('ROLLBACK_ALREADY_COMPLETED', 'Sandbox rollback has already completed.');
+      }
+      if (raw.rollbackInFlight && raw.rollbackPromise) {
+        return raw.rollbackPromise;
+      }
+      if (raw.rollbackInFlight) {
+        throw new ReviewStateError('ROLLBACK_IN_PROGRESS', 'Sandbox rollback is already in progress.');
+      }
+
+      try {
+        commitMutation(api, () => {
+          raw.rollbackInFlight = true;
+          appendAudit(raw, { type: 'rollback_started', transactionId: raw.sandbox.transactionId });
+        });
+      } catch (error) {
+        raw.rollbackInFlight = false;
+        raw.rollbackPromise = null;
+        throw error;
+      }
+      const rollbackRun = (async () => {
+        try {
+          const handlerResult = await rollbackHandler({ transactionId: raw.sandbox.transactionId });
+          const sanitized = sanitizeRollbackHandlerResult(handlerResult);
+          assertRollbackResultMatchesSandbox(raw, sanitized);
+          commitMutation(api, () => {
+            raw.rollbackInFlight = false;
+            raw.rollbackPromise = null;
+            raw.sandbox.rollbackCompleted = true;
+            raw.sandbox.rollbackResult = sanitized;
+            appendAudit(raw, { type: 'rollback_completed', transactionId: sanitized.transactionId });
+          });
+          return sanitized;
+        } catch (error) {
+          const code = error instanceof ReviewStateError
+            ? error.code
+            : String(error?.code || 'ROLLBACK_VERIFICATION_FAILED');
+          commitMutation(api, () => {
+            raw.rollbackInFlight = false;
+            raw.rollbackPromise = null;
+            appendAudit(raw, { type: 'rollback_failed', error: code });
+          });
+          if (error instanceof ReviewStateError) throw error;
+          if (code === 'ROLLBACK_CONFLICTED') {
+            throw new ReviewStateError('ROLLBACK_CONFLICTED', 'Rollback conflicted with concurrent user edits.');
+          }
+          if (code === 'ROLLBACK_VERIFICATION_FAILED') {
+            throw new ReviewStateError('ROLLBACK_VERIFICATION_FAILED', 'Rollback verification failed.');
+          }
+          throw new ReviewStateError('ROLLBACK_VERIFICATION_FAILED', 'Rollback verification failed.');
+        }
+      })();
+      raw.rollbackPromise = rollbackRun;
+      return rollbackRun;
     },
 
     accept(fixUnitId, candidateHash) {
@@ -1919,8 +2353,11 @@ function wrapReviewState(raw) {
         reportId: raw.reportId,
         sessionId: raw.sessionId,
         stateRevision: raw.stateRevision,
+        transportSecurity: raw.transportSecurity,
+        devAuthBypass: raw.devAuthBypass,
         preferences: raw.preferences,
         applyGate: buildApplyGate(raw),
+        sandbox: buildSandboxSnapshot(raw),
         units: buildUnitRows(raw),
         accessibility: buildAccessibilityModel(raw),
         performance: buildPerformanceModel(raw),

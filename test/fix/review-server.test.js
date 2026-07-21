@@ -12,7 +12,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildScanReportV2 } from '../../src/reporter/report-v2.js';
 import { startFixController, runTrustedFixCli, closeReviewServerWithCisTransport, importTrustedCisTransport } from '../../src/fix/controller/index.js';
-import { startReviewServer, TOKEN_HEADER, LOOPBACK_HOST, PUBLIC_ERROR_MESSAGES } from '../../src/fix/review/server.js';
+import { startReviewServer, TOKEN_HEADER, LOOPBACK_HOST, PUBLIC_ERROR_MESSAGES, REVIEW_DIFF_VIEW_PATH } from '../../src/fix/review/server.js';
 import { createReviewState } from '../../src/fix/review/state.js';
 import { registeredCandidateHash, withFixtureCandidates } from './review-fixtures.js';
 import { buildVerifiedCandidateRecord } from './helpers/candidate-fixture.js';
@@ -171,8 +171,43 @@ test('sets connect-src self in CSP and no wildcard CORS', async () => {
     const html = await fetch(server.url);
     const csp = html.headers.get('content-security-policy') || '';
     assert.match(csp, /connect-src 'self'/);
+    assert.match(csp, /'strict-dynamic'/);
     assert.doesNotMatch(csp, /\*/);
     assert.equal(html.headers.get('access-control-allow-origin'), null);
+    await server.close();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('serves exact diff-view asset with javascript content type and no-store', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-server-'));
+  try {
+    const { server } = await startHarness(root);
+    const assetUrl = new URL(REVIEW_DIFF_VIEW_PATH, server.url).href;
+    const response = await fetch(assetUrl);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type') || '', /text\/javascript/);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    const body = await response.text();
+    assert.match(body, /export function renderDiffContent/);
+    assert.match(body, /export function renderUnifiedDiff/);
+    assert.doesNotMatch(body, /globalThis\.renderUnifiedDiff/);
+    assert.doesNotMatch(body, /^import /m);
+    await server.close();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('rejects non-exact diff-view asset paths without exposing filesystem', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-server-'));
+  try {
+    const { server } = await startHarness(root);
+    const unknown = await fetch(new URL('/review/other.js', server.url).href);
+    assert.equal(unknown.status, 404);
+    const traversal = await fetch(new URL('/review/diff-view.js/../../server.js', server.url).href);
+    assert.equal(traversal.status, 404);
     await server.close();
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -555,6 +590,210 @@ test('controller initializes trace inbox candidates from attested report sources
     const controller = startFixController({ report: localReport(root, digest), localRoot: root });
     assert.ok(controller.traceInbox.candidates.length > 0);
     assert.ok(controller.traceResults.some((entry) => entry.partials.length > 0));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('sandbox rollback endpoint requires exact confirm body and trusted origin', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-rollback-route-'));
+  try {
+    const { state, server } = await startHarness(root);
+    state.raw.sandbox = {
+      enabled: true,
+      targetFile: 'src/partials/jobs/sort.liquid',
+      transactionId: 'transaction-1700000000000-abcd1234',
+      artifactPaths: null,
+      artifactError: null,
+      rollbackCompleted: false,
+      rollbackResult: null,
+    };
+    state.raw.applyCompleted = true;
+
+    const noHandlerState = createReviewState({
+      sessionDir: join(root, 'scan-reports', 'fix-sessions', 'rollback-no-handler'),
+      reportId: 'sha256:test',
+      sessionId: 'rollback-no-handler',
+      fixUnits: [],
+      traceResults: [],
+      policyRoutes: [],
+      localRoot: root,
+      sandboxContext: { enabled: true, targetFile: 'src/a.liquid' },
+    });
+    noHandlerState.raw.applyCompleted = true;
+    noHandlerState.raw.sandbox.transactionId = 'transaction-1700000000000-abcd1234';
+    const missingHandler = await startReviewServer({ state: noHandlerState });
+    const noHandler = await fetch(`${missingHandler.url}api/sandbox/rollback`, {
+      method: 'POST',
+      headers: mutationHeaders(missingHandler),
+      body: JSON.stringify({ confirm: true }),
+    });
+    assert.equal(noHandler.status, 503);
+    await missingHandler.close();
+
+    const badBody = await fetch(`${server.url}api/sandbox/rollback`, {
+      method: 'POST',
+      headers: mutationHeaders(server),
+      body: JSON.stringify({ confirm: false }),
+    });
+    assert.equal(badBody.status, 400);
+    const extraKey = await fetch(`${server.url}api/sandbox/rollback`, {
+      method: 'POST',
+      headers: mutationHeaders(server),
+      body: JSON.stringify({ confirm: true, transactionId: 'transaction-1700000000000-evil' }),
+    });
+    assert.equal(extraKey.status, 400);
+
+    const handler = async () => ({
+      transactionId: 'transaction-1700000000000-abcd1234',
+      targetFile: 'src/partials/jobs/sort.liquid',
+      restored: [{ file: 'src/partials/jobs/sort.liquid' }],
+      sandboxRestored: true,
+      originalUnchangedAfterRollback: true,
+    });
+    const withHandler = await startReviewServer({ state, rollbackHandler: handler });
+    const ok = await fetch(`${withHandler.url}api/sandbox/rollback`, {
+      method: 'POST',
+      headers: mutationHeaders(withHandler),
+      body: JSON.stringify({ confirm: true }),
+    });
+    assert.equal(ok.status, 200);
+    const payload = await ok.json();
+    assert.equal(payload.snapshot.sandbox.rollbackCompleted, true);
+
+    const replay = await fetch(`${withHandler.url}api/sandbox/rollback`, {
+      method: 'POST',
+      headers: mutationHeaders(withHandler),
+      body: JSON.stringify({ confirm: true }),
+    });
+    assert.equal(replay.status, 400);
+    assert.equal((await replay.json()).error, 'ROLLBACK_ALREADY_COMPLETED');
+    await withHandler.close();
+    await server.close();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('sandbox rollback endpoint enforces token, origin, content-type, and sandbox availability', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-rollback-guards-'));
+  try {
+    const { state, server } = await startHarness(root);
+    state.raw.sandbox = {
+      enabled: true,
+      targetFile: 'src/partials/jobs/sort.liquid',
+      transactionId: 'transaction-1700000000000-abcd1234',
+      artifactPaths: null,
+      artifactError: 'ARTIFACT_EXPORT_FAILED',
+      rollbackCompleted: false,
+      rollbackResult: null,
+    };
+    state.raw.applyCompleted = true;
+    const handler = async () => ({
+      transactionId: 'transaction-1700000000000-abcd1234',
+      targetFile: 'src/partials/jobs/sort.liquid',
+      restored: [{ file: 'src/partials/jobs/sort.liquid' }],
+      sandboxRestored: true,
+      originalUnchangedAfterRollback: true,
+    });
+    const withHandler = await startReviewServer({ state, rollbackHandler: handler });
+
+    const noToken = await fetch(`${withHandler.url}api/sandbox/rollback`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: withHandler.origin },
+      body: JSON.stringify({ confirm: true }),
+    });
+    assert.equal(noToken.status, 403);
+
+    const noOrigin = await fetch(`${withHandler.url}api/sandbox/rollback`, {
+      method: 'POST',
+      headers: tokenHeaders(withHandler, { 'content-type': 'application/json' }),
+      body: JSON.stringify({ confirm: true }),
+    });
+    assert.equal(noOrigin.status, 403);
+
+    const wrongOrigin = await fetch(`${withHandler.url}api/sandbox/rollback`, {
+      method: 'POST',
+      headers: mutationHeaders(withHandler, { origin: 'http://evil.test' }),
+      body: JSON.stringify({ confirm: true }),
+    });
+    assert.equal(wrongOrigin.status, 403);
+
+    const wrongType = await fetch(`${withHandler.url}api/sandbox/rollback`, {
+      method: 'POST',
+      headers: mutationHeaders(withHandler, { 'content-type': 'text/plain' }),
+      body: 'confirm=true',
+    });
+    assert.equal(wrongType.status, 415);
+
+    const nonSandboxState = createReviewState({
+      sessionDir: join(root, 'scan-reports', 'fix-sessions', 'rollback-non-sandbox'),
+      reportId: 'sha256:test',
+      sessionId: 'rollback-non-sandbox',
+      fixUnits: [],
+      traceResults: [],
+      policyRoutes: [],
+      localRoot: root,
+    });
+    nonSandboxState.raw.applyCompleted = true;
+    const nonSandboxServer = await startReviewServer({ state: nonSandboxState, rollbackHandler: handler });
+    const unavailable = await fetch(`${nonSandboxServer.url}api/sandbox/rollback`, {
+      method: 'POST',
+      headers: mutationHeaders(nonSandboxServer),
+      body: JSON.stringify({ confirm: true }),
+    });
+    assert.equal(unavailable.status, 400);
+    assert.equal((await unavailable.json()).error, 'ROLLBACK_NOT_AVAILABLE');
+
+    await withHandler.close();
+    await nonSandboxServer.close();
+    await server.close();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('parallel sandbox rollback HTTP requests invoke handler once', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-rollback-parallel-'));
+  try {
+    const { state, server: harnessServer } = await startHarness(root);
+    state.raw.sandbox = {
+      enabled: true,
+      targetFile: 'src/partials/jobs/sort.liquid',
+      transactionId: 'transaction-1700000000000-abcd1234',
+      artifactPaths: null,
+      artifactError: null,
+      rollbackCompleted: false,
+      rollbackResult: null,
+    };
+    state.raw.applyCompleted = true;
+
+    let handlerCalls = 0;
+    const handler = () => new Promise((resolve) => {
+      handlerCalls += 1;
+      setTimeout(() => resolve({
+        transactionId: 'transaction-1700000000000-abcd1234',
+        targetFile: 'src/partials/jobs/sort.liquid',
+        restored: [{ file: 'src/partials/jobs/sort.liquid' }],
+        sandboxRestored: true,
+        originalUnchangedAfterRollback: true,
+      }), 40);
+    });
+
+    const server = await startReviewServer({ state, rollbackHandler: handler });
+    const headers = mutationHeaders(server);
+    const body = JSON.stringify({ confirm: true });
+    const [first, second] = await Promise.all([
+      fetch(`${server.url}api/sandbox/rollback`, { method: 'POST', headers, body }),
+      fetch(`${server.url}api/sandbox/rollback`, { method: 'POST', headers, body }),
+    ]);
+
+    assert.equal(handlerCalls, 1);
+    const statuses = [first.status, second.status].sort();
+    assert.deepEqual(statuses, [200, 200]);
+    assert.equal(state.getSnapshot().sandbox.rollbackCompleted, true);
+    await server.close();
+    await harnessServer.close();
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

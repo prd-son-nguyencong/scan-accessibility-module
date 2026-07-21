@@ -7,14 +7,28 @@ export default [
     standard: { version: 'WCAG 2.1', level: 'A', criterion: '1.1.1' },
     severity: { impact: 'moderate', priority: 3 },
     automation: 'deterministic',
-    checks: [{
-      id: 'general:alt-misuse',
-      profiles: ['standards', 'commercial-parity'],
-      evaluator: 'attributes-roles',
-      target: { selector: '[alt]' },
-      options: { mode: 'misplaced-alt', excludeTags: ['img', 'area'] },
-      classification: 'confirmed',
-    }],
+    checks: [
+      {
+        id: 'general:alt-misuse',
+        profiles: ['standards'],
+        evaluator: 'attributes-roles',
+        target: { selector: '[alt]' },
+        options: { mode: 'misplaced-alt', excludeTags: ['img', 'area'] },
+        classification: 'confirmed',
+      },
+      {
+        id: 'parity:alt-misuse',
+        profiles: ['commercial-parity'],
+        evaluator: 'attributes-roles',
+        target: { selector: '[alt]' },
+        options: {
+          mode: 'misplaced-alt',
+          excludeTags: ['img', 'area'],
+          excludeShadowRoots: true,
+        },
+        classification: 'commercial-parity',
+      },
+    ],
     reporting: {
       title: 'Elements other than image (Tag: IMG) should not have alt attribute',
       requirement: 'The alt attribute is used to provide a text alternative for images. It is not meant to be used on elements other than images and therefore will not be read using screen-readers.',
@@ -173,7 +187,7 @@ export default [
     automation: 'heuristic',
     checks: [{
       id: 'general:strong-mismatch',
-      profiles: ['standards'],
+      profiles: ['standards', 'commercial-parity'],
       evaluator: 'semantic-style',
       target: { selector: 'span' },
       options: { mode: 'strong-mismatch' },
@@ -193,14 +207,24 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'moderate', priority: 3 },
     automation: 'heuristic',
-    checks: [{
-      id: 'general:emphasis-mismatch',
-      profiles: ['standards'],
-      evaluator: 'semantic-style',
-      target: { selector: 'span, i' },
-      options: { mode: 'emphasis-mismatch' },
-      classification: 'potential',
-    }],
+    checks: [
+      {
+        id: 'general:emphasis-mismatch',
+        profiles: ['standards'],
+        evaluator: 'semantic-style',
+        target: { selector: 'span, i' },
+        options: { mode: 'emphasis-mismatch' },
+        classification: 'potential',
+      },
+      {
+        id: 'parity:emphasis-mismatch-native',
+        profiles: ['commercial-parity'],
+        evaluator: 'semantic-style',
+        target: { selector: 'i' },
+        options: { mode: 'emphasis-mismatch', nativeItalicOnly: true },
+        classification: 'commercial-parity',
+      },
+    ],
     reporting: {
       title: 'Emphasis should be tagged properly for assistive technology',
       requirement: 'Elements with emphasis importance should have the emphasis role. If not, screen reader users may not understand the emphasis of the text.',
@@ -242,7 +266,7 @@ export default [
     ],
     reporting: {
       title: 'Visibly hidden content should not be exposed to assistive technology',
-      requirement: 'When elements are visually hidden but still exposed to assistive technology, screen reader users may encounter content that should not be available in the current interface.',
+      requirement: 'When elements are visually hidden but still exposed to assistive technology, screen reader users may encounter content that should not be available in the current interface. This can obscure the current state of the page and lead to confusion about what information or controls are available.',
       recommendation: 'Review visually hidden but AT-exposed content and hide it from assistive technology when appropriate.',
     },
     fix: { deterministic: false, policy: 'manual_only' },
@@ -258,7 +282,7 @@ export default [
       {
         id: 'general:visibility-mismatch',
         profiles: ['standards'],
-        evaluator: 'semantic-style',
+        evaluator: 'standards-signal',
         target: { selector: '[aria-hidden="true"]' },
         eligibility: { visibility: 'all' },
         options: { mode: 'visibility-mismatch' },

@@ -16,6 +16,14 @@ export default [
         classification: 'potential',
       },
       {
+        id: 'parity:visible-text-part-of-accessible-name',
+        profiles: ['commercial-parity'],
+        evaluator: 'label-in-name',
+        target: { selector: '[aria-label], [aria-labelledby]' },
+        options: { excludeShadowRoots: true },
+        classification: 'commercial-parity',
+      },
+      {
         id: 'parity:checkbox-labelledby-value',
         profiles: ['commercial-parity'],
         evaluator: 'commercial-parity',
@@ -25,7 +33,7 @@ export default [
     ],
     reporting: {
       title: 'Aria labels should not override or replace visible text',
-      requirement: 'Aria labels should describe elements that do not have proper text, such as icons and field labels. They should not override visible element text; additional context is allowed when the visible text remains part of the accessible name.',
+      requirement: 'Aria labels should describe elements that don\'t have proper text, like icons and field labels. It should not be used to override element texts. Screen reader users need to receive the exact text as visually on the screen, with more context if it is ambiguous. An exception applies to landmarks such as nav or other landmarks: here, ARIA labels can provide additional context or clarification.',
       recommendation: 'Ensure the accessible name includes the control\'s visible label text.',
     },
     fix: { deterministic: false, policy: 'manual_only' },

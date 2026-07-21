@@ -102,7 +102,7 @@ test('accessScan compatibility and correctness fixtures', async (t) => {
       `);
       try {
         const violations = await scanPage(page, 'fixture://heuristics', {
-          includeThirdParty: true,
+          profile: 'standards',
         });
         const strong = violations.find(({ ruleId }) => ruleId === 'StrongMismatch');
 
@@ -153,21 +153,16 @@ test('accessScan compatibility and correctness fixtures', async (t) => {
         </div>
       `);
       try {
-        const options = { includeThirdParty: true };
+        const options = { profile: 'commercial-parity' };
         const violations = await scanPage(page, 'fixture://structural-parity', options);
         const required = violations.filter(
           ({ ruleId }) => ruleId === 'RequiredFormFieldAriaRequired',
-        );
-        const navigation = violations.filter(
-          ({ ruleId }) => ruleId === 'NavigationMisuse',
         );
         const search = violations.filter(
           ({ ruleId }) => ruleId === 'SearchFormMismatch',
         );
 
         assert.ok(required.some(({ element }) => includesSelector(element.selector, 'current-page')));
-        assert.ok(navigation.some(({ element }) => includesSelector(element.selector, 'primary-nav')));
-        assert.ok(navigation.some(({ element }) => includesSelector(element.selector, 'footer-nav')));
         assert.ok(search.some(({ element }) => includesSelector(element.selector, 'search-group')));
         assert.equal(
           required[0].evidence.classification,
@@ -211,6 +206,12 @@ test('accessScan compatibility and correctness fixtures', async (t) => {
           'PageTitleDescriptive',
           'VisibilityMisuse',
         ]);
+        const parityRules = new Set([
+          'RegionMainContentMismatch',
+          'RegionMainContentMisuse',
+          'PageTitleDescriptive',
+          'VisibilityMisuse',
+        ]);
         const standards = (await scanPage(page, 'fixture://credential-gate'))
           .filter(({ ruleId }) => selectedRules.has(ruleId));
         assert.deepEqual(
@@ -218,21 +219,20 @@ test('accessScan compatibility and correctness fixtures', async (t) => {
           ['ImageDiscernible'],
         );
 
-        const parityOptions = { includeThirdParty: true };
+        const parityOptions = { profile: 'commercial-parity' };
         const parity = (await scanPage(page, 'fixture://credential-gate', parityOptions))
-          .filter(({ ruleId }) => selectedRules.has(ruleId));
+          .filter(({ ruleId }) => parityRules.has(ruleId));
         const byRule = Object.fromEntries(
           parity.map((finding) => [finding.ruleId, finding]),
         );
 
-        assert.equal(parity.length, selectedRules.size);
+        assert.equal(parity.length, parityRules.size);
         assert.deepEqual(
           Object.keys(byRule).sort(),
-          [...selectedRules].sort(),
+          [...parityRules].sort(),
         );
         assert.ok(includesSelector(byRule.RegionMainContentMismatch.element.selector, 'gate-shell'));
         assert.ok(includesSelector(byRule.RegionMainContentMisuse.element.selector, 'gate-main'));
-        assert.ok(includesSelector(byRule.ImageDiscernible.element.selector, 'functional-logo'));
         assert.ok(byRule.PageTitleDescriptive.element.selector.includes('title'));
         assert.ok(byRule.VisibilityMisuse.element.selector.includes('body'));
         assert.ok(parity.every(
@@ -475,15 +475,15 @@ test('accessScan compatibility and correctness fixtures', async (t) => {
     await t.test('commercial filter disclosures can surface tab parity findings when structure matches', async () => {
       const page = await createFixturePage(browser, `
         <div class="tabs" id="filter-tabs">
-          <button id="tab-one" role="tab" aria-selected="true" aria-controls="panel-one">One</button>
-          <button id="tab-two" role="tab" aria-selected="false" aria-controls="panel-two">Two</button>
-          <div id="panel-one" role="tabpanel">One panel</div>
-          <div id="panel-two" role="tabpanel">Two panel</div>
+          <button id="tab-one" aria-expanded="true" aria-controls="panel-one">One</button>
+          <button id="tab-two" aria-expanded="false" aria-controls="panel-two">Two</button>
+          <div id="panel-one">One panel</div>
+          <div id="panel-two">Two panel</div>
         </div>
       `);
       try {
         const violations = await scanPage(page, 'fixture://filters', {
-          includeThirdParty: true,
+          profile: 'commercial-parity',
           skipRules: ['HtmlLang', 'MetaDescription', 'MetaViewportPresent', 'PageTitleDescriptive', 'PageTitle', 'TabpanelLabelledBy'],
         });
         assert.ok(violations.some(({ ruleId }) => ruleId.startsWith('Tab')));

@@ -12,10 +12,12 @@ import {
   createCisTransport,
   extractModelInventory,
   extractPredictionsContent,
+  COMPOSITE_INVENTORY_ID_PATTERN,
   validateChatCompletionParams,
+  validateListModelsTransportOptions,
 } from '../../src/fix/cis/transport.js';
 import { createCisTransportFromConfig, createCisTransportFromTrustedConfig } from '../../src/fix/cis/config.js';
-import { CIS_MODEL_DISCOVERY_LIMITS, CIS_VALIDATION_LIMITS } from '../../src/fix/cis/limits.js';
+import { CIS_MODEL_DISCOVERY_LIMITS, CIS_POC_LIMITS, CIS_VALIDATION_LIMITS } from '../../src/fix/cis/limits.js';
 import { validateFixture } from '../helpers/cis-contract.js';
 import {
   startCisTls12SelfSignedServer,
@@ -28,6 +30,44 @@ import { insecureDevEnv, trustedCisTestEnv } from './helpers/cis-ca-fixture.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const predictionsFixture = validateFixture('requests/predictions-chat-completion.json');
 const successFixture = validateFixture('responses/predictions-success.json');
+
+/**
+ * @param {number} targetBytes
+ */
+function buildBoundedDiscoveryJson(targetBytes) {
+  const prefix = '{"data":[{"id":"model-a","p":"';
+  const suffix = '"}]}';
+  const padLen = targetBytes - Buffer.byteLength(prefix + suffix, 'utf8');
+  if (padLen < 0) throw new Error('targetBytes too small for bounded discovery JSON scaffold');
+  const body = `${prefix}${'x'.repeat(padLen)}${suffix}`;
+  assert.equal(Buffer.byteLength(body, 'utf8'), targetBytes);
+  return body;
+}
+
+/**
+ * @param {Buffer} bodyBuffer
+ */
+function streamResponseFromBuffer(bodyBuffer, status = 200, contentType = 'application/json; charset=utf-8') {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: new Map([['content-type', contentType]]),
+    body: {
+      getReader() {
+        let offset = 0;
+        return {
+          async read() {
+            if (offset >= bodyBuffer.byteLength) return { done: true, value: undefined };
+            const chunk = bodyBuffer.subarray(offset, Math.min(offset + 8192, bodyBuffer.byteLength));
+            offset += chunk.byteLength;
+            return { done: false, value: chunk };
+          },
+          async cancel() {},
+        };
+      },
+    },
+  };
+}
 
 test('buildPredictionsEnvelope matches Bruno-derived fixture', () => {
   const envelope = buildPredictionsEnvelope(
@@ -108,6 +148,40 @@ test('extractModelInventory accepts live models envelope and data envelope', () 
     }),
     expected,
   );
+});
+
+test('extractModelInventory skips composite registry rows and returns only canonical model IDs', () => {
+  assert.deepEqual(
+    extractModelInventory({
+      models: [
+        { model: 'anthropic.claude-sonnet-5' },
+        { model: 'provider|variant-name' },
+      ],
+    }),
+    ['anthropic.claude-sonnet-5'],
+  );
+  assert.equal(COMPOSITE_INVENTORY_ID_PATTERN.test('provider|variant-name'), true);
+  assert.equal(COMPOSITE_INVENTORY_ID_PATTERN.test('anthropic.claude-sonnet-5'), false);
+});
+
+test('extractModelInventory still rejects non-composite invalid model IDs', () => {
+  for (const id of [
+    'model/with/slash',
+    'bad\u0007model',
+    '/v1alpha1/models',
+  ]) {
+    assert.throws(
+      () => extractModelInventory({
+        models: [
+          { model: 'anthropic.claude-sonnet-5' },
+          { model: 'provider|variant-name' },
+          { model: id },
+        ],
+      }),
+      (error) => error.code === 'TRANSPORT_INVALID_RESPONSE',
+      id,
+    );
+  }
 });
 
 test('extractModelInventory rejects ambiguous or missing envelope arrays', () => {
@@ -272,7 +346,7 @@ test('transport uses injected fetch with redirect error and no envelope in resul
   assert.equal(JSON.stringify(result).includes('feature-key-value-should-not-leak'), false);
 });
 
-test('transport rejects non-json content-type', async () => {
+test('transport rejects non-json content-type on successful responses', async () => {
   const fetchImpl = async () => new Response('ok', {
     status: 200,
     headers: { 'content-type': 'text/plain' },
@@ -290,6 +364,95 @@ test('transport rejects non-json content-type', async () => {
       messages: [{ role: 'user', content: 'hi' }],
     }),
     (error) => error.code === 'TRANSPORT_INVALID_RESPONSE',
+  );
+});
+
+test('transport accepts exact application/json MIME with charset parameter', async () => {
+  const fetchImpl = async () => new Response(JSON.stringify(successFixture.response.body), {
+    status: 200,
+    headers: { 'content-type': 'application/json; charset=utf-8' },
+  });
+  const transport = createCisTransport({
+    baseUrl: 'http://127.0.0.1:9/ml/inference/cis/',
+    featureKey: 'test-key',
+    allowedHosts: ['127.0.0.1'],
+    allowInsecureLoopback: true,
+    fetch: fetchImpl,
+  });
+  const result = await transport.chatCompletion({
+    model: 'test-model',
+    messages: [{ role: 'user', content: 'hi' }],
+  });
+  assert.equal(typeof result.content, 'string');
+});
+
+test('transport rejects non-exact JSON MIME aliases on successful responses', async () => {
+  for (const contentType of ['application/ld+json', 'text/json', 'application/json-seq']) {
+    const fetchImpl = async () => new Response('{"prediction":{}}', {
+      status: 200,
+      headers: { 'content-type': contentType },
+    });
+    const transport = createCisTransport({
+      baseUrl: 'http://127.0.0.1:9/ml/inference/cis/',
+      featureKey: 'test-key',
+      allowedHosts: ['127.0.0.1'],
+      allowInsecureLoopback: true,
+      fetch: fetchImpl,
+    });
+    await assert.rejects(
+      () => transport.chatCompletion({
+        model: 'test-model',
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+      (error) => error.code === 'TRANSPORT_INVALID_RESPONSE',
+      contentType,
+    );
+  }
+});
+
+test('transport maps HTML HTTP errors to TRANSPORT_HTTP_ERROR without leaking body', async () => {
+  const secretBody = '<html><body>cis-internal-sentinel.example.test unauthorized secret-token</body></html>';
+  for (const [status, label] of [[401, '401'], [503, '503']]) {
+    const fetchImpl = async () => new Response(secretBody, {
+      status,
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+    });
+    const transport = createCisTransport({
+      baseUrl: 'http://127.0.0.1:9/ml/inference/cis/',
+      featureKey: 'test-key',
+      allowedHosts: ['127.0.0.1'],
+      allowInsecureLoopback: true,
+      fetch: fetchImpl,
+    });
+    await assert.rejects(
+      () => transport.listModels(),
+      (error) => error.code === 'TRANSPORT_HTTP_ERROR'
+        && error.message === 'CIS model inventory request failed.'
+        && error.message.includes('cis-internal-sentinel.example.test') === false
+        && error.message.includes('secret-token') === false
+        && error.meta?.status === status,
+      label,
+    );
+  }
+});
+
+test('transport maps malformed JSON HTTP errors to TRANSPORT_HTTP_ERROR without parsing body', async () => {
+  const fetchImpl = async () => new Response('{"error":"cis-internal-sentinel.example.test down"', {
+    status: 503,
+    headers: { 'content-type': 'application/json' },
+  });
+  const transport = createCisTransport({
+    baseUrl: 'http://127.0.0.1:9/ml/inference/cis/',
+    featureKey: 'test-key',
+    allowedHosts: ['127.0.0.1'],
+    allowInsecureLoopback: true,
+    fetch: fetchImpl,
+  });
+  await assert.rejects(
+    () => transport.listModels(),
+    (error) => error.code === 'TRANSPORT_HTTP_ERROR'
+      && error.message === 'CIS model inventory request failed.'
+      && error.message.includes('cis-internal-sentinel.example.test') === false,
   );
 });
 
@@ -330,6 +493,60 @@ test('transport rejects oversized responses and cancels reader', async () => {
   );
 });
 
+test('validateListModelsTransportOptions rejects invalid timeoutMs and modelInventoryMaxResponseBytes', () => {
+  for (const timeoutMs of [0, -1, 1.5, CIS_POC_LIMITS.requestTimeoutMs + 1]) {
+    assert.throws(
+      () => validateListModelsTransportOptions({ timeoutMs }),
+      (error) => error.code === 'TRANSPORT_INVALID_REQUEST',
+    );
+  }
+  for (const modelInventoryMaxResponseBytes of [0, -1, 1.5, CIS_MODEL_DISCOVERY_LIMITS.maxResponseBytes + 1]) {
+    assert.throws(
+      () => validateListModelsTransportOptions({ modelInventoryMaxResponseBytes }),
+      (error) => error.code === 'TRANSPORT_INVALID_REQUEST',
+    );
+  }
+});
+
+test('listModels rejects invalid transport options before fetching', async () => {
+  let fetchCalls = 0;
+  const fetchImpl = async () => {
+    fetchCalls += 1;
+    return new Response(JSON.stringify({ data: [{ id: 'test-model' }] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+
+  const overMaxBytes = createCisTransport({
+    baseUrl: 'http://127.0.0.1:9/ml/inference/cis/',
+    featureKey: 'test-key',
+    allowedHosts: ['127.0.0.1'],
+    allowInsecureLoopback: true,
+    fetch: fetchImpl,
+    modelInventoryMaxResponseBytes: CIS_MODEL_DISCOVERY_LIMITS.maxResponseBytes + 1,
+  });
+  await assert.rejects(
+    () => overMaxBytes.listModels(),
+    (error) => error.code === 'TRANSPORT_INVALID_REQUEST',
+  );
+
+  const badTimeout = createCisTransport({
+    baseUrl: 'http://127.0.0.1:9/ml/inference/cis/',
+    featureKey: 'test-key',
+    allowedHosts: ['127.0.0.1'],
+    allowInsecureLoopback: true,
+    fetch: fetchImpl,
+    timeoutMs: CIS_POC_LIMITS.requestTimeoutMs + 1,
+  });
+  await assert.rejects(
+    () => badTimeout.listModels(),
+    (error) => error.code === 'TRANSPORT_INVALID_REQUEST',
+  );
+
+  assert.equal(fetchCalls, 0);
+});
+
 test('validateChatCompletionParams enforces roles content and token bounds', () => {
   assert.throws(
     () => validateChatCompletionParams({
@@ -346,6 +563,27 @@ test('validateChatCompletionParams enforces roles content and token bounds', () 
     }),
     (error) => error.code === 'TRANSPORT_INVALID_REQUEST',
   );
+});
+
+test('validateChatCompletionParams rejects model IDs outside canonical pattern', () => {
+  for (const model of [
+    'model/with/slash',
+    'provider|variant-name',
+    'bad\u0007model',
+  ]) {
+    assert.throws(
+      () => validateChatCompletionParams({
+        model,
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+      (error) => error.code === 'TRANSPORT_INVALID_REQUEST',
+      model,
+    );
+  }
+  assert.doesNotThrow(() => validateChatCompletionParams({
+    model: 'anthropic.claude-sonnet-5',
+    messages: [{ role: 'user', content: 'hi' }],
+  }));
 });
 
 test('transport distinguishes external cancellation from timeout', async () => {
@@ -712,7 +950,37 @@ test('transport listModels forwards injected dispatcher to fetch init', async ()
   assert.equal(capturedDispatcher, dispatcher);
 });
 
-test('transport listModels rejects non-json content-type', async () => {
+test('transport listModels accepts discovery response at exact 4 MiB boundary', async () => {
+  const body = buildBoundedDiscoveryJson(CIS_MODEL_DISCOVERY_LIMITS.maxResponseBytes);
+  const fetchImpl = async () => streamResponseFromBuffer(Buffer.from(body, 'utf8'));
+  const transport = createCisTransport({
+    baseUrl: 'http://127.0.0.1:9/ml/inference/cis/',
+    featureKey: 'test-key',
+    allowedHosts: ['127.0.0.1'],
+    allowInsecureLoopback: true,
+    fetch: fetchImpl,
+  });
+  const result = await transport.listModels();
+  assert.deepEqual(result, { models: ['model-a'] });
+});
+
+test('transport listModels rejects discovery response at 4 MiB plus one byte', async () => {
+  const body = buildBoundedDiscoveryJson(CIS_MODEL_DISCOVERY_LIMITS.maxResponseBytes + 1);
+  const fetchImpl = async () => streamResponseFromBuffer(Buffer.from(body, 'utf8'));
+  const transport = createCisTransport({
+    baseUrl: 'http://127.0.0.1:9/ml/inference/cis/',
+    featureKey: 'test-key',
+    allowedHosts: ['127.0.0.1'],
+    allowInsecureLoopback: true,
+    fetch: fetchImpl,
+  });
+  await assert.rejects(
+    () => transport.listModels(),
+    (error) => error.code === 'TRANSPORT_RESPONSE_TOO_LARGE',
+  );
+});
+
+test('transport listModels rejects non-json content-type on successful responses', async () => {
   const fetchImpl = async () => new Response('ok', {
     status: 200,
     headers: { 'content-type': 'text/plain' },
@@ -876,7 +1144,7 @@ test('transport forwards injected dispatcher to fetch init', async () => {
   assert.equal(capturedDispatcher, dispatcher);
 });
 
-test('createCisTransportFromTrustedConfig rejects insecure-dev and missing CA', () => {
+test('createCisTransportFromTrustedConfig rejects insecure-dev, missing CA, and devBypassAuth', () => {
   assert.equal(createCisTransportFromTrustedConfig({
     ok: true,
     transportSecurity: 'insecure-dev',
@@ -896,6 +1164,71 @@ test('createCisTransportFromTrustedConfig rejects insecure-dev and missing CA', 
     provider: 'aws',
     allowedHosts: ['127.0.0.1'],
   }), null);
+
+  assert.equal(createCisTransportFromTrustedConfig({
+    ok: true,
+    transportSecurity: 'trusted',
+    devBypassAuth: true,
+    baseUrl: 'https://127.0.0.1/ml/inference/cis',
+    featureKey: 'key',
+    model: 'm',
+    provider: 'aws',
+    allowedHosts: ['127.0.0.1'],
+    caPem: TEST_CA_PEM,
+  }), null);
+
+  assert.equal(createCisTransportFromConfig({
+    ok: true,
+    transportSecurity: 'trusted',
+    devBypassAuth: true,
+    baseUrl: 'https://127.0.0.1/ml/inference/cis',
+    featureKey: 'key',
+    model: 'm',
+    provider: 'aws',
+    allowedHosts: ['127.0.0.1'],
+    caPem: TEST_CA_PEM,
+  }), null);
+});
+
+test('trusted transport wrapper never emits bypass_auth query params', async () => {
+  /** @type {string | undefined} */
+  let capturedUrl;
+  const fetchImpl = async (url) => {
+    capturedUrl = String(url);
+    return new Response(JSON.stringify({ data: [{ id: 'test-model' }] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+  const config = {
+    ok: true,
+    baseUrl: 'http://127.0.0.1:9/ml/inference/cis/',
+    featureKey: 'test-key',
+    model: 'test-model',
+    provider: 'aws',
+    allowedHosts: ['127.0.0.1'],
+    allowInsecureLoopback: true,
+    transportSecurity: 'trusted',
+    devBypassAuth: true,
+    caPem: TEST_CA_PEM,
+  };
+  const bundle = createCisTransportFromTrustedConfig(config);
+  assert.equal(bundle, null);
+
+  const safeConfig = { ...config, devBypassAuth: false };
+  const safeBundle = createCisTransportFromTrustedConfig(safeConfig);
+  const transport = createCisTransport({
+    baseUrl: safeConfig.baseUrl,
+    featureKey: safeConfig.featureKey,
+    allowedHosts: safeConfig.allowedHosts,
+    allowInsecureLoopback: true,
+    fetch: fetchImpl,
+    transportSecurity: 'trusted',
+    devBypassAuth: false,
+  });
+  await transport.listModels();
+  assert.equal(capturedUrl?.includes('bypass_auth'), false);
+  assert.equal(safeBundle !== null, true);
 });
 
 test('guarded insecure-dev config lists models over TLS 1.2 self-signed server and closes dispatcher', async () => {

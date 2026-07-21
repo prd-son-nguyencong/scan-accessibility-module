@@ -6,6 +6,11 @@ import {
 import { resolveSecureSourceFile } from './path.js';
 import { CANDIDATE_LIMITS, CandidateIntentError, hashFileBytes, touchedFilesForCandidate } from './intent.js';
 
+function hunkStartLine(index, count) {
+  if (count === 0) return index;
+  return index + 1;
+}
+
 function unifiedDiffLines(file, oldLines, newLines) {
   const output = [`--- a/${file}`, `+++ b/${file}`];
   let oldIndex = 0;
@@ -30,13 +35,17 @@ function unifiedDiffLines(file, oldLines, newLines) {
         newEnd += 1;
       }
     }
-    while (oldEnd < oldLines.length && newEnd < newLines.length && oldLines[oldEnd] === newLines[newEnd]) {
-      oldEnd += 1;
-      newEnd += 1;
+    if (oldEnd >= oldLines.length && newEnd < newLines.length) {
+      newEnd = newLines.length;
+    } else if (newEnd >= newLines.length && oldEnd < oldLines.length) {
+      oldEnd = oldLines.length;
     }
     const oldCount = oldEnd - oldIndex;
     const newCount = newEnd - newIndex;
-    output.push(`@@ -${oldIndex + 1},${oldCount} +${newIndex + 1},${newCount} @@`);
+    if (oldCount === 0 && newCount === 0) {
+      throw new CandidateIntentError('DIFF_GENERATION_FAILED', 'Unified diff generation made no progress.');
+    }
+    output.push(`@@ -${hunkStartLine(oldIndex, oldCount)},${oldCount} +${hunkStartLine(newIndex, newCount)},${newCount} @@`);
     for (let i = oldIndex; i < oldEnd; i += 1) output.push(`-${oldLines[i]}`);
     for (let i = newIndex; i < newEnd; i += 1) output.push(`+${newLines[i]}`);
     oldIndex = oldEnd;

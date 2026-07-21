@@ -320,6 +320,18 @@ test('comprehensive migrated rules fixture reports exact rule ids and classifica
       );
     });
   });
+
+  await t.test('PageTitle treats a present but empty title as missing', async () => {
+    await withPage('<html lang="en"><head><title id="empty-title"></title></head><body></body></html>', async (page) => {
+      const { session, result } = await runMigratedRules(page, ['PageTitle']);
+      assert.ok(session.snapshot.elements.some((element) => element.tag === 'title'));
+      assert.deepEqual(
+        result.findings.map((finding) => [finding.ruleId, finding.violationType]),
+        [['PageTitle', 'confirmed']],
+      );
+      assert.match(result.findings[0].element.selector, /empty-title/);
+    });
+  });
 });
 
 test('title-only control and checkbox-with-title-only behaviors', async () => {

@@ -40,8 +40,12 @@ export function createTrustedApplyHandler({
   sessionDir,
   reportId = null,
   verification = null,
-  postVerify = runPostApplyTargetedVerification,
+  postVerify: injectedPostVerify = undefined,
 } = {}) {
+  const postVerify = typeof injectedPostVerify === 'function'
+    ? injectedPostVerify
+    : runPostApplyTargetedVerification;
+
   return async function trustedApplyHandler({
     units = [],
     candidates = [],

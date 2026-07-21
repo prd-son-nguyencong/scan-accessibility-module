@@ -1,7 +1,7 @@
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
 import path from 'path';
 import { getProjectRoot } from '../utils/paths.js';
-import { buildScanReportV2, projectReportV1 } from './report-v2.js';
+import { buildScanReportV2, projectReportV1, extractAccessScanRunMetadata } from './report-v2.js';
 
 const ROOT = getProjectRoot();
 const REPORTS_DIR = path.join(ROOT, 'scan-reports');
@@ -272,6 +272,22 @@ export function printConsoleSummary(report) {
   console.log('============');
   console.log(`Pages scanned:    ${summary.pagesScanned}`);
   console.log(`Total violations: ${summary.totalViolations}`);
+
+  const accessScan = report.runMetadata?.accessScan
+    || (report.schemaVersion === '2.0.0' && Array.isArray(report.scanners)
+      ? extractAccessScanRunMetadata(report.scanners)
+      : null);
+  if (accessScan) {
+    console.log('\naccessScan run metadata');
+    console.log(`  Profile:      ${accessScan.profile || 'unknown'}`);
+    console.log(`  Comparator:   ${accessScan.comparatorVersion || 'unknown'}`);
+    console.log(`  Page runs:    ${accessScan.pageRunCount || 1}`);
+    if (accessScan.execution?.aggregates) {
+      const { rules, checks } = accessScan.execution.aggregates;
+      console.log(`  Rule totals:  complete=${rules.complete || 0}, inapplicable=${rules.inapplicable || 0}, error=${rules.error || 0}, timeout=${rules.timeout || 0}, skipped=${rules.skipped || 0}`);
+      console.log(`  Check totals: complete=${checks.complete || 0}, inapplicable=${checks.inapplicable || 0}, error=${checks.error || 0}, timeout=${checks.timeout || 0}, skipped=${checks.skipped || 0}, candidates=${checks.candidates || 0}, findings=${checks.findings || 0}`);
+    }
+  }
 
   if (summary.topViolations.length > 0) {
     console.log('\nTop violations:');

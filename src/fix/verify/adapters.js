@@ -28,6 +28,9 @@ function hasRegularViteConfig(localRoot) {
 /**
  * Build trusted production verification adapters from host `.scan-config.json`.
  * Scanner/site/build/format/prepare never come from HTTP or model text.
+ * buildEnv in scan config feeds fresh-scan instrumented builds only; shadow
+ * verification uses candidate bindings for source attestation and intentionally
+ * exposes an empty commandEnv here.
  */
 export function createTrustedVerificationAdapters(localRoot, {
   scannerOptions = {},

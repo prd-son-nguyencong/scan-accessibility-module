@@ -7,10 +7,13 @@ import assert from 'node:assert/strict';
 import { buildSourcePreimage, buildSourcePreimageRange } from '../../src/tracer/preimage.js';
 import { createReviewState } from '../../src/fix/review/state.js';
 import { runTrustedProposal } from '../../src/fix/proposal/orchestrator.js';
+import { createProposeCandidateOperation } from '../../src/fix/controller/index.js';
 import { runCisAdvisory } from '../../src/fix/cis/advisory.js';
 import { createContextBroker, hashBlockText } from '../../src/fix/context/broker.js';
 import { lookupPolicyDecision } from '../../src/fix/policy/registry.js';
-import { trustedCisTestEnv } from './helpers/cis-ca-fixture.js';
+import { trustedCisTestEnv, insecureDevEnv } from './helpers/cis-ca-fixture.js';
+import { createCisTransportFromConfig, resolveCisConfig } from '../../src/fix/cis/config.js';
+import { CisTransportError } from '../../src/fix/cis/transport.js';
 
 const REPORT_ID = 'sha256:proposal-test';
 const FINDING_ID = `sha256:${createHash('sha256').update('f1').digest('hex')}`;
@@ -246,6 +249,163 @@ test('runTrustedProposal supports multiline verified source preimage range', asy
     assert.match(candidate.candidateHash, /^sha256:/);
     assert.equal(candidate.editIntents[0].blockRange.startLine, 1);
     assert.equal(candidate.editIntents[0].blockRange.endLine, 3);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('insecure-dev resolved config reaches proposal orchestrator with public transport label', async () => {
+  const config = resolveCisConfig(insecureDevEnv());
+  assert.equal(config.ok, true);
+  assert.equal(config.transportSecurity, 'insecure-dev');
+
+  const bundle = createCisTransportFromConfig(config);
+  assert.equal(bundle.model, 'anthropic.claude-sonnet-5');
+
+  const imported = await bundle.importTransport();
+  try {
+    assert.equal(imported.transportSecurity, 'insecure-dev');
+  } finally {
+    await imported.close();
+  }
+
+  const root = mkdtempSync(join(tmpdir(), 'ada-proposal-insecure-'));
+  try {
+    const { reviewState } = bootstrap(root);
+    const bindingsBlockId = blockIdForUnit('unit-proposal');
+    const line = readFileSync(join(root, 'src/a.liquid'), 'utf8').split('\n')[0];
+    const blockHash = hashBlockText(line);
+    const mockTransport = {
+      async chatCompletion() {
+        return {
+          content: JSON.stringify({
+            action: 'propose_patch',
+            edits: [{
+              blockId: bindingsBlockId,
+              expectedSha256: blockHash,
+              oldText: '<button id="apply">Apply</button>',
+              newText: '<button id="apply" aria-label="Apply">Apply</button>',
+            }],
+            resolvesFindingIds: [FINDING_ID],
+            rationale: 'Add aria-label.',
+            manualChecks: ['Confirm announcement reads Apply.'],
+          }),
+        };
+      },
+    };
+
+    const result = await runTrustedProposal({
+      reviewState,
+      fixUnitId: 'unit-proposal',
+      localRoot: root,
+      reportId: REPORT_ID,
+      transport: mockTransport,
+      model: config.model,
+      env: insecureDevEnv(),
+    });
+
+    assert.equal(result.ok, true, JSON.stringify(result));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+function proposalFailedEvents(reviewState) {
+  return reviewState.auditLog.filter((event) => event.type === 'proposal_failed');
+}
+
+function createProposeOperation(reviewState, root, transport) {
+  return createProposeCandidateOperation({
+    reviewState,
+    localRoot: root,
+    reportId: REPORT_ID,
+    transport,
+    model: 'test-model',
+  });
+}
+
+test('createProposeCandidateOperation records one proposal_failed for advisory transport failure', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-proposal-audit-transport-'));
+  try {
+    const { reviewState } = bootstrap(root);
+    const proposeCandidate = createProposeOperation(reviewState, root, {
+      async chatCompletion() {
+        throw new CisTransportError('TRANSPORT_CANCELLED', 'CIS predictions request was cancelled.');
+      },
+    });
+
+    await assert.rejects(
+      () => proposeCandidate('unit-proposal'),
+      (error) => error.code === 'ADVISORY_CANCELLED',
+    );
+
+    assert.equal(proposalFailedEvents(reviewState).length, 1);
+    assert.equal(proposalFailedEvents(reviewState)[0].reasonCode, 'ADVISORY_CANCELLED');
+    assert.equal(reviewState.auditLog.some((event) => event.type === 'proposal_started'), true);
+
+    const telemetry = readFileSync(join(reviewState.sessionDir, 'cis-telemetry.ndjson'), 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    assert.equal(telemetry.length, 1);
+    assert.equal(telemetry[0].outcome, 'failed');
+    assert.equal(telemetry[0].reasonCode, 'ADVISORY_CANCELLED');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('createProposeCandidateOperation records one proposal_failed for early policy failure', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-proposal-audit-early-'));
+  try {
+    const { reviewState } = bootstrap(root);
+    reviewState.raw.policyRoutes = [{
+      fixUnitId: 'unit-proposal',
+      proposalAllowed: false,
+      decision: lookupPolicyDecision(reviewState.raw.baseFixUnits[0]),
+    }];
+    const proposeCandidate = createProposeOperation(reviewState, root, {
+      async chatCompletion() {
+        throw new Error('transport should not be called');
+      },
+    });
+
+    await assert.rejects(
+      () => proposeCandidate('unit-proposal'),
+      (error) => error.code === 'POLICY_BLOCKED',
+    );
+
+    assert.equal(proposalFailedEvents(reviewState).length, 1);
+    assert.equal(proposalFailedEvents(reviewState)[0].reasonCode, 'POLICY_BLOCKED');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('createProposeCandidateOperation records proposal_cannot_fix without proposal_failed', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-proposal-audit-cannot-fix-'));
+  try {
+    const { reviewState } = bootstrap(root);
+    const proposeCandidate = createProposeOperation(reviewState, root, {
+      async chatCompletion() {
+        return {
+          content: JSON.stringify({
+            action: 'cannot_fix',
+            reasonCode: 'INSUFFICIENT_CONTEXT',
+            explanation: 'Need more surrounding markup.',
+          }),
+        };
+      },
+    });
+
+    const result = await proposeCandidate('unit-proposal');
+
+    assert.equal(result.ok, false);
+    assert.equal(proposalFailedEvents(reviewState).length, 0);
+    assert.equal(
+      reviewState.auditLog.filter((event) => event.type === 'proposal_cannot_fix').length,
+      1,
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

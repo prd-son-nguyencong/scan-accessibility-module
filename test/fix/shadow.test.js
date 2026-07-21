@@ -24,6 +24,7 @@ import {
   copyProjectTreeIntoShadow,
   runShadowVerification,
 } from '../../src/fix/verify/shadow.js';
+import { persistVerificationArtifact } from '../../src/fix/verify/artifact.js';
 
 const FIXTURE_ROOT = fileURLToPath(new URL('../fixtures/fix/projects/minimal-liquid-site', import.meta.url));
 const EXIT_SCRIPT = fileURLToPath(new URL('../fixtures/fix/scripts/exit-code.js', import.meta.url));
@@ -131,13 +132,69 @@ test('shadow verification fails closed on build failure and regression', async (
       build: { command: process.execPath, args: [join(root, 'scripts/build.js')] },
       site: createLoopbackSiteAdapter(),
       scanner: async () => ({
-        findings: [{ findingId: 'f-new', impact: 'critical' }],
+        findings: [{
+          findingId: null,
+          canonicalRuleId: 'PageMetaViewportValid',
+          nativeRuleId: 'MetaViewportScalable',
+          layer: 'accessScan',
+          route: '/jobs?token=artifact-secret',
+          selector: 'html>head>meta[name="viewport"]',
+          impact: 'critical',
+          element: { outerHTML: '<meta data-secret="artifact-secret">' },
+          source: { snippet: 'artifact-secret' },
+        }],
         sourceTraceResolved: true,
         executedLayers: ['axe', 'accessScan'],
       }),
     });
     assert.equal(regression.ok, false);
     assert.ok(regression.artifact.newCriticalSerious.length > 0);
+    assert.deepEqual(regression.artifact.newCriticalSerious[0], {
+      findingId: null,
+      impact: 'critical',
+      canonicalRuleId: 'PageMetaViewportValid',
+      nativeRuleId: 'MetaViewportScalable',
+      layer: 'accessScan',
+      route: '/jobs',
+      selector: 'html>head>meta[name="viewport"]',
+    });
+    assert.doesNotMatch(JSON.stringify(regression.artifact), /artifact-secret|outerHTML|snippet/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('verification artifacts reject overlong or invalid diagnostic identity strings', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-artifact-sanitize-'));
+  try {
+    const persisted = persistVerificationArtifact(root, {
+      status: 'failed',
+      candidateHash: 'sha256:candidate',
+      diffHash: 'sha256:diff',
+      newCriticalSerious: [{
+        findingId: 'f'.repeat(129),
+        impact: 'CRITICAL',
+        canonicalRuleId: 'R'.repeat(129),
+        nativeRuleId: 42,
+        layer: 'accessScan\nartifact-secret',
+        route: '/jobs?token=artifact-secret',
+        selector: `#${'x'.repeat(513)}`,
+        element: { outerHTML: '<button>artifact-secret</button>' },
+        source: { snippet: 'artifact-secret' },
+      }],
+      environment: {},
+    });
+
+    assert.deepEqual(persisted.artifact.newCriticalSerious[0], {
+      findingId: null,
+      impact: 'critical',
+      canonicalRuleId: null,
+      nativeRuleId: null,
+      layer: null,
+      route: '/jobs',
+      selector: null,
+    });
+    assert.doesNotMatch(JSON.stringify(persisted.artifact), /artifact-secret|outerHTML|snippet/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

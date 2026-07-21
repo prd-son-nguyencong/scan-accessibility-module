@@ -18,7 +18,7 @@ export default [
     }],
     reporting: {
       title: 'Default page language should be defined',
-      requirement: 'Specifying a default page language ensures screen readers apply the correct pronunciation rules, voices, and braille output.',
+      requirement: 'Specifying a default page language ensures screen readers apply the correct pronunciation rules, voices, and braille output. Without it, screen readers may guess the language incorrectly, causing mispronunciations, confusion, and reduced comprehension for users.',
       recommendation: 'Add lang attribute to the <html> element (e.g. lang="en").',
     },
     fix: { deterministic: true, policy: 'mechanically_safe' },
@@ -53,7 +53,7 @@ export default [
     automation: 'heuristic',
     checks: [{
       id: 'metadata:meta-description',
-      profiles: ['standards', 'commercial-parity'],
+      profiles: ['standards'],
       evaluator: 'document-metadata',
       options: { mode: 'meta-description-missing' },
       classification: 'potential',

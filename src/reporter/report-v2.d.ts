@@ -47,6 +47,8 @@ export interface ScanFinding {
     normalizedHtmlHash: string;
     outerHTML: string;
     scanId: string | null;
+    framePath?: string[];
+    shadowPath?: string[];
   };
   source: ScanSource;
   evidence: {
@@ -98,6 +100,41 @@ export interface ScanReportV2 {
     occurrenceCount: number;
     layerCounts: Record<string, number>;
   };
+  runMetadata?: {
+    accessScan?: {
+      profile: 'standards' | 'commercial-parity';
+      includeThirdParty: boolean;
+      comparatorVersion: string;
+      pageRunCount?: number;
+      execution: {
+        aggregates: {
+          rules: {
+            complete: number;
+            inapplicable: number;
+            error: number;
+            timeout: number;
+            skipped: number;
+          };
+          checks: {
+            complete: number;
+            inapplicable: number;
+            error: number;
+            timeout: number;
+            skipped: number;
+            candidates: number;
+            findings: number;
+          };
+        };
+        perCheck: Array<{
+          checkId: string;
+          status: string;
+          statusCounts?: Record<string, number>;
+          candidateCount: number;
+          findingCount: number;
+        }>;
+      } | null;
+    };
+  };
 }
 
 export interface ScanReportContext {
@@ -124,5 +161,6 @@ export function buildScanReportV2(
   context?: ScanReportContext,
 ): ScanReportV2;
 export function computeReportId(report: ScanReportV2): string;
+export function extractAccessScanRunMetadata(scanners: ScannerRun[]): ScanReportV2['runMetadata'] extends { accessScan?: infer T } ? T | null : null;
 export function projectReportV1(report: ScanReportV2): Record<string, unknown>;
 export function validateScanReportV2(report: ScanReportV2): true;

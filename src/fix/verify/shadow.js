@@ -432,8 +432,13 @@ export async function runShadowVerification({
         return detail ? detail.resolved : !afterFindings.some((item) => (item.findingId || item.fingerprint) === id);
       }),
       newCriticalSerious: delta.newCriticalSerious.map((item) => ({
-        findingId: item.findingId || item.fingerprint,
+        findingId: item.findingId || item.fingerprint || null,
         impact: item.impact,
+        canonicalRuleId: item.canonicalRuleId || item.ruleId || null,
+        nativeRuleId: item.nativeRuleId || item.ruleId || null,
+        layer: item.layer || null,
+        route: item.route || item.pageRoute || null,
+        selector: item.selector || item.element?.selector || null,
       })),
       build: { exitCode: buildResult.code },
       prepare: prepareResult ? { exitCode: prepareResult.code } : null,

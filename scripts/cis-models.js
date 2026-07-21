@@ -3,8 +3,8 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import '../src/utils/config.js';
 import {
-  createCisTransportFromTrustedConfig,
-  resolveTrustedCisConfig,
+  createCisTransportFromConfig,
+  resolveCisConfig,
 } from '../src/fix/cis/config.js';
 import { redactTransportErrorMessage } from '../src/fix/cis/transport.js';
 
@@ -13,16 +13,16 @@ import { redactTransportErrorMessage } from '../src/fix/cis/transport.js';
  *   env?: NodeJS.ProcessEnv,
  *   stdoutWrite?: (chunk: string) => void,
  *   stderrWrite?: (chunk: string) => void,
- *   resolveConfig?: (env: NodeJS.ProcessEnv) => import('../src/fix/cis/config.js').ReturnType<typeof resolveTrustedCisConfig>,
- *   createTransportBundle?: typeof createCisTransportFromTrustedConfig,
+ *   resolveConfig?: (env: NodeJS.ProcessEnv) => import('../src/fix/cis/config.js').ReturnType<typeof resolveCisConfig>,
+ *   createTransportBundle?: typeof createCisTransportFromConfig,
  * }} [options]
  */
 export async function runCisModelsCli({
   env = process.env,
   stdoutWrite = (chunk) => process.stdout.write(chunk),
   stderrWrite = (chunk) => process.stderr.write(chunk),
-  resolveConfig = (candidateEnv) => resolveTrustedCisConfig(candidateEnv, { requireModel: false }),
-  createTransportBundle = createCisTransportFromTrustedConfig,
+  resolveConfig = (candidateEnv) => resolveCisConfig(candidateEnv, { requireModel: false }),
+  createTransportBundle = createCisTransportFromConfig,
 } = {}) {
   const config = resolveConfig(env);
   if (!config.ok) {

@@ -1,3 +1,9 @@
+import {
+  hasIndependentStandardsConfirmation,
+  isCommercialParityFinding,
+  isStandardsConfirmedFinding,
+} from './finding-confirmation.js';
+
 export const POLICY_VERSION = '1';
 
 export const POLICIES = Object.freeze({
@@ -34,6 +40,8 @@ const DEFAULT_POLICY_BY_RULE = Object.freeze({
   'aria-required-attr': POLICIES.SEMANTIC_ASSISTANCE,
   'aria-valid-attr-value': POLICIES.SEMANTIC_ASSISTANCE,
   'document-title': POLICIES.SEMANTIC_ASSISTANCE,
+  'LinkOpensNewWindow': POLICIES.SEMANTIC_ASSISTANCE,
+  'LinkCurrentPage': POLICIES.SEMANTIC_ASSISTANCE,
   'meta-viewport': POLICIES.MANUAL_ONLY,
   'state-dependent': POLICIES.MANUAL_ONLY,
 });
@@ -45,11 +53,18 @@ const DESCRIPTOR_POLICY_MAP = Object.freeze({
   unsupported: POLICIES.UNSUPPORTED,
 });
 
+function isDeterministicEligibleFinding(finding) {
+  if (!finding?.fix?.deterministic) {
+    return false;
+  }
+  if (isCommercialParityFinding(finding)) {
+    return isStandardsConfirmedFinding(finding);
+  }
+  return true;
+}
+
 function hasConfirmedDeterministicFinding(fixUnit) {
-  return fixUnit.findings?.some((finding) => (
-    finding.fix?.deterministic
-    && finding.evidence?.violationType === 'confirmed'
-  )) ?? false;
+  return fixUnit.findings?.some(isDeterministicEligibleFinding) ?? false;
 }
 
 function trustedDescriptorPolicy(fixUnit) {
@@ -63,11 +78,14 @@ export function lookupPolicyDecision(fixUnit) {
   const trustedPolicy = trustedDescriptorPolicy(fixUnit);
   let policy;
 
-  if (trustedPolicy === POLICIES.MECHANICALLY_SAFE && !hasConfirmedDeterministicFinding(fixUnit)) {
+  if (fixUnit.findings?.some(isCommercialParityFinding)
+    && !hasIndependentStandardsConfirmation(fixUnit)) {
+    policy = POLICIES.MANUAL_ONLY;
+  } else if (trustedPolicy === POLICIES.MECHANICALLY_SAFE && !hasConfirmedDeterministicFinding(fixUnit)) {
     policy = POLICIES.MANUAL_ONLY;
   } else if (trustedPolicy) {
     policy = trustedPolicy;
-  } else if (fixUnit.findings?.some((finding) => finding.fix?.deterministic)) {
+  } else if (fixUnit.findings?.some(isDeterministicEligibleFinding)) {
     policy = POLICIES.MECHANICALLY_SAFE;
   } else if (canonicalRuleId && DEFAULT_POLICY_BY_RULE[canonicalRuleId]) {
     policy = DEFAULT_POLICY_BY_RULE[canonicalRuleId];
@@ -86,6 +104,8 @@ export function lookupPolicyDecision(fixUnit) {
         ? 'SEMANTIC_LABEL_OR_STRUCTURE'
         : policy === POLICIES.MANUAL_ONLY && fixUnit.kind === 'performance'
           ? 'PERFORMANCE_LAYER_UNSUPPORTED'
+          : policy === POLICIES.MANUAL_ONLY && fixUnit.findings?.some(isCommercialParityFinding)
+            ? 'COMMERCIAL_PARITY_REQUIRES_STANDARDS_CONFIRMATION'
           : policy === POLICIES.MANUAL_ONLY
             ? 'MANUAL_REVIEW_REQUIRED'
             : 'UNSUPPORTED_RULE',

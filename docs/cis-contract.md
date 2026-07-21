@@ -8,11 +8,15 @@ runtime transport and strict parser live under `src/fix/cis/`.
 
 | Area | Status |
 | --- | --- |
-| Trusted TLS transport | Implemented — pinned CA bundle + hostname allowlist; `rejectUnauthorized: true` |
-| Live HTTP characterization | **Blocked** — prior probes failed before TLS trust was established (untrusted private CA on the endpoint) |
+| Trusted TLS transport | Implemented — pinned CA bundle + hostname allowlist; `rejectUnauthorized: true` (default) |
+| Guarded `insecure-dev` transport | Implemented — local-only; TLS 1.2 Undici dispatcher; explicit ack + auth bypass guards; refused in CI/production |
+| Guarded `insecure-dev` live model inventory | **Verified** — canonical selectable IDs returned; pipe-composite registry rows skipped |
+| Live prediction + sandbox demo acceptance | **Pending** — Step 5 operator workflow (proposal → verify → apply → rollback) not yet recorded |
+| Legacy HTTP characterization (2026-07-14) | **Blocked** — unpinned probe failed before TLS trust was established |
 | Response fixtures | **Synthetic-inferred** until a verified-TLS on-network capture replaces them (`observed-live-redacted`) |
-| Production model discovery | `GET …/v1alpha1/models` — **never** sends `bypass_auth`, empty `model=` query hacks, or Bruno PoC bypass flags |
-| Operator provisioning | `pnpm cis:configure`, `pnpm cis:models`, `pnpm cis:benchmark` (see package README) |
+| Production model discovery | `GET …/v1alpha1/models` — trusted mode never sends `bypass_auth`; `insecure-dev` sends `bypass_auth=true` only with all guards |
+| Sandbox one-file demo | `pnpm cis:demo` — persistent sandbox, artifact export, authenticated rollback (local operator workflow) |
+| Operator provisioning | `pnpm cis:configure`, `pnpm cis:models`, `pnpm cis:benchmark`, `pnpm cis:demo` (see package README) |
 
 ### Implementation verification (2026-07-16)
 
@@ -69,9 +73,12 @@ shasum -a 256 test/fixtures/cis/bruno-source/*.sanitized.bru
 | `/ml/inference/cis/v1alpha1/models` | GET | `bypass_auth=true` **and** `model=` (empty value) | `Wd-PCA-Feature-Key: <redacted-feature-key>` |
 | `/ml/inference/cis/v1alpha1/predictions` | POST | `bypass_auth=true` | `Wd-PCA-Feature-Key: <redacted-feature-key>` |
 
-These query parameters describe the sanitized Bruno PoC capture only. The production
-`src/fix/cis/transport.js` request builder and `pnpm cis:models` **never** send
-`bypass_auth`, empty `model=` query keys, or other Bruno bypass hacks; characterization
+These query parameters describe the sanitized Bruno PoC capture only. **Trusted**
+`src/fix/cis/transport.js` never sends `bypass_auth`, empty `model=` query keys, or other
+Bruno bypass hacks. **Guarded `insecure-dev`** sends `bypass_auth=true` on models and
+predictions only when every development guard passes (`CIS_TLS_MODE=insecure-dev`,
+`CIS_INSECURE_DEV_ACK=ALLOW_UNVERIFIED_CIS_TLS`, `CIS_TLS_MAX_VERSION=TLSv1.2`,
+`CIS_DEV_BYPASS_AUTH=true`, not CI/production, exact single-host allowlist). Characterization
 probes remain isolated under `scripts/cis-characterize.js`.
 
 Bruno `get-models.bru` declares both query params in `params:query`:
@@ -236,15 +243,54 @@ if future on-network probes show pass-through.
 
 ## Secure live operator workflow
 
+### Security boundary
+
+| Rule | Trusted (default) | Guarded `insecure-dev` (local only) |
+| --- | --- | --- |
+| Mode selection | `CIS_TLS_MODE` unset or `trusted` | `CIS_TLS_MODE=insecure-dev` |
+| TLS verification | Pinned CA (`CIS_CA_BUNDLE_PATH`, `CIS_CA_SHA256`); `rejectUnauthorized: true` | Unverified TLS scoped to the CIS Undici dispatcher only (`rejectUnauthorized: false`, TLS 1.2 min/max) |
+| Environment | Any non-production operator machine | **Refused** when `CI` is set or `NODE_ENV=production` |
+| Auth bypass query | Never sends `bypass_auth` | Sends `bypass_auth=true` only with `CIS_DEV_BYPASS_AUTH=true` and all other guards |
+| Global TLS mutation | **Forbidden** — `NODE_TLS_REJECT_UNAUTHORIZED` is not supported anywhere | Same — no global Node TLS variables |
+| Model superiority | One demo or benchmark row does **not** establish the best model | Same |
+| Production requirement | Official CA bundle + fingerprint required | Not a substitute for trusted operation |
+
+TLS changes apply **only** to the process-scoped Undici `Agent` used by
+`createCisTransportFromConfig`. No production CIS source sets or reads
+`NODE_TLS_REJECT_UNAUTHORIZED`.
+
 ### External trust prerequisite
 
 1. Obtain the approved PEM bundle and `sha256:<64hex>` byte fingerprint from Workday Trust
    Star, PKI, or JAMF.
 2. Do **not** export a root certificate from an unverified server connection.
-3. Do **not** disable TLS verification (`NODE_TLS_REJECT_UNAUTHORIZED=0`,
-   `rejectUnauthorized: false`, Bruno `sslVerification: false`).
+3. Do **not** disable TLS verification globally (`NODE_TLS_REJECT_UNAUTHORIZED=0`,
+   Bruno `sslVerification: false`). Guarded `insecure-dev` uses a scoped Undici dispatcher
+   only — never a global Node TLS override.
 4. Keep `.env` and the CA bundle outside source control; rotate `CIS_CA_SHA256` when PKI
    rotates the bundle.
+
+### Development mode (`insecure-dev`, local only)
+
+For operator acceptance against the current development CIS endpoint when PKI trust is
+not yet provisioned, merge these **non-secret development controls** into the gitignored
+host `.env` while preserving existing endpoint, host, feature key, and provider values.
+`cis:configure` atomically writes only its managed trusted keys; development-only controls
+below are **operator edits** and must keep the file at mode `0600`. This acceptance run
+used a local atomic merge for those dev-only keys (no values logged here). Do **not** set
+`NODE_TLS_REJECT_UNAUTHORIZED`.
+
+```dotenv
+CIS_MODEL="anthropic.claude-sonnet-5"
+CIS_TLS_MODE="insecure-dev"
+CIS_INSECURE_DEV_ACK="ALLOW_UNVERIFIED_CIS_TLS"
+CIS_TLS_MAX_VERSION="TLSv1.2"
+CIS_DEV_BYPASS_AUTH="true"
+```
+
+All guards must pass simultaneously. Missing or mismatched values fail closed with stable
+reason codes (see Troubleshooting). Switch back to `CIS_TLS_MODE=trusted` (or unset) and
+remove development-only keys before CI, production, or pinned-CA acceptance.
 
 ### Configuration keys
 
@@ -252,14 +298,19 @@ if future on-network probes show pass-through.
 | --- | --- | --- |
 | `CIS_PROXY_URL` | transport | HTTPS base URL; no query/hash/credentials |
 | `CIS_AUTH_TOKEN` | transport | Feature key; never logged |
-| `CIS_ALLOWED_HOSTS` | transport | Hostname allowlist |
+| `CIS_ALLOWED_HOSTS` | transport | Hostname allowlist; **exactly one host** for `insecure-dev` |
 | `CIS_PROVIDER` | predictions | Target provider |
 | `CIS_MODEL` | proposals | Active model; candidate-hash input (no silent fallback) |
-| `CIS_CA_BUNDLE_PATH` | TLS | Approved PEM bundle path |
-| `CIS_CA_SHA256` | TLS | Pinned `sha256:` + 64 hex digits |
+| `CIS_CA_BUNDLE_PATH` | trusted TLS | Approved PEM bundle path |
+| `CIS_CA_SHA256` | trusted TLS | Pinned `sha256:` + 64 hex digits |
+| `CIS_TLS_MODE` | mode | `trusted` (default) or `insecure-dev` |
+| `CIS_INSECURE_DEV_ACK` | `insecure-dev` | Must be exactly `ALLOW_UNVERIFIED_CIS_TLS` |
+| `CIS_TLS_MAX_VERSION` | `insecure-dev` | Must be exactly `TLSv1.2` for current dev endpoint |
+| `CIS_DEV_BYPASS_AUTH` | `insecure-dev` | Must be exactly `true` |
 
 Model discovery (`cis:models`, `cis:benchmark` inventory check) omits the `CIS_MODEL`
-requirement; proposal generation requires all keys.
+requirement; proposal generation requires all keys appropriate to the active mode.
+Trusted mode requires CA settings; `insecure-dev` omits CA keys.
 
 ### Operator logging contract
 
@@ -281,17 +332,24 @@ requires them to persist **candidate diffs**, **source-relative path bindings**,
 output. Treat retained sessions as sensitive local artifacts — delete when no longer
 needed.
 
-**Sole `.env` write exception:** `cis:configure` atomically writes managed values
+**Sole `.env` write exception:** `cis:configure` atomically writes managed trusted values
 (`CIS_PROXY_URL`, `CIS_AUTH_TOKEN`, `CIS_ALLOWED_HOSTS`, `CIS_PROVIDER`, `CIS_MODEL`,
 `CIS_CA_BUNDLE_PATH`, `CIS_CA_SHA256`) to the operator-specified gitignored `.env` at
-mode `0600` (outside source control; not script stdout/stderr).
+mode `0600` (outside source control; not script stdout/stderr). Development-only keys
+(`CIS_TLS_MODE`, `CIS_INSECURE_DEV_ACK`, `CIS_TLS_MAX_VERSION`, `CIS_DEV_BYPASS_AUTH`)
+are not managed by tooling — operators merge them manually and must preserve mode `0600`.
 
 On failure, stderr emits stable `CODE: message` lines only, exits non-zero, and never
 includes secrets, hostnames, CA paths, Bruno source, or raw advisory content.
 
 ### Operator commands
 
-From `ada-scan/`:
+**Host root vs nested checkout:** When ada-scan runs from an initialized host project root,
+dotenv loads `./.env` without override. In a **nested source checkout** (`ada-scan/` inside
+the host tree without a host `.scan-config.json`), prefix operator commands with
+`ADA_SCAN_ROOT=..` so the gitignored host `.env` is loaded.
+
+From `ada-scan/` (nested checkout):
 
 ```bash
 pnpm cis:configure -- \
@@ -299,7 +357,7 @@ pnpm cis:configure -- \
   --env "../.env" \
   --ca-bundle "$APPROVED_CIS_CA_BUNDLE" \
   --ca-sha256 "$APPROVED_CIS_CA_SHA256"
-pnpm cis:models
+ADA_SCAN_ROOT=.. pnpm cis:models
 ```
 
 Benchmark only IDs returned live. Suggested candidate order when present:
@@ -307,12 +365,84 @@ Benchmark only IDs returned live. Suggested candidate order when present:
 `anthropic.claude-sonnet-4-20250514-v1:0`. Remove absent IDs; never guess aliases.
 
 ```bash
-pnpm cis:benchmark -- \
+ADA_SCAN_ROOT=.. pnpm cis:benchmark -- \
   --report "../scan-reports/latest.json" \
   --local-root ".." \
   --models "anthropic.claude-opus-4-8,anthropic.claude-sonnet-5,anthropic.claude-sonnet-4-20250514-v1:0" \
   --max-units 15
 ```
+
+### Sandbox demo (`cis:demo`)
+
+One-file ADA demo for local operator acceptance. Copies the host project into a persistent
+sandbox under `scan-reports/fix-sessions/<session-id>/demo-workspace/`, runs a fresh scan,
+opens the review workbench for a single target file, exports artifacts on apply, and supports
+authenticated sandbox rollback without modifying original host source.
+
+From `ada-scan/` (nested checkout — use `ADA_SCAN_ROOT=..`; after model discovery succeeds):
+
+```bash
+ADA_SCAN_ROOT=.. pnpm cis:models
+ADA_SCAN_ROOT=.. pnpm cis:demo -- \
+  --source .. \
+  --file src/partials/layout/header.liquid \
+  --route / \
+  --session demo-sonnet5-header \
+  --ui
+```
+
+**Generated paths** (relative to host project root):
+
+| Path | Purpose |
+| --- | --- |
+| `scan-reports/fix-sessions/<session-id>/demo-workspace/` | Persistent sandbox; apply/rollback target |
+| `scan-reports/fix-sessions/<session-id>/artifacts/candidate.patch` | Exported unified diff |
+| `scan-reports/fix-sessions/<session-id>/artifacts/fixed/<target-file>` | Post-apply fixed file copy |
+| `scan-reports/fix-sessions/<session-id>/artifacts/evidence.json` | Hash evidence (no secrets) |
+| `scan-reports/fix-sessions/<session-id>/session.json` | Review state |
+| `scan-reports/fix-sessions/<session-id>/transaction-<id>/` | Apply journal + file snapshots |
+
+**Workbench action order:**
+
+```text
+Generate proposal
+→ acknowledge every manual check
+→ Run isolated verification
+→ Accept
+→ Approve exact diff
+→ Apply
+→ Rollback sandbox
+```
+
+On success, rollback announces byte-exact sandbox restore; original source must remain
+unchanged. When `transportSecurity === 'insecure-dev'`, the workbench shows a persistent
+development warning including auth-bypass notice.
+
+**Evidence inspection** (from host project root after apply + rollback):
+
+```bash
+node -e '
+const fs = require("node:fs");
+const p = "scan-reports/fix-sessions/demo-sonnet5-header/artifacts/evidence.json";
+const evidence = JSON.parse(fs.readFileSync(p, "utf8"));
+if (!evidence.originalUnchangedAfterApply ||
+    !evidence.originalUnchangedAfterRollback ||
+    !evidence.sandboxRestored) process.exit(1);
+console.log(JSON.stringify({
+  model: evidence.modelId,
+  originalUnchangedAfterApply: evidence.originalUnchangedAfterApply,
+  originalUnchangedAfterRollback: evidence.originalUnchangedAfterRollback,
+  sandboxRestored: evidence.sandboxRestored,
+  transactionId: evidence.transactionId,
+}, null, 2));
+'
+```
+
+Expected: `originalUnchangedAfterApply`, `originalUnchangedAfterRollback`, and
+`sandboxRestored` are all `true`. One demo pass does not prove model superiority — record
+cross-model benchmark evidence separately.
+
+Delete `scan-reports/fix-sessions/demo-*` when finished (gitignored).
 
 ### CLI stdout contracts
 
@@ -390,8 +520,13 @@ falls back to unverified transport, guessed model aliases, or silent model switc
 | `CIS_CONFIGURE_INVALID` | configure | Bruno extraction or `cis:configure` flags invalid | No `.env` update |
 | `CIS_MODEL_UNAVAILABLE` | benchmark | `--models` ID ∉ live `cis:models` inventory | Benchmark abort |
 | `CIS_BENCHMARK_INVALID` | benchmark | Benchmark flags, report load, or proposable units invalid | Benchmark abort |
+| `CIS_INSECURE_ENV_DENIED` | config | `insecure-dev` requested in CI or production | Refuse transport |
+| `CIS_INSECURE_DEV_ACK_REQUIRED` | config | Missing or wrong `CIS_INSECURE_DEV_ACK` | Refuse transport |
+| `CIS_TLS_VERSION_INVALID` | config | `CIS_TLS_MAX_VERSION` ≠ `TLSv1.2` for `insecure-dev` | Refuse transport |
+| `CIS_DEV_AUTH_BYPASS_DENIED` | config | Auth bypass unset/wrong in `insecure-dev`, or set in trusted mode | Refuse transport |
+| `CIS_INSECURE_DEV_DENIED` | config | HTTP endpoint, multi-host allowlist, or host mismatch in `insecure-dev` | Refuse transport |
 
-### Transport (trusted `src/fix/cis/transport.js`)
+### Transport (trusted and guarded `src/fix/cis/transport.js`)
 
 | Code | Meaning | Fail-closed behavior |
 | --- | --- | --- |

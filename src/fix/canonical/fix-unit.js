@@ -1,4 +1,4 @@
-import { canonicalSha256, normalizeSourcePath } from '../../reporter/fingerprint.js';
+import { canonicalSha256, normalizeSourcePath, normalizedHtmlSha256 } from '../../reporter/fingerprint.js';
 import { canonicalRuleForFixUnit } from './finding-aliases.js';
 
 export class FixCanonicalizerError extends Error {
@@ -161,11 +161,6 @@ function finalizeUnit(findings) {
   };
 }
 
-/**
- * Build canonical fix units from ScanReportV2 findings.
- * Each finding belongs to exactly one unit; cross-scanner evidence merges only when
- * canonical rule, source preimage, page state, and root-cause region agree.
- */
 export function buildFixUnits(findings = []) {
   const seenIds = new Set();
   for (const finding of findings) {
@@ -190,6 +185,32 @@ export function buildFixUnits(findings = []) {
   return [...groups.values()]
     .map(finalizeUnit)
     .sort((a, b) => a.fixUnitId.localeCompare(b.fixUnitId));
+}
+
+/**
+ * Build fix units from projected legacy V1 violations without changing the V1 field set.
+ */
+export function buildFixUnitsFromProjectedViolations(violations = []) {
+  return buildFixUnits(violations.map((violation) => ({
+    findingId: violation.id,
+    nativeRuleId: violation.ruleId,
+    canonicalRuleId: violation.canonicalRuleId || violation.ruleId,
+    layer: violation.layer,
+    category: violation.category || 'accessibility',
+    pageState: violation.pageState || 'initial',
+    route: violation.route || '/',
+    element: {
+      selector: violation.element?.selector || '',
+      normalizedHtmlHash: violation.element?.normalizedHtmlHash
+        || normalizedHtmlSha256(violation.element?.outerHTML || ''),
+      outerHTML: violation.element?.outerHTML || '',
+      ...(Array.isArray(violation.element?.framePath) ? { framePath: [...violation.element.framePath] } : {}),
+      ...(Array.isArray(violation.element?.shadowPath) ? { shadowPath: [...violation.element.shadowPath] } : {}),
+    },
+    source: violation.source || {},
+    evidence: violation.evidence || {},
+    fix: violation.fix || { deterministic: false },
+  })));
 }
 
 export function mergeEvidenceIntoUnit(unit, evidenceItem) {
