@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0.0",
-  "activeRuleCount": 82,
+  "activeRuleCount": 83,
   "legacyNonEmittingRuleIds": ["AriaLabelledbyContentMismatch"],
   "ruleIds": [
     "AltMisuse",
@@ -49,6 +49,7 @@
     "MetaViewportPresent",
     "MetaViewportScalable",
     "NavigationMisuse",
+    "NavigationWrapperMissingRole",
     "NoAutofocus",
     "NoExtraInformationInTitle",
     "NoRoleApplication",

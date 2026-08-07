@@ -448,9 +448,9 @@ test('frozen dual-run evidence matches production engine counts on neutral fixtu
   );
 });
 
-test('loadBuiltInRuleRegistry loads 82 active rules with graph-supported selectors', async () => {
+test('loadBuiltInRuleRegistry loads 83 active rules with graph-supported selectors', async () => {
   const registry = await loadBuiltInRuleRegistry({ enforceCatalogContract: false });
-  assert.equal(registry.getActiveRuleIds().length, 82);
+  assert.equal(registry.getActiveRuleIds().length, 83);
   for (const ruleId of registry.getActiveRuleIds()) {
     const rule = registry.getRule(ruleId);
     for (const check of rule.checks) {

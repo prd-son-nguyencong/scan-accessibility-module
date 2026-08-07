@@ -22,7 +22,7 @@ export const GOLDEN_CATALOG_SCHEMA_VERSION = '1.0.0';
 /** Readable in legacy reports and reporter copy; not emitted by current scanners. */
 export const LEGACY_NON_EMITTING_RULE_ID = 'AriaLabelledbyContentMismatch';
 
-export const ACTIVE_RULE_COUNT = 82;
+export const ACTIVE_RULE_COUNT = 83;
 export const CATALOG_RULE_COUNT = ACTIVE_RULE_COUNT + 1;
 
 export const STICKY_HEADER_DUAL_CATEGORY_CONTRACT = Object.freeze({

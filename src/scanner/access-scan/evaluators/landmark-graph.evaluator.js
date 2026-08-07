@@ -364,6 +364,27 @@ export default {
       return { status: 'complete', candidatesScanned: scanned, findings };
     }
 
+    // Additive: commercial-parity-only mirror of accessWidget's redundant
+    // "nested nav wrapper missing role" heuristic. Does not alter any
+    // existing mode branch above.
+    if (mode === 'nav-wrapper-missing-role-parity') {
+      for (const navigation of candidates) {
+        const wrapperChildren = snapshot.elements.filter((child) => (
+          child.parentId === navigation.id
+          && sameScope(child, navigation)
+          && child.tag === 'div'
+          && !child.attributes.role
+        ));
+        for (const wrapper of wrapperChildren) {
+          if (!isNavChromeWrapper(snapshot, indexes, wrapper)) continue;
+          findings.push(elementFinding(wrapper, {
+            structuralPattern: 'nested-navigation-wrapper-missing-role',
+          }));
+        }
+      }
+      return { status: 'complete', candidatesScanned: candidates.length, findings };
+    }
+
     throw Object.assign(new Error(`unsupported landmark-graph mode "${mode}"`), {
       errorCode: 'evaluator_failure',
     });
@@ -435,4 +456,25 @@ function containsFooterHint(value) {
  */
 function containsStrongFooterMarker(value) {
   return STRONG_FOOTER_MARKER_PATTERNS.some((pattern) => pattern.test(value));
+}
+
+/**
+ * Additive helper for `nav-wrapper-missing-role-parity`. A wrapper "looks
+ * like" nav chrome when it holds a real list-based link group (matches the
+ * accessWidget-flagged `.nav__static > .nav__list` pattern) rather than any
+ * arbitrary div, keeping false positives low.
+ *
+ * @param {import('../runtime/types.js').Snapshot} snapshot
+ * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function isNavChromeWrapper(snapshot, indexes, element) {
+  const links = getDescendants(snapshot, indexes, element, (child) => (
+    child.tag === 'a' && Boolean(child.attributes.href)
+  ));
+  if (links.length < 3) return false;
+  const lists = getDescendants(snapshot, indexes, element, (child) => (
+    child.tag === 'ul' || child.tag === 'ol'
+  ));
+  return lists.length > 0;
 }

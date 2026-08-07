@@ -340,4 +340,36 @@ export default [
     },
     fix: { deterministic: false, policy: 'manual_only' },
   },
+  // Additive, commercial-parity-only rule. Some commercial widgets (e.g.
+  // accessWidget) flag a nav-chrome wrapper <div> (logo + primary link list)
+  // nested directly inside an already-landmarked <nav>/[role="navigation"]
+  // for lacking its own explicit role="navigation" — even though the
+  // ancestor landmark already satisfies WCAG 1.3.1. This check exists purely
+  // to mirror that oracle behavior for parity reporting; it never overlaps
+  // with NavigationMisuse or MainNavigationMismatch above, which stay
+  // untouched.
+  {
+    id: 'NavigationWrapperMissingRole',
+    status: 'active',
+    category: 'landmarks',
+    standard: { version: 'Best Practice', level: 'n/a', criterion: 'n/a' },
+    severity: { impact: 'serious', priority: 5 },
+    automation: 'heuristic',
+    checks: [
+      {
+        id: 'parity:nav-wrapper-missing-role',
+        profiles: ['commercial-parity'],
+        evaluator: 'landmark-graph',
+        target: { selector: 'nav, [role="navigation"]', allowPluginFallback: true },
+        options: { mode: 'nav-wrapper-missing-role-parity' },
+        classification: 'commercial-parity',
+      },
+    ],
+    reporting: {
+      title: 'Main navigation should have role navigation',
+      requirement: 'Main navigation elements should have role navigation to ensure that screen readers can identify them as navigation regions.',
+      recommendation: 'Wrap main navigation in <nav> or add role="navigation" for screen reader landmark access.',
+    },
+    fix: { deterministic: false, policy: 'manual_only' },
+  },
 ];

@@ -139,7 +139,7 @@ async function runStandardsRules(page, ruleIds) {
   return { session, registry, result };
 }
 
-test('verification gate: production registry is 82 active + 1 legacy with resolved evaluator refs', async () => {
+test('verification gate: production registry is 83 active + 1 legacy with resolved evaluator refs', async () => {
   const registry = await loadBuiltInRuleRegistry({ enforceCatalogContract: true });
   const evaluators = registry.getEvaluators();
 
