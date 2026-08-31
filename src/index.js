@@ -6,6 +6,12 @@ import { deriveScanTargetAndTrace } from './tracer/scan-target.js';
 import { resolveTrustedRoot } from './fix/controller/local-attestation.js';
 import { clearPartialCache, mapViolationToSource } from './tracer/partial-map.js';
 import { computeSourcePreimage } from './tracer/preimage.js';
+import {
+  findLineForRenderedHtml,
+  findDocumentSource,
+  findPageLevelAnchor,
+  clearTagIndexCache,
+} from './tracer/liquid-tag-index.js';
 import { buildAxeEvidence, buildAxePageMetadata, scanPageWithAxe } from './scanner/axe.js';
 import { scanWithAccessScan } from './scanner/access-scan/index.js';
 import { resolveScanProfile, resolveOrchestratorScanProfile } from './scanner/access-scan/engine/profiles.js';
@@ -475,6 +481,55 @@ async function traceToPartials(violations, pageUrl, localRoot = PROJECT_ROOT) {
       }
     } catch { /* tracing is best-effort */ }
   }
+
+  resolveMissingLines(violations, pageFile, localRoot);
+}
+
+/**
+ * Fill in `source.line` for anything the HTML-search strategies left without
+ * one. Those strategies compare rendered output against source text, which
+ * fails on the three shapes this codebase is full of: a component invoked
+ * through `{% render %}` (the markup is in another file), a document-level
+ * element that lives in the layout rather than the page, and a finding that
+ * reports something missing and so has no element at all.
+ */
+function resolveMissingLines(violations, pageFile, localRoot = PROJECT_ROOT) {
+  for (const v of violations) {
+    if (!v.source || v.source.line) continue;
+    const currentFile = v.source.file && v.source.file !== 'unknown' ? v.source.file : pageFile;
+    const html = v.element?.outerHTML || '';
+
+    let hit = null;
+    let file = currentFile;
+
+    if (html) {
+      hit = findLineForRenderedHtml(currentFile, html);
+      if (!hit) {
+        const relocated = findDocumentSource(pageFile, html);
+        if (relocated) { hit = relocated; file = relocated.file; }
+      }
+    }
+    if (!hit) {
+      const anchor = findPageLevelAnchor(pageFile, v.rule || v.ruleId || v.nativeRuleId || v.id);
+      if (anchor) { hit = anchor; file = anchor.file; }
+    }
+    if (!hit) continue;
+
+    v.source.file = file;
+    v.source.line = hit.line;
+    v.source.method = hit.method;
+    // Never upgrade an existing confidence on the strength of a line alone.
+    if (v.source.confidence !== 'high') v.source.confidence = hit.confidence;
+    if (file.startsWith('src/partials/')) {
+      v.source.partial = file;
+      v.source.page = pageFile;
+    }
+    const preimage = computeSourcePreimage(file, hit.line, localRoot);
+    if (preimage) {
+      v.source.preimageSha256 = preimage.preimageSha256;
+      v.source.preimageRange = preimage.range;
+    }
+  }
 }
 
 // ─── Trusted fix routing ─────────────────────────────────────────────────────
@@ -712,6 +767,7 @@ export async function runCli() {
       console.log('Building instrumented dist for partial tracing...');
       scanAttestation = await buildInstrumented(forceBuild);
       clearPartialCache();
+      clearTagIndexCache();
     } else {
       console.log(`\nRemote URL scan: ${urlArg}`);
     }
@@ -742,6 +798,7 @@ export async function runCli() {
     serverProcess = await ensureServer(args, config);
     const scanAttestation = await buildInstrumented(forceBuild);
     clearPartialCache();
+    clearTagIndexCache();
 
     const manifest = loadScanManifest();
     console.log(`Manifest: ${Object.keys(manifest).length} path mappings loaded`);
@@ -795,7 +852,7 @@ export async function runCli() {
     await runScan(pagesToScan, config, manifest, {
       fix, fixMode, useAI, dryRun, baselineMode, useUI, agentMode,
       isUrlMode: false, isSinglePage, noFail, includeThirdParty, failOnViolations,
-      noHydrateJobs,
+      noHydrateJobs, pageFilter,
       scanAttestation: scanAttestation || loadScanAttestation(config),
       sourceRoot: PROJECT_ROOT, sessionId,
     });
@@ -1312,6 +1369,7 @@ async function runScan(pages, config, manifest, options) {
     fix, fixMode, useAI, dryRun, baselineMode, useUI, agentMode, isSinglePage,
     noFail, includeThirdParty, failOnViolations, isUrlMode, sourceRoot, sessionId,
     noHydrateJobs = false,
+    pageFilter = null,
   } = options;
   const concurrency = config.concurrency || 2;
 
@@ -1419,11 +1477,17 @@ async function runScan(pages, config, manifest, options) {
       const configuredPageCount = Array.isArray(config.pages) && config.pages.length
         ? config.pages.length
         : 1;
+      // A --page run is a subset by definition. Config.pages may be empty, in
+      // which case configuredPageCount falls back to 1 and a one-page run would
+      // otherwise look like full coverage — and prune every other page's
+      // patches. The filter itself is the reliable signal.
+      const partial = Boolean(pageFilter) || pages.length < configuredPageCount;
       const scanScope = {
         routes: pages.map((page) => page.path || page.url || page.name).filter(Boolean),
         scannedPageCount: pages.length,
         configuredPageCount,
-        partial: pages.length < configuredPageCount,
+        pageFilter: pageFilter || null,
+        partial,
       };
       const session = await runFixEngine(allViolations, {
         fixMode, dryRun, useUI, useAI, agent: agentMode, config, includeThirdParty,

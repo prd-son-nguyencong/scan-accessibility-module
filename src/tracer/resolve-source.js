@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import path from 'path';
 import { getProjectRoot } from '../utils/paths.js';
+import { findLineForTagText, findLineForHref } from './liquid-tag-index.js';
 
 const ROOT = getProjectRoot();
 
@@ -274,12 +275,14 @@ export async function resolveFromElementText(tag, text, pageUrl) {
     const contentSlice = html.slice(b.contentStart, b.endIdx);
     if (!re.test(contentSlice)) continue;
     const snippetId = b.srcFile.replace(/^src\/partials\//, '').replace(/\.liquid$/, '');
+    // The boundary names the file; the tag index turns tag + text into a line.
+    const located = findLineForTagText(b.srcFile, tagLower, text);
     return {
       originFile: b.srcFile,
-      originLine: null,
+      originLine: located?.line ?? null,
       snippetId,
-      confidence: 'medium',
-      method: 'text-fingerprint',
+      confidence: located?.confidence === 'high' ? 'high' : 'medium',
+      method: located ? `text-fingerprint+${located.method}` : 'text-fingerprint',
     };
   }
   return null;
@@ -314,12 +317,13 @@ export async function resolveFromHref(href, pageUrl) {
     const contentSlice = html.slice(b.contentStart, b.endIdx);
     if (!contentSlice.includes(dq) && !contentSlice.includes(sq)) continue;
     const snippetId = b.srcFile.replace(/^src\/partials\//, '').replace(/\.liquid$/, '');
+    const located = findLineForHref(b.srcFile, href);
     return {
       originFile: b.srcFile,
-      originLine: null,
+      originLine: located?.line ?? null,
       snippetId,
-      confidence: 'medium',
-      method: 'href-fingerprint',
+      confidence: located?.confidence === 'high' ? 'high' : 'medium',
+      method: located ? `href-fingerprint+${located.method}` : 'href-fingerprint',
     };
   }
   return null;

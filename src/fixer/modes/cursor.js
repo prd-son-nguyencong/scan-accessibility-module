@@ -60,6 +60,10 @@ export async function writeFixContext(violations, config = {}, options = {}) {
       // others one observation carrying a node count. Both totals are recorded
       // so a mismatch is visible rather than silently swallowed.
       nodesCovered: occurrences.reduce((n, o) => n + (o.nodeCount || 1), 0),
+      // Line attribution, split by how much an agent can trust it.
+      withLine: occurrences.filter((o) => o.line).length,
+      withoutLine: occurrences.filter((o) => !o.line).length,
+      pageLevelAnchors: occurrences.filter((o) => o.method === 'page-level-anchor').length,
       prunedStalePatches: pruned,
     },
     scope: scanScope
@@ -186,6 +190,8 @@ function toOccurrences(violation) {
       selector: violation.element?.selector || null,
       outerHTML: violation.element?.outerHTML || null,
       nodeCount: violation.count || 1,
+      method: violation.source?.method || null,
+      confidence: violation.source?.confidence || null,
     }];
   }
 
@@ -202,7 +208,27 @@ function toOccurrences(violation) {
     selector: observation.element?.selector || null,
     outerHTML: observation.element?.outerHTML || null,
     nodeCount: observation.count || 1,
+    method: observation.source?.method || violation.source?.method || null,
+    confidence: observation.source?.confidence || violation.source?.confidence || null,
   }));
+}
+
+/**
+ * A literal string an agent can grep for to confirm the element, taken from the
+ * rendered attributes most likely to be authored verbatim in the template.
+ */
+function buildSearchKey(o) {
+  const html = o.outerHTML || '';
+  const candidates = [
+    html.match(/\bid="([^"{]{4,})"/)?.[1],
+    html.match(/\baria-label="([^"{]{4,})"/)?.[1],
+    html.match(/\bdata-testid="([^"{]{4,})"/)?.[1],
+    html.match(/\bhref="([^"#{][^"]{3,})"/)?.[1],
+    (html.match(/\bclass="([^"]+)"/)?.[1] || '')
+      .split(/\s+/)
+      .find((c) => c.length > 6 && !c.includes(':') && !c.includes('[')),
+  ].filter(Boolean);
+  return candidates[0] || '';
 }
 
 function renderOccurrence(o) {
@@ -215,6 +241,17 @@ function renderOccurrence(o) {
   // agent fixes one and believes the finding is cleared.
   const nodes = o.nodeCount > 1 ? `Matches: ${o.nodeCount} elements — fix all of them` : '';
 
+  // An anchor is where a fix would go, not where the problem is: the finding
+  // reports something absent, so there is no element to edit at that line.
+  const anchored = o.method === 'page-level-anchor'
+    ? 'Location: page-level anchor — nothing exists at this line yet; this is where the fix belongs'
+    : '';
+  // A low- or medium-confidence line is a starting point. Give the agent the
+  // string to grep for so it can confirm before editing.
+  const searchKey = o.method !== 'page-level-anchor' && o.confidence !== 'high'
+    ? buildSearchKey(o)
+    : '';
+
   return [
     `--- ${location}`,
     `Finding: ${o.findingId}${position}`,
@@ -225,6 +262,8 @@ function renderOccurrence(o) {
     o.deterministic === false ? 'Deterministic: no — needs judgment, do not auto-apply blindly' : '',
     renderManualChecks(o.manualChecks),
     o.patch ? `Patch:\n${o.patch}` : '',
+    anchored,
+    searchKey ? `Search: ${searchKey}` : '',
     o.selector ? `Selector: ${o.selector}` : '',
     o.outerHTML ? `Element:\n${truncate(o.outerHTML, ELEMENT_HTML_LIMIT)}` : '',
     o.snippet ? `Source:\n${o.snippet}` : '',
