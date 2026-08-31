@@ -29,6 +29,7 @@ export async function runFixEngine(violations, options = {}) {
     agent = false,
     config = {},
     includeThirdParty = false,
+    scanScope = null,
   } = options;
 
   const session = {
@@ -76,7 +77,7 @@ export async function runFixEngine(violations, options = {}) {
   // IDE modes: write context files, no interactive UI
   if (isIDEMode) {
     const modeModule = await import(`./modes/${fixMode}.js`);
-    await modeModule.writeFixContext(sorted, config);
+    await modeModule.writeFixContext(sorted, config, { scanScope });
     console.log(`Fix context written for ${fixMode} IDE mode.`);
     session.fixes = sorted.map((v) => ({ ruleId: v.ruleId, mode: fixMode, action: 'ide-context' }));
 
@@ -134,7 +135,7 @@ export async function runFixEngine(violations, options = {}) {
       console.log(`Use --fix-mode cis|claude|codex with --ui.\n`);
       console.log(`Falling back to ${fixMode} IDE context output...\n`);
       const modeModule = await import(`./modes/${fixMode}.js`);
-      await modeModule.writeFixContext(sorted, config);
+      await modeModule.writeFixContext(sorted, config, { scanScope });
     } else {
       const { startFixServer } = await import('./ui/server.js');
       const { FixState } = await import('./ui/state.js');
