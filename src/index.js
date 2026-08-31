@@ -1413,8 +1413,21 @@ async function runScan(pages, config, manifest, options) {
       });
     } else {
       const allViolations = legacyReport.pages.flatMap((page) => page.violations || []);
+      // Scope tells the fix writers whether this run covers the whole site or a
+      // subset. A subset must not be treated as authoritative — patches for
+      // pages that were not scanned are still on disk and may be stale.
+      const configuredPageCount = Array.isArray(config.pages) && config.pages.length
+        ? config.pages.length
+        : 1;
+      const scanScope = {
+        routes: pages.map((page) => page.path || page.url || page.name).filter(Boolean),
+        scannedPageCount: pages.length,
+        configuredPageCount,
+        partial: pages.length < configuredPageCount,
+      };
       const session = await runFixEngine(allViolations, {
         fixMode, dryRun, useUI, useAI, agent: agentMode, config, includeThirdParty,
+        scanScope,
       });
       console.log(`Fix session: ${session.fixes.length} fix(es), ${session.skipped.length} skipped`);
     }
