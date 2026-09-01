@@ -1,6 +1,11 @@
 import { getBrowser, newPage, resilientGoto } from './browser.js';
 import { mapDescriptionToSource } from '../tracer/partial-map.js';
 import { getThirdPartyConfig } from '../utils/third-party.js';
+import { readFileSync } from 'fs';
+
+const PACKAGE_VERSION = JSON.parse(
+  readFileSync(new URL('../../package.json', import.meta.url), 'utf8')
+).version;
 
 const PAGE_TIMEOUT_MS = 60000;
 const W3C_VALIDATOR_API = 'https://validator.w3.org/nu/?out=json&showsource=yes';
@@ -79,7 +84,7 @@ export function buildW3cRunMetadata({
   messages = [],
   isArtifact = () => false,
   engineName = 'Nu Html Checker',
-  engineVersion = null,
+  engineVersion = 'unknown',
   status = 'complete',
   supplemental = {
     candidateCount: 0,
@@ -174,6 +179,7 @@ export async function scanW3cValidation(pageUrl) {
         w3cUnavailable: true,
         scannerRun: buildW3cRunMetadata({
           engineName: 'ada-scan local HTML checks',
+          engineVersion: PACKAGE_VERSION,
           status: 'fallback',
           supplemental: {
             candidateCount: localIssues.length,
@@ -258,7 +264,7 @@ export async function scanW3cValidation(pageUrl) {
     metadataInput = {
       messages,
       isArtifact: isParadoxArtifact,
-      engineVersion: validationResult.version || null,
+      engineVersion: validationResult.version || 'unknown',
       supplemental: supplemental.stats,
     };
 

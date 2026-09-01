@@ -495,7 +495,14 @@ async function traceToPartials(violations, pageUrl, localRoot = PROJECT_ROOT) {
  */
 function resolveMissingLines(violations, pageFile, localRoot = PROJECT_ROOT) {
   for (const v of violations) {
-    if (!v.source || v.source.line) continue;
+    if (!v.source) continue;
+    // A line with no method behind it came from the bare substring search, so
+    // it lands on whichever attribute line happened to match rather than on the
+    // tag itself — the reporter labels these 'legacy-source-attribution'. Re-run
+    // the structural resolver over those too and keep its answer when it hits.
+    const legacy = !v.source.method || v.source.method === 'legacy-source-attribution';
+    const hadLine = Boolean(v.source.line);
+    if (hadLine && !legacy) continue;
     const currentFile = v.source.file && v.source.file !== 'unknown' ? v.source.file : pageFile;
     const html = v.element?.outerHTML || '';
 
@@ -509,7 +516,9 @@ function resolveMissingLines(violations, pageFile, localRoot = PROJECT_ROOT) {
         if (relocated) { hit = relocated; file = relocated.file; }
       }
     }
-    if (!hit) {
+    // A page-level anchor is weaker than a legacy line, so it is only a
+    // fallback for findings that have no line at all.
+    if (!hit && !hadLine) {
       const anchor = findPageLevelAnchor(pageFile, v.rule || v.ruleId || v.nativeRuleId || v.id);
       if (anchor) { hit = anchor; file = anchor.file; }
     }
