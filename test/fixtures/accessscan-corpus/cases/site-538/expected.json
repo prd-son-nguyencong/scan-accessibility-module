@@ -1,0 +1,251 @@
+{
+  "schemaVersion": "1.0.0",
+  "profile": "commercial-parity",
+  "findings": [
+    {
+      "ruleId": "VisibilityMismatch",
+      "canonicalRuleId": "VisibilityMismatch",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:aria-hidden-visible",
+        "structuralPattern": "rendered-aria-hidden-root"
+      },
+      "element": {
+        "semantic": {
+          "tag": "svg",
+          "role": null,
+          "attributes": {
+            "aria-hidden": "neutral-text-0-8ac2ccac"
+          },
+          "landmarkPath": [
+            "main",
+            "section[slice-0]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "VisibilityMismatch",
+      "canonicalRuleId": "VisibilityMismatch",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:aria-hidden-visible",
+        "structuralPattern": "rendered-aria-hidden-root"
+      },
+      "element": {
+        "semantic": {
+          "tag": "svg",
+          "role": null,
+          "attributes": {
+            "aria-hidden": "neutral-text-0-8ac2ccac"
+          },
+          "landmarkPath": [
+            "main",
+            "section[slice-1]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "VisibilityMismatch",
+      "canonicalRuleId": "VisibilityMismatch",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:aria-hidden-visible",
+        "structuralPattern": "rendered-aria-hidden-root"
+      },
+      "element": {
+        "semantic": {
+          "tag": "svg",
+          "role": null,
+          "attributes": {
+            "aria-hidden": "neutral-text-0-8ac2ccac"
+          },
+          "landmarkPath": [
+            "main",
+            "section[slice-2]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "VisibilityMismatch",
+      "canonicalRuleId": "VisibilityMismatch",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:aria-hidden-visible",
+        "structuralPattern": "rendered-aria-hidden-root"
+      },
+      "element": {
+        "semantic": {
+          "tag": "svg",
+          "role": null,
+          "attributes": {
+            "aria-hidden": "neutral-text-0-8ac2ccac"
+          },
+          "landmarkPath": [
+            "main",
+            "section[slice-3]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "VisibilityMismatch",
+      "canonicalRuleId": "VisibilityMismatch",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:aria-hidden-visible",
+        "structuralPattern": "rendered-aria-hidden-root"
+      },
+      "element": {
+        "semantic": {
+          "tag": "svg",
+          "role": null,
+          "attributes": {
+            "aria-hidden": "neutral-text-0-8ac2ccac"
+          },
+          "landmarkPath": [
+            "main",
+            "section[slice-4]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "VisibilityMismatch",
+      "canonicalRuleId": "VisibilityMismatch",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:aria-hidden-visible",
+        "structuralPattern": "rendered-aria-hidden-root"
+      },
+      "element": {
+        "semantic": {
+          "tag": "svg",
+          "role": null,
+          "attributes": {
+            "aria-hidden": "neutral-text-0-8ac2ccac"
+          },
+          "landmarkPath": [
+            "main",
+            "section[slice-5]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "VisibilityMismatch",
+      "canonicalRuleId": "VisibilityMismatch",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:aria-hidden-visible",
+        "structuralPattern": "rendered-aria-hidden-root"
+      },
+      "element": {
+        "semantic": {
+          "tag": "svg",
+          "role": null,
+          "attributes": {
+            "aria-hidden": "neutral-text-0-8ac2ccac"
+          },
+          "landmarkPath": [
+            "main",
+            "section[slice-6]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "VisibilityMismatch",
+      "canonicalRuleId": "VisibilityMismatch",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:aria-hidden-visible",
+        "structuralPattern": "rendered-aria-hidden-root"
+      },
+      "element": {
+        "semantic": {
+          "tag": "svg",
+          "role": null,
+          "attributes": {
+            "aria-hidden": "neutral-text-0-8ac2ccac"
+          },
+          "landmarkPath": [
+            "main",
+            "section[slice-7]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "VisibilityMisuse",
+      "canonicalRuleId": "VisibilityMisuse",
+      "violationType": "commercial-parity",
+      "evidence": {
+        "checkId": "parity:structural-visibility-misuse",
+        "structuralPattern": "empty-zero-height-text-block"
+      },
+      "element": {
+        "semantic": {
+          "tag": "p",
+          "role": null,
+          "attributes": {},
+          "landmarkPath": [
+            "main",
+            "section[slice-8]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    },
+    {
+      "ruleId": "ListEmpty",
+      "canonicalRuleId": "ListEmpty",
+      "violationType": "confirmed",
+      "evidence": {
+        "checkId": "lists:list-empty"
+      },
+      "element": {
+        "semantic": {
+          "tag": "ul",
+          "role": null,
+          "attributes": {},
+          "landmarkPath": [
+            "main",
+            "section[slice-19]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    }
+  ]
+}

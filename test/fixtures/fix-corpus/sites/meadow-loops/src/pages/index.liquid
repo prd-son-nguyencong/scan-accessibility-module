@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Meadow FAQ</title>
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+{% render "header" %}
+<main id="main">
+  <h1>Meadow FAQ</h1>
+  <div class="faq">
+  {% for faq in faqs %}
+    <section class="faq-item" data-pdk-item="faq">
+      <button class="faq-btn" type="button" aria-expanded="false" aria-controls="faq-panel">{{ faq.q }}</button>
+      <div id="faq-panel" class="faq-panel" hidden>{{ faq.a }}</div>
+    </section>
+  {% endfor %}
+  </div>
+</main>
+<script src="/faq.js"></script>
+</body>
+</html>

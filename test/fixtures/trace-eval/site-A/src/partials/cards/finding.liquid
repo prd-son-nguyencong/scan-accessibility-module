@@ -1,0 +1,9 @@
+<section>
+  {% for item in cards %}
+  <a href="{{ item.link }}" class="launch-card">
+    <img
+      src="{{ item.image }}"
+      class="absolute inset-0 size-full">
+  </a>
+  {% endfor %}
+</section>

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1.0.0",
+  "profile": "standards",
+  "findings": [
+    {
+      "ruleId": "ListEmpty",
+      "canonicalRuleId": "ListEmpty",
+      "violationType": "confirmed",
+      "evidence": {
+        "checkId": "lists:list-empty"
+      },
+      "element": {
+        "semantic": {
+          "tag": "ul",
+          "role": null,
+          "attributes": {},
+          "landmarkPath": ["main"],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    }
+  ]
+}

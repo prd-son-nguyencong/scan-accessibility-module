@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "provenance": "synthetic-inferred",
+    "source": "openai-style model list envelope inferred from task types",
+    "note": "Inferred response placeholder only. Replace with observed-live-redacted when on-network capture is available."
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-request-id": "<redacted-request-id>"
+    },
+    "body": {
+      "object": "list",
+      "data": [
+        {
+          "id": "anthropic.claude-sonnet-4-20250514-v1:0",
+          "provider": "aws",
+          "task_types": ["openai-chat-completion-v1"]
+        }
+      ]
+    }
+  }
+}

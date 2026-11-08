@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{attribute:og_title}}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="{{attribute:og_description}}">
+<link rel="stylesheet" href="/cal.css">
+<script>/* the platform resolves the tag at run time; locally the live value is empty */ document.title = "";</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header><nav aria-label="Primary"><ul><li><a href="/">Home</a></li></ul></nav></header>
+<main id="main">
+<h1>Runtime-bound head</h1>
+<ul class="bound-facts">
+  <li>{{data:job.location_name}}</li>
+  {% if data:job.salary_min %}
+  <li>{{data:job.salary_min}}</li>
+  {% endif %}
+</ul>
+<div class="bound-hero" style="background:#003963;color:#000">
+  {{component:7d443d56-57e1-4030-88de-465e1f8e466e}}
+</div>
+</main>
+<footer><p>Calibration footer</p></footer>
+</body>
+</html>

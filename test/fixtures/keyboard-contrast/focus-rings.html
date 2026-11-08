@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Focus rings</title>
+<style>body{margin:0;padding:24px;background:#fff;font:16px Arial,sans-serif}
+a,button{display:inline-block;margin:16px;padding:10px 16px;font:inherit}
+/* offset ring in the button's own colour: visible against the white page */
+.offset{background:#0b57d0;color:#fff;border:0}
+.offset:focus-visible{outline:3px solid #0b57d0;outline-offset:3px}
+/* ring so light it vanishes on the page */
+.faint{color:#000;text-decoration:underline}
+.faint:focus-visible{outline:3px solid #f2f2f2}
+/* white ring drawn over the dark button: seen against the fill, lost against the page */
+.inset{background:#111;color:#fff;border:0}
+.inset:focus-visible{outline:3px solid #fff;outline-offset:-5px}
+/* inset rings in the fill colour (or a hair off it): invisible against the element, however white the page is */
+.same{background:#111;color:#fff;border:0}
+.same:focus-visible{outline:3px solid #111;outline-offset:-3px}
+.near{background:#111;color:#fff;border:0}
+.near:focus-visible{outline:3px solid #151515;outline-offset:-3px}
+/* box-shadow ring */
+.shadow{background:#fff;color:#000;border:1px solid #888}
+.shadow:focus-visible{outline:none;box-shadow:0 0 0 3px #0b57d0}
+/* default UA ring */
+.ua{color:#000}
+.hover-fill{background:#222;color:#fff;border:0}
+.hover-fill:hover{background:#fff}
+.hover-fill:focus-visible{outline:3px solid #222;outline-offset:2px}
+</style></head>
+<body><main id="main">
+<button class="offset">Offset ring</button>
+<a href="#main" class="faint">Faint ring</a>
+<button class="inset">Inset ring</button>
+<button class="same">Same fill ring</button>
+<button class="near">Near fill ring</button>
+<button class="shadow">Shadow ring</button>
+<a href="#main" class="ua">UA ring</a>
+<button class="hover-fill">Dark fill ring</button>
+</main></body></html>

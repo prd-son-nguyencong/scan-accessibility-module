@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Drawer</title>
+<style>body{margin:0;background:#fff;font:16px Arial,sans-serif;color:#000}
+#drawer{display:none;background:#fff}#drawer.open{display:block}
+.weak{color:#00aff0}
+.ok{color:#111}
+</style></head>
+<body><header><button id="t" aria-expanded="false" aria-controls="drawer">Menu</button></header>
+<div id="drawer"><a href="#a" class="weak">Pale drawer link</a> <a href="#b" class="ok">Dark drawer link</a></div>
+<main><h1>Page</h1><p>Plain text.</p></main>
+<script>const t=document.getElementById("t"),d=document.getElementById("drawer");t.onclick=()=>{const o=!d.classList.contains("open");d.classList.toggle("open",o);t.setAttribute("aria-expanded",String(o))}</script>
+</body></html>

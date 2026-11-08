@@ -1,0 +1,11 @@
+export { captureSnapshot, measurePerfOnce, resolveKeys, VIEWPORTS, STYLE_PROPS, SNAPSHOT_VERSION } from './snapshot.js';
+export { baselineNoise, compareLayout, compareStyles, compareVisual, compareBehaviour, comparePerf, noiseMargin, diffImages, DEFAULTS } from './compare.js';
+export { extractBackendTokens, extractDesignTokens, compareTrees, readTree, diffMultisets } from './tokens.js';
+export { runGates, evaluateTargeted, evaluateScope, evaluateBuildValidity, decideAcceptance, riskScore, diffLines, GATE_IDS } from './gates.js';
+export { decodePng } from './png.js';
+export { runHarness, loadHarnessConfig, renderRunMarkdown, siteAdapterFor, HarnessError } from './runner.js';
+export { createLighthousePerfRunner, perfFromLhr, medianPerf } from './perf.js';
+export { runBuild, countHtmlValidateErrors, checkExport, checkFormatter, collectBuildFacts, dirSize } from './build-checks.js';
+export { buildRemainingReport, renderRemainingMarkdown, writeRemainingReport, REASON_CLASSES } from './remaining.js';
+export { decide, buildEvidence, queueForReview, screenshotPaths, DEFAULT_POLICY } from './policy.js';
+export { fileToEdits, unifiedDiff, changedLineCount, ChangeError } from './change.js';

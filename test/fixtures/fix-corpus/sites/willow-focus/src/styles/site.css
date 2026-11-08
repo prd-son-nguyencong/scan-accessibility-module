@@ -1,0 +1,7 @@
+body { margin: 0; font: 16px/1.5 sans-serif; color: #222; background: #fff; }
+.skip-link { position: absolute; left: -9999px; top: 0; }
+a:focus, button:focus { outline: none; }
+.site-header { padding: 12px 24px; background: #f2f4f7; }
+main { padding: 24px; }
+.cta { min-height: 44px; padding: 0 16px; border: 1px solid #888; background: #fff; }
+.muted { margin: 0; padding: 16px 0 0; color: #aaa; }

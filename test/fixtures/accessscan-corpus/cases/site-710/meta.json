@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "site-710",
+  "profile": "commercial-parity",
+  "route": "/",
+  "captureState": "initial",
+  "viewport": {
+    "width": 1280,
+    "height": 900
+  },
+  "captureMode": "oracle-evidence-slice",
+  "notes": [
+    "Frozen cross-site accessScan oracle evidence slice seeded from tooling source manifest.",
+    "This case is an evidence slice rather than a whole-page baseline.",
+    "Evidence slice contains 1 uniquely alignable oracle snippets with 1 aligned findings.",
+    "Limitation: VisibilityMisuse: non-replayable document-level snippet skipped at index 0",
+    "Limitation: RegionMainContentMismatch: truncated oracle html snippet skipped at index 1",
+    "Limitation: RegionMainContentMisuse: truncated oracle html snippet skipped at index 2",
+    "Limitation: PageTitleValid: non-replayable document-level snippet skipped at index 4",
+    "Limitation: Reprocess retained 1 replay-confirmed findings after neutralization refresh"
+  ]
+}

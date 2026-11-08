@@ -1,0 +1,59 @@
+{
+  "baseUrl": "http://localhost:1234",
+  "devCommand": "pnpm dev",
+  "buildCommand": "pnpm build:vite",
+  "buildEnv": { "SCAN_MODE": "true", "MINIFY": "true" },
+  "outDir": "dist",
+  "source": {
+    "roots": ["src/partials", "src/pages", "src/components"],
+    "pagesRoot": "src/pages",
+    "extension": ".liquid"
+  },
+  "distMap": [
+    { "dist": "dist/partials/", "src": "src/partials/", "ext": ".liquid" },
+    { "dist": "dist/pages/", "src": "src/pages/", "ext": ".liquid" },
+    { "dist": "dist/layouts/", "src": "src/layouts/", "ext": ".liquid" },
+    { "dist": "dist/components/", "src": "src/components/", "ext": ".liquid" }
+  ],
+  "thirdParty": {
+    "preset": "auto",
+    "selectors": [".d3afa4", "._72cec8", ".apply-", "[data-testid^=\"olivia\"]"],
+    "devArtifactTokens": ["{{", "}}", "{%", "%}"],
+    "chatbotSelector": ".oliviaButton"
+  },
+  "axe": {
+    "timeoutMs": 60000,
+    "viewports": [
+      { "name": "desktop", "width": 1280, "height": 900 },
+      { "name": "mobile", "width": 390, "height": 844 }
+    ]
+  },
+  "pages": [{ "path": "/", "name": "homepage" }],
+  "profile": "standards",
+  "concurrency": 2,
+  "thresholds": {
+    "lighthouse": {
+      "mobile": { "performance": 80, "accessibility": 100, "bestPractices": 90, "seo": 90 },
+      "desktop": { "performance": 90, "accessibility": 100, "bestPractices": 90, "seo": 90 }
+    },
+    "a11y": { "critical": 0, "serious": 0, "moderate": "report", "minor": "report" },
+    "w3c": { "errors": 0, "warnings": "report" }
+  },
+  "layers": {
+    "axe": true,
+    "accessScan": true,
+    "w3c": true,
+    "htmlValidate": true,
+    "links": true,
+    "lighthouse": true,
+    "keyboard": true,
+    "ariaLive": true,
+    "focusTrap": true,
+    "dynamicContent": true,
+    "screenReader": true
+  },
+  "external": { "w3c": false, "psi": false },
+  "customRules": [],
+  "skipRules": [],
+  "suppress": []
+}

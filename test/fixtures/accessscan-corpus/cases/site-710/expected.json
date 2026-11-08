@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "1.0.0",
+  "profile": "commercial-parity",
+  "findings": [
+    {
+      "ruleId": "ImageDiscernible",
+      "canonicalRuleId": "ImageDiscernible",
+      "violationType": "confirmed",
+      "evidence": {
+        "checkId": "graphics:image-discernible"
+      },
+      "element": {
+        "semantic": {
+          "tag": "img",
+          "role": null,
+          "attributes": {},
+          "landmarkPath": [
+            "main",
+            "section[slice-0]"
+          ],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    }
+  ]
+}

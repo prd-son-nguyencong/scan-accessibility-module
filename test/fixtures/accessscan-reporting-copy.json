@@ -1,0 +1,48 @@
+{
+  "failedRulesDom": [
+    {
+      "title": "All of the main content on the page is contained in the main landmark",
+      "preview": "Bad Score All of the main content on the page is contained in the main landmark Requirement: The main landmark represents the primary content of a page. It should include only content unique to that page and must remain separate from repeated elements, such as navigation, header, or footer."
+    },
+    {
+      "title": "An element without main content is tagged as a main landmark",
+      "preview": "Bad Score An element without main content is tagged as a main landmark Requirement: Incorrectly tagging the main landmark may cause screen reader users to misunderstand where the primary content begins or ends, leading to confusion and inefficient navigation."
+    },
+    {
+      "title": "A search form should be tagged as a search landmark",
+      "preview": "Bad Score A search form should be tagged as a search landmark Requirement: Screen reader users rely on landmarks to quickly access important regions of a page. Defining a form as a search landmark ensures that users can quickly recognize and navigate to the search form."
+    },
+    {
+      "title": "Global site information that appears at the end of each page is contained in a contentinfo landmark (footer)",
+      "preview": "Bad Score Global site information that appears at the end of each page is contained in a contentinfo landmark (footer) Requirement: The contentinfo region, typically represented by the <footer> element, is found at the end of each page and provides screen reader users with information about the website, such as copyright, contact details, legal information, and navigation links."
+    },
+    {
+      "title": "An element without global site information is tagged as a contentinfo landmark",
+      "preview": "Bad Score An element without global site information is tagged as a contentinfo landmark Requirement: When a region without global site information is tagged as a contentinfo landmark, screen reader users may be misled about its purpose and expect website-level details, such as copyright or contact information."
+    },
+    {
+      "title": "Default page language should be defined",
+      "preview": "Bad Score Default page language should be defined Requirement: Specifying a default page language ensures screen readers apply the correct pronunciation rules, voices, and braille output. Without it, screen readers may guess the language incorrectly, causing mispronunciations, confusion, and reduced comprehension for users."
+    },
+    {
+      "title": "Focused elements should not be obscured by a sticky header",
+      "preview": "Bad Score Focused elements should not be obscured by a sticky header Requirement: A sticky header remains anchored to the top of the screen while the rest of the page content can be scrolled. If it is not offset from interactive elements, it can overlap and obscure the item in focus."
+    },
+    {
+      "title": "Aria labels should not override or replace visible text",
+      "preview": "Bad Score Aria labels should not override or replace visible text Requirement: Aria labels should describe elements that don't have proper text, like icons and field labels. It should not be used to override element texts. Screen reader users need to receive the exact text as visually on the screen, with more context if it is ambiguous. An exception applies to landmarks such as nav or other landmarks: here, ARIA labels can provide additional context or clarification."
+    },
+    {
+      "title": "Meaningful icons should have a label, while decorative icons should be hidden",
+      "preview": "Bad Score Meaningful icons should have a label, while decorative icons should be hidden Requirement: Smaller graphics used as decorative or complementary elements, such as icons, and that do not provide additional information will often add unnecessary clutter to a screen reader user's browsing experience. This makes it harder for users to focus on the main content and understand the purpose of the page."
+    },
+    {
+      "title": "Only elements that function as images should be tagged as image",
+      "preview": "Bad Score Only elements that function as images should be tagged as image Requirement: When non-graphical elements are marked up as images, screen reader users may misunderstand the intended purpose of the content."
+    },
+    {
+      "title": "Visibly hidden content should not be exposed to assistive technology",
+      "preview": "Bad Score Visibly hidden content should not be exposed to assistive technology Requirement: When elements are visually hidden but still exposed to assistive technology, screen reader users may encounter content that should not be available in the current interface. This can obscure the current state of the page and lead to confusion about what information or controls are available."
+    }
+  ]
+}

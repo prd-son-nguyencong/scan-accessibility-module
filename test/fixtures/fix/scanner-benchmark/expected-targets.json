@@ -1,0 +1,14 @@
+[
+  { "canonicalRuleId": "button-name", "route": "/", "pageState": "initial", "selector": "#btn-1" },
+  { "canonicalRuleId": "button-name", "route": "/", "pageState": "initial", "selector": "#btn-2" },
+  { "canonicalRuleId": "button-name", "route": "/", "pageState": "initial", "selector": "#btn-3" },
+  { "canonicalRuleId": "button-name", "route": "/", "pageState": "initial", "selector": "#btn-4" },
+  { "canonicalRuleId": "button-name", "route": "/", "pageState": "initial", "selector": "#btn-5" },
+  { "canonicalRuleId": "link-name", "route": "/", "pageState": "initial", "selector": "#link-1" },
+  { "canonicalRuleId": "link-name", "route": "/", "pageState": "initial", "selector": "#link-2" },
+  { "canonicalRuleId": "image-alt", "route": "/", "pageState": "initial", "selector": "#img-1" },
+  { "canonicalRuleId": "image-alt", "route": "/", "pageState": "initial", "selector": "#img-2" },
+  { "canonicalRuleId": "label", "route": "/", "pageState": "initial", "selector": "#input-1" },
+  { "canonicalRuleId": "label", "route": "/", "pageState": "initial", "selector": "#input-2" },
+  { "canonicalRuleId": "select-name", "route": "/", "pageState": "initial", "selector": "#select-1" }
+]

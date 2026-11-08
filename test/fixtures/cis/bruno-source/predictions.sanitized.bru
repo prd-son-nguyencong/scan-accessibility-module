@@ -1,0 +1,40 @@
+meta {
+  name: predictions
+  type: http
+  seq: 5
+}
+
+post {
+  url: <redacted-base-url>/ml/inference/cis/v1alpha1/predictions?bypass_auth=true
+  body: json
+  auth: inherit
+}
+
+params:query {
+  bypass_auth: true
+}
+
+headers {
+  Wd-PCA-Feature-Key: <redacted-feature-key>
+}
+
+body:json {
+  {
+    "target": {
+      "provider": "aws",
+      "model": "anthropic.claude-sonnet-4-20250514-v1:0"
+    },
+    "task": {
+      "type": "openai-chat-completion-v1",
+      "input": {
+        "messages": [{"role": "user", "content": "<redacted-content>"}],
+        "max_completion_tokens": 100
+      }
+    }
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

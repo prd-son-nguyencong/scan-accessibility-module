@@ -1,0 +1,7 @@
+<section id="team">
+  {% for s in slides %}
+  <article class="team-slide{% if forloop.first %} on{% endif %}" data-slide>
+    <p>{{ s.title }}</p>
+  </article>
+  {% endfor %}
+</section>

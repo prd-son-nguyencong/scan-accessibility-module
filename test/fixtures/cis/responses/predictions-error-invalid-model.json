@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "provenance": "synthetic-inferred",
+    "source": "inferred invalid target.model error envelope",
+    "note": "Inferred error placeholder for invalid provider/model."
+  },
+  "response": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json",
+      "x-request-id": "<redacted-request-id>"
+    },
+    "body": {
+      "error": {
+        "type": "invalid_request_error",
+        "param": "target.model",
+        "message": "<redacted-content>"
+      }
+    }
+  }
+}

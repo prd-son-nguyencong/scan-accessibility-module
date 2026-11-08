@@ -1,0 +1,6 @@
+{
+  "cards": [
+    { "image": "/first.webp", "link": "/one" },
+    { "image": "/second.webp", "link": "/two" }
+  ]
+}

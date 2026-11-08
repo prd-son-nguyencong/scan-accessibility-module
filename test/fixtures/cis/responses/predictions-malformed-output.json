@@ -1,0 +1,46 @@
+{
+  "meta": {
+    "provenance": "synthetic",
+    "source": "advisory hazard: HTTP 200 with non-actionable assistant content",
+    "note": "Represents non-actionable advisory text (malformed patch prose). Raw model output is redacted in fixtures."
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-request-id": "<redacted-request-id>"
+    },
+    "body": {
+      "prediction": {
+        "type": "openai-chat-completion-v1",
+        "output": {
+          "id": "<redacted-request-id>",
+          "object": "chat.completion",
+          "created": 1752490001,
+          "model": "anthropic.claude-sonnet-4-20250514-v1:0",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "<redacted-content>"
+              },
+              "finish_reason": "stop"
+            }
+          ],
+          "usage": {
+            "prompt_tokens": 400,
+            "completion_tokens": 64,
+            "total_tokens": 464
+          }
+        }
+      }
+    }
+  },
+  "parseResult": {
+    "validJson": false,
+    "actionableContent": false,
+    "semanticNote": "non-actionable advisory prose with broken patch fence",
+    "validator": "prompt-plus-local-validator"
+  }
+}

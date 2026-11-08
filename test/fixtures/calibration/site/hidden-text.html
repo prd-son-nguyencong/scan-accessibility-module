@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hidden text</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Calibration fixture Hidden text">
+<link rel="stylesheet" href="/cal.css">
+<style>.yr{opacity:0}.reveal{opacity:0}.reveal:focus-within{opacity:1}</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header><nav aria-label="Primary"><ul><li><a href="/">Home</a></li></ul></nav></header>
+<main id="main">
+<h1>Hidden text</h1>
+<p id="d1" class="sr-only">Opens in a new window</p>
+<p id="d2" class="sr-only">PDF, 2 MB</p>
+<a class="ref-link" href="/" aria-describedby="d1 d2">Annual report</a>
+<div class="reveal"><a class="reveal-link" href="/">More details</a></div>
+<div role="tablist" aria-label="Years"><button role="tab" id="t1" aria-selected="true" aria-controls="tp1"><span class="yr" id="yr1">2024</span><span aria-hidden="true">Year</span></button></div>
+<div role="tabpanel" id="tp1" aria-labelledby="t1"><p>Active panel</p></div>
+<div role="tabpanel" id="tp2" class="tp-inactive" style="opacity:0"><p>Inactive panel text that is invisible but exposed</p></div>
+<p class="orphan-hidden sr-only">Unreferenced hidden junk text</p>
+</main>
+<footer><p>Calibration footer</p></footer>
+
+</body>
+</html>

@@ -1,0 +1,99 @@
+{
+  "versions": {
+    "playwright": "1.59.1",
+    "chromium": "147.0.7727.15",
+    "axe": "4.12.1"
+  },
+  "findings": {
+    "accessScan:LinkCurrentPage|html>body:nth-of-type(1)>header:nth-of-type(1)>nav:nth-of-type(1)>a:nth-of-type(1)|/": {
+      "impact": "moderate",
+      "wcag": "WCAG 2.0 A 1.3.1",
+      "count": 1
+    },
+    "accessScan:LinkCurrentPage|html>body:nth-of-type(1)>header:nth-of-type(1)>nav:nth-of-type(1)>a:nth-of-type(2)|/benefits": {
+      "impact": "moderate",
+      "wcag": "WCAG 2.0 A 1.3.1",
+      "count": 1
+    },
+    "accessScan:LinkCurrentPage|html>body:nth-of-type(1)>header:nth-of-type(1)>nav:nth-of-type(1)>a:nth-of-type(3)|/jobs": {
+      "impact": "moderate",
+      "wcag": "WCAG 2.0 A 1.3.1",
+      "count": 1
+    },
+    "accessScan:MetaDescription||/": {
+      "impact": "minor",
+      "wcag": "Best Practice",
+      "count": 1
+    },
+    "accessScan:MetaDescription||/benefits": {
+      "impact": "minor",
+      "wcag": "Best Practice",
+      "count": 1
+    },
+    "accessScan:MetaDescription||/jobs": {
+      "impact": "minor",
+      "wcag": "Best Practice",
+      "count": 1
+    },
+    "accessScan:NavigationMisuse|html>body:nth-of-type(1)>header:nth-of-type(1)>nav:nth-of-type(1)|/": {
+      "impact": "moderate",
+      "wcag": "WCAG 2.0 A 1.3.1",
+      "count": 1
+    },
+    "accessScan:NavigationMisuse|html>body:nth-of-type(1)>header:nth-of-type(1)>nav:nth-of-type(1)|/benefits": {
+      "impact": "moderate",
+      "wcag": "WCAG 2.0 A 1.3.1",
+      "count": 1
+    },
+    "accessScan:NavigationMisuse|html>body:nth-of-type(1)>header:nth-of-type(1)>nav:nth-of-type(1)|/jobs": {
+      "impact": "moderate",
+      "wcag": "WCAG 2.0 A 1.3.1",
+      "count": 1
+    },
+    "accessScan:PageMetaViewportValid|html>head:nth-of-type(1)>meta:nth-of-type(2)|/": {
+      "impact": "critical",
+      "wcag": "WCAG 2.0 AA 1.4.4",
+      "count": 1
+    },
+    "accessScan:PageTitleValid|html>head:nth-of-type(1)>title:nth-of-type(1)|/": {
+      "impact": "serious",
+      "wcag": "WCAG 2.0 A 2.4.2",
+      "count": 1
+    },
+    "axe:button-name|.defect-icon-button|/": {
+      "impact": "critical",
+      "wcag": "WCAG2A",
+      "count": 1
+    },
+    "axe:color-contrast|.defect-low-contrast|/": {
+      "impact": "serious",
+      "wcag": "WCAG2AA",
+      "count": 1
+    },
+    "axe:image-alt|.defect-img|/": {
+      "impact": "critical",
+      "wcag": "WCAG2A",
+      "count": 1
+    },
+    "axe:landmark-no-duplicate-banner|header|/": {
+      "impact": "moderate",
+      "wcag": null,
+      "count": 1
+    },
+    "axe:landmark-unique|header|/": {
+      "impact": "moderate",
+      "wcag": null,
+      "count": 1
+    },
+    "axe:target-size|.defect-small-target.tw-small-target[aria-label=\"Benefits shortcut\"]|/": {
+      "impact": "serious",
+      "wcag": "WCAG22AA",
+      "count": 1
+    },
+    "axe:target-size|.defect-small-target.tw-small-target[aria-label=\"Jobs shortcut\"]|/": {
+      "impact": "serious",
+      "wcag": "WCAG22AA",
+      "count": 1
+    }
+  }
+}

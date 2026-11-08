@@ -1,0 +1,84 @@
+{
+  "name": "ada-scan",
+  "private": true,
+  "version": "1.2.0",
+  "description": "On-demand WCAG/ADA accessibility, HTML validity and page-speed scanner for Liquid/Vite sites and live URLs, with source tracing and fix hand-off.",
+  "type": "module",
+  "bin": {
+    "ada-scan": "bin/ada-scan.js"
+  },
+  "exports": {
+    ".": "./src/index.js",
+    "./vite": {
+      "types": "./vite/index.d.ts",
+      "default": "./vite/scan-instrumentation.js"
+    },
+    "./vite/react": {
+      "types": "./vite/index.d.ts",
+      "default": "./vite/react-source-attr.js"
+    },
+    "./report": {
+      "types": "./src/reporter/report-v2.d.ts",
+      "default": "./src/reporter/report-v2.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "vite/",
+    "templates/",
+    "docs/",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=20.18.1"
+  },
+  "scripts": {
+    "test": "node --import ./test/helpers/hermetic-env.mjs --import ./test/helpers/browser-leak-guard.mjs --test --test-timeout=300000 test/*.test.js test/fix/*.test.js",
+    "report:audit": "node scripts/report-ui-audit.mjs",
+    "cis:models": "node scripts/cis-models.js",
+    "cis:configure": "node scripts/cis-configure.js",
+    "cis:benchmark": "node scripts/cis-benchmark.js",
+    "cis:demo": "node bin/ada-scan.js demo",
+    "calibrate": "node scripts/calibrate.js",
+    "trace-eval": "node scripts/trace-eval.js",
+    "docs:rules": "node scripts/docs-rules.js",
+    "docs:verdicts": "node scripts/docs-verdicts.js",
+    "docs:readme": "node scripts/docs-readme.js",
+    "docs:wcag": "node scripts/docs-wcag.js",
+    "docs:accuracy": "node scripts/docs-accuracy.js",
+    "trace:metrics": "node scripts/trace-metrics.js",
+    "seeds:report": "node scripts/seeds-report.js",
+    "truth:metrics": "node scripts/truth-metrics.js",
+    "eval:truth": "node scripts/eval-truth.js",
+    "corpus:capture": "node scripts/accessscan-corpus/capture.js",
+    "corpus:seed": "node scripts/accessscan-corpus/seed.js",
+    "corpus:verify": "node scripts/accessscan-corpus/verify.js",
+    "golden": "node scripts/golden/run.js",
+    "corpus:drift": "node scripts/accessscan-corpus/drift.js"
+  },
+  "dependencies": {
+    "@axe-core/playwright": "4.12.1",
+    "dotenv": "^16.5.0",
+    "fast-glob": "^3.3.3",
+    "html-validate": "^9.7.1",
+    "playwright": "1.59.1",
+    "undici": "^7.30.1"
+  },
+  "optionalDependencies": {
+    "@anthropic-ai/sdk": "^0.92.0",
+    "chrome-launcher": "^1.2.1",
+    "lighthouse": "^13.1.0",
+    "openai": "^6.35.0"
+  },
+  "peerDependencies": {
+    "vite": ">=5"
+  },
+  "peerDependenciesMeta": {
+    "vite": {
+      "optional": true
+    }
+  }
+}
