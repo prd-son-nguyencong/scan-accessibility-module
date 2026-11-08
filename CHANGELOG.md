@@ -9,6 +9,12 @@ comparable across upgrades.
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-08
+
+### Added
+
+- `docs/setup-with-local-career-site.md`: install, scan all pages, fix with the CIS chat, in simple English. `templates/list-pages.mjs` fills `pages` in `.scan-config.json` from `src/pages`.
+
 ## [1.2.0] - 2026-11-08
 
 ### Added (confirmed-tier accuracy measurement)

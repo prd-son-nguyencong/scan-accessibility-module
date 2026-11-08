@@ -1,7 +1,7 @@
 {
   "name": "ada-scan",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "On-demand WCAG/ADA accessibility, HTML validity and page-speed scanner for Liquid/Vite sites and live URLs, with source tracing and fix hand-off.",
   "type": "module",
   "bin": {

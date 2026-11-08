@@ -31,7 +31,7 @@ Choose one way.
 Run this in the site folder:
 
 ```bash
-pnpm add -D git+ssh://git@github.com/prd-son-nguyencong/scan-accessibility-module.git#v1.2.0
+pnpm add -D git+ssh://git@github.com/prd-son-nguyencong/scan-accessibility-module.git#v1.2.1
 npx playwright install chromium
 npx ada-scan doctor
 ```
@@ -50,7 +50,7 @@ Use this if you want to read or change the tool code.
 cd ..                      # the folder that holds your site
 git clone git@github.com:prd-son-nguyencong/scan-accessibility-module.git
 cd scan-accessibility-module
-git checkout v1.2.0
+git checkout v1.2.1
 pnpm install
 npx playwright install chromium
 cd ../<your-site-folder>
