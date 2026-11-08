@@ -203,6 +203,7 @@ A deeper description of the checks is in [fix-harness.md](fix-harness.md). The f
 | Symptom | What to do |
 |---|---|
 | `HTTP 404 — page not scanned` for a page that exists | Another server may be using port 1234. Run `lsof -nP -iTCP:1234 -sTCP:LISTEN`, stop it (`kill <pid>`), and scan again. |
+| `Dev server not ready within 30000ms via "pnpm dev"`, or many `pnpm` processes appear | Do not run `pnpm dev` again. A `postinstall` script such as `pnpm link ../some-package`, together with a `link:` override in `pnpm-workspace.yaml`, can make `pnpm` start itself again and again. Stop it with `pkill -f "pnpm link"`. Then start the server yourself, for example `node node_modules/vite/bin/vite.js dev --port 1234 --strictPort`, and run `npx ada-scan` in a second terminal: the tool uses a server that already answers on port 1234. Or set `devCommand` in `.scan-config.json` to that command. |
 | `doctor` says Node is too old | `nvm use` (needs Node 20.18.1 or newer). |
 | Chromium is missing | `npx playwright install chromium`. |
 | Exit code `2` and "INCOMPLETE SCAN" | A page or layer did not finish. Read the message, scan the failing page alone with `--page`, or raise `--max-time`. |
