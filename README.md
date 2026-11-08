@@ -14,7 +14,7 @@ traced to the source `.liquid` file and line where a local build exists, compare
 
 ## Install
 
-New to the tool? Start with the [developer guide](docs/developer-guide.md) (prerequisites, scanning, report tiers, fix flow, eval, troubleshooting) or [docs/onboarding.md](docs/onboarding.md).
+New to the tool? Start with the [developer guide](docs/developer-guide.md) (prerequisites, scanning, report tiers, fix flow, eval, troubleshooting), [docs/onboarding.md](docs/onboarding.md), or the short setup for a local career site: [docs/setup-with-local-career-site.md](docs/setup-with-local-career-site.md).
 
 Node 20.18.1 or newer, ESM host.
 
