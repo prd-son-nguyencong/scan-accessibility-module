@@ -381,6 +381,39 @@
     return isNativelyFocusable(element);
   };
 
+  // True when a same-origin stylesheet rule that applies on :focus changes how the element is revealed (the skip-link
+  // pattern). Cross-origin sheets are unreadable and count as "no".
+  const REVEAL_PROPS = ['clip', 'clipPath', 'position', 'width', 'height', 'opacity', 'left', 'top'];
+  let focusRulesByDoc = new WeakMap(); // reset per snapshot: setContent reuses the Document object with new stylesheets
+  const focusRulesOf = (doc) => {
+    if (focusRulesByDoc.has(doc)) return focusRulesByDoc.get(doc);
+    const rules = [];
+    const walk = (list) => {
+      for (const rule of list) {
+        if (rule.cssRules && !rule.selectorText) { walk(rule.cssRules); continue; }
+        if (!rule.selectorText || !rule.style || !REVEAL_PROPS.some((prop) => rule.style[prop])) continue;
+        for (const part of rule.selectorText.split(',')) {
+          if (!/:focus(?:-visible|-within)?(?![\w-])/.test(part)) continue;
+          const within = /:focus-within(?![\w-])/.test(part);
+          rules.push({ within, selector: part.replace(/:focus(?:-visible|-within)?(?![\w-])/g, '').trim() || '*' });
+        }
+      }
+    };
+    for (const sheet of doc.styleSheets) {
+      try { walk(sheet.cssRules); } catch { /* cross-origin sheet */ }
+    }
+    focusRulesByDoc.set(doc, rules);
+    return rules;
+  };
+  // A :focus-within rule reveals a container that holds a focusable control (reveal-on-focus overlay).
+  const isFocusRevealed = (element) => {
+    const focusable = isNativelyFocusable(element);
+    return focusRulesOf(element.ownerDocument).some(({ within, selector }) => {
+      if (!focusable && !(within && element.querySelector('a[href], button, input, select, textarea, summary, [tabindex]'))) return false;
+      try { return element.matches(selector); } catch { return false; }
+    });
+  };
+
   const getElementByIdInRoot = (element, id) => {
     const root = element.getRootNode();
     if (root && typeof root.getElementById === 'function') {
@@ -559,19 +592,6 @@
       prefixes.push(`shadow[${index}]`);
     }
     return `${prefixes.join('>')}>${localSelector}`;
-  };
-
-  const frameSiblingIndex = (iframe) => {
-    const parent = iframe.parentElement;
-    if (!parent) return 0;
-    let index = 0;
-    for (const child of parent.children) {
-      if (child.tagName === 'IFRAME') {
-        if (child === iframe) return index;
-        index += 1;
-      }
-    }
-    return index;
   };
 
   const nextCounter = (counters, scopeKey) => {
@@ -776,6 +796,7 @@
     const visitElement = (element, currentParentId) => {
       const id = assignId();
       elementToId.set(element, id);
+      lastElements[id] = element;
       const attributes = redactAttributes(element);
       const localSelector = structuralSelector(element, idCountMap);
       const record = {
@@ -812,6 +833,7 @@
         visuallyVisible: isVisuallyVisible(element),
         hiddenFromAT: isHiddenFromAT(element),
         focusable: isFocusable(element),
+        focusRevealed: isFocusRevealed(element),
       };
       elements.push(record);
 
@@ -838,7 +860,8 @@
       }
 
       if (isIframeElement(element)) {
-        const frameIndex = frameSiblingIndex(element);
+        // Document order within the owning frame: unique per iframe, unlike the index among siblings of one parent.
+        const frameIndex = nextCounter(shadowCounters, `frames:${framePath.join('.')}`);
         const childFramePath = [...framePath, frameIndex];
         const access = getFrameAccess(element);
         if (!access.accessible) {
@@ -906,7 +929,21 @@
     }
   };
 
+  // Elements of the last snapshot by id, so the CDP accname pass can tag them.
+  let lastElements = [];
+  const AX_TAG = 'data-ada-scan-nid';
+  const tagElementsForAx = () => {
+    for (const [id, element] of lastElements.entries()) {
+      if (element) element.setAttribute(AX_TAG, String(id));
+    }
+  };
+  const untagElementsForAx = () => {
+    for (const element of lastElements) element?.removeAttribute(AX_TAG);
+    lastElements = [];
+  };
+
   const buildSnapshot = () => {
+    lastElements = [];
     /** @type {import('./types.js').SnapshotElement[]} */
     const elements = [];
     /** @type {import('./types.js').RuntimeDiagnostic[]} */
@@ -934,6 +971,7 @@
       });
     }
 
+    focusRulesByDoc = new WeakMap();
     const nextIdRef = { value: 1 };
     const elementToId = new WeakMap();
     /** @type {Map<string, number>} */
@@ -984,6 +1022,8 @@
     closedShadowHosts,
     waitForDomStability,
     buildSnapshot,
+    tagElementsForAx,
+    untagElementsForAx,
     resetForNavigation,
     markLateObservation,
     semantics: {

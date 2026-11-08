@@ -1,12 +1,10 @@
-import { mkdirSync, mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PACKAGE_ROOT = path.join(__dirname, '..');
-
-const TEST_TMP_ROOT = path.join(PACKAGE_ROOT, '.tmp-accessscan-corpus-tests');
-mkdirSync(TEST_TMP_ROOT, { recursive: true });
+// Per-process root in the OS temp dir, removed on exit so nothing lands in the worktree.
+const TEST_TMP_ROOT = mkdtempSync(path.join(os.tmpdir(), 'ada-corpus-tests-'));
+process.on('exit', () => rmSync(TEST_TMP_ROOT, { recursive: true, force: true }));
 
 /**
  * @param {string} prefix

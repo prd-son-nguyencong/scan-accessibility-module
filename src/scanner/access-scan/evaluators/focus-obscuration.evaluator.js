@@ -6,6 +6,14 @@ import {
 } from './lib/runtime-context.js';
 
 const CACHE_KEY = 'focusObscurationAudit';
+const TAB_STOPS = 60; // real Tab presses per page at the scan viewport
+
+// focus()-only: Tab did not reach the control within the limit, so what a keyboard user sees is not measured: a question, not a confirmed failure.
+function obscuredFinding(entry) {
+  const base = elementFinding(entry.element, { obscuringOverlay: entry.overlaySelector, obscuringChain: entry.overlayChain, proof: entry.proof, focusMethod: entry.method });
+  // A semi-opaque bar (rgba background, backdrop-filter, opacity below 1) leaves the content readable through it: 2.4.11 only fails when the control is entirely hidden.
+  return entry.method === 'focus-only' || entry.translucent ? { ...base, violationType: 'manual-review', ...(entry.translucent ? { reviewReason: 'the overlay is translucent: the focused control may still be visible through it' } : {}) } : base;
+}
 
 /** @type {import('../engine/loader.js').EvaluatorModule} */
 export default {
@@ -22,14 +30,14 @@ export default {
 
     if (mode === 'sticky-header-obscures-focus') {
       for (const entry of audit.headerObscured) {
-        findings.push(elementFinding(entry.element, { obscuringOverlay: entry.overlaySelector }));
+        findings.push(obscuredFinding(entry));
       }
       return { status: 'complete', candidatesScanned: audit.focusablesScanned, findings };
     }
 
     if (mode === 'focus-not-obscured-footer') {
       for (const entry of audit.footerObscured) {
-        findings.push(elementFinding(entry.element, { obscuringOverlay: entry.overlaySelector }));
+        findings.push(obscuredFinding(entry));
       }
       return { status: 'complete', candidatesScanned: audit.focusablesScanned, findings };
     }
@@ -149,19 +157,6 @@ async function runFocusObscurationAudit(context) {
           prefixes.push(`shadow[${index}]`);
         }
         return `${prefixes.join('>')}>${localSelector}`;
-      };
-
-      const frameSiblingIndex = (iframe) => {
-        const parent = iframe.parentElement;
-        if (!parent) return 0;
-        let index = 0;
-        for (const child of parent.children) {
-          if (child.tagName === 'IFRAME') {
-            if (child === iframe) return index;
-            index += 1;
-          }
-        }
-        return index;
       };
 
       const nextCounter = (counters, scopeKey) => {
@@ -328,7 +323,42 @@ async function runFocusObscurationAudit(context) {
         left.length === right.length && left.every((value, index) => value === right[index])
       );
 
+      // An overlay painted at opacity 0 (itself or an ancestor) still wins elementFromPoint but hides nothing.
+      const effectiveOpacity = (element) => {
+        let product = 1;
+        for (let current = element; isElement(current); current = current.parentElement) {
+          const value = Number.parseFloat(getComputedStyleFor(current).opacity);
+          if (Number.isFinite(value)) product *= value;
+        }
+        return product;
+      };
+
+      // Translucent: no fully opaque paint at the sampled points. A point is opaque when the element on top (or an ancestor up to the overlay) has an opaque
+      // background and nothing between is below full opacity; a bar that only wraps opaque children is still solid there.
+      const opaqueBackground = (element) => {
+        const cs = getComputedStyleFor(element);
+        if (cs.backdropFilter && cs.backdropFilter !== 'none') return false;
+        // rgb(), hsl(), oklch(), lab(), color(...) and friends: opaque unless an alpha (after "/" or the 4th legacy slot) is below 1.
+        const bg = (cs.backgroundColor || '').trim();
+        const m = /^(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(([^)]*)\)$/.exec(bg);
+        if (!m) return false;
+        const alpha = m[1].includes('/') ? m[1].split('/')[1].trim() : (/^(?:rgba?|hsla?)\(/.test(bg) ? m[1].split(/[\s,]+/).filter(Boolean)[3] : undefined);
+        if (alpha === undefined) return true;
+        const a = alpha.endsWith('%') ? Number.parseFloat(alpha) / 100 : Number.parseFloat(alpha);
+        return a >= 0.999; // a non-numeric alpha ("none") is not proof of an opaque bar
+      };
+      const opaqueAt = (overlay, focusable, x, y) => {
+        if (effectiveOpacity(overlay.element) < 0.999) return false;
+        let el = focusable.element.ownerDocument.elementFromPoint(x, y);
+        for (; isElement(el); el = el.parentElement) {
+          if (opaqueBackground(el)) return true;
+          if (el === overlay.element) break;
+        }
+        return false;
+      };
+
       const pointCoveredByOverlay = (overlay, focusable, x, y) => {
+        if (effectiveOpacity(overlay.element) < 0.05) return false;
         const overlayRect = overlay.element.getBoundingClientRect();
         if (!pointInsideRect(x, y, overlayRect)) return false;
 
@@ -351,6 +381,20 @@ async function runFocusObscurationAudit(context) {
         }
 
         return false;
+      };
+
+      // Tag and identifying attributes of the overlay and its nearest ancestors: lets the caller name the vendor that owns the obscuring element.
+      const chainOf = (element) => {
+        const chain = [];
+        for (let el = element; isElement(el) && chain.length < 4; el = el.parentElement) {
+          const attrs = {};
+          for (const name of ['id', 'class', 'src', 'href', 'data-src']) {
+            const value = el.getAttribute(name);
+            if (value) attrs[name] = value.slice(0, 200);
+          }
+          chain.push({ tag: el.tagName.toLowerCase(), attrs });
+        }
+        return chain;
       };
 
       const describeElement = (element, framePath, shadowPath, idCountMap) => {
@@ -405,10 +449,13 @@ async function runFocusObscurationAudit(context) {
           }
 
           if (isFocusable(node) && isRendered(node)) {
-            const containedByOverlay = contextOverlays.some((overlay) => (
-              overlay.element !== node && overlay.element.contains(node)
-            ));
-            if (!containedByOverlay) {
+            // The overlay itself (a consent banner that takes focus) and anything inside it is the obscurer, not a victim.
+            // A fixed/sticky focusable does not move when focus scrolls the page, so scrolling cannot be what fails for it.
+            const containedByOverlay = contextOverlays.some((overlay) => overlay.element.contains(node));
+            // Neither does anything inside a fixed/sticky container (a consent banner's own buttons, whatever the banner's size or anchoring).
+            let positionedItself = false;
+            for (let up = node; isElement(up) && !positionedItself; up = up.parentElement) positionedItself = ['fixed', 'sticky'].includes(getComputedStyleFor(up).position);
+            if (!containedByOverlay && !positionedItself) {
               focusables.push({
                 element: node,
                 ...describeElement(node, framePath, shadowPath, idCountMap),
@@ -427,7 +474,8 @@ async function runFocusObscurationAudit(context) {
           }
 
           if (isIframeElement(node)) {
-            const frameIndex = frameSiblingIndex(node);
+            // Document order within the owning frame: unique per iframe, unlike the index among siblings of one parent.
+            const frameIndex = nextCounter(shadowCounters, `frames:${framePath.join('.')}`);
             const childFramePath = [...framePath, frameIndex];
             const access = getFrameAccess(node);
             if (!access.accessible || !access.document) {
@@ -462,16 +510,10 @@ async function runFocusObscurationAudit(context) {
         requestAnimationFrame(() => requestAnimationFrame(resolve));
       });
 
-      /** @type {Array<{ element: ReturnType<typeof describeElement>, overlaySelector: string, kind: 'header' | 'footer' }>} */
-      const obscured = [];
-
-      for (const focusable of focusables) {
-        focusable.element.focus({ preventScroll: true });
-        await waitForPaint();
-        if (!elementHasFocus(focusable.element)) continue;
-
+      // Where is the focused element now, and does a fixed/sticky bar cover all five sampled points of it?
+      const measureFocused = (focusable, method) => {
         const rect = focusable.element.getBoundingClientRect();
-        if (rect.width <= 0 || rect.height <= 0) continue;
+        if (rect.width <= 0 || rect.height <= 0) return null;
 
         const inset = Math.min(1, rect.width / 4, rect.height / 4);
         const points = [
@@ -492,7 +534,13 @@ async function runFocusObscurationAudit(context) {
             pointCoveredByOverlay(overlay, focusable, x, y)
           ));
           if (!fullyCovered) continue;
-          obscured.push({
+          const box = (r) => `${Math.round(r.top)}-${Math.round(r.bottom)}px`;
+          const viewport = getViewportSize(focusable.element);
+          return {
+            proof: {
+              type: 'element-from-point',
+              fact: `after focus, elementFromPoint returned the fixed/sticky ${overlay.kind} (${overlay.selector}) at ${points.length} of ${points.length} sampled points of the focused element: element y ${box(rect)}, ${overlay.kind} y ${box(overlay.element.getBoundingClientRect())}, viewport ${viewport.width}x${viewport.height}px (measured after ${method === 'tab' ? 'real Tab navigation reached it' : 'focus() scrolled the element into view'})`,
+            },
             element: {
               selector: focusable.selector,
               reportSelector: focusable.reportSelector,
@@ -501,36 +549,83 @@ async function runFocusObscurationAudit(context) {
               outerHTML: focusable.outerHTML,
             },
             overlaySelector: overlay.selector,
+            overlayChain: chainOf(overlay.element),
+            translucent: !points.every(([x, y]) => opaqueAt(overlay, focusable, x, y)),
             kind: overlay.kind,
-          });
-          break;
+            method,
+          };
         }
+        return null;
+      };
+
+      /** @type {Array<{ idx: number, entry: ReturnType<typeof measureFocused> }>} */
+      const focusObscured = [];
+
+      for (const [idx, focusable] of focusables.entries()) {
+        // A document that cannot scroll still obscures a control the bar covers (it cannot be scrolled clear); empty error shells are downgraded by scan.errorPages / bareShell, not skipped here.
+        // focus() scrolls the element into view; measure where it ends up, not where it sat before. The Tab pass below repeats this with real keyboard navigation.
+        focusable.element.focus();
+        await waitForPaint();
+        if (!elementHasFocus(focusable.element)) continue;
+        const entry = measureFocused(focusable, 'focus');
+        if (entry) focusObscured.push({ idx, entry });
       }
+
+      // The Tab pass (driven from Node, one key press at a time) asks this for the element that now holds real focus.
+      globalThis.__adaObscureTab = async () => {
+        await waitForPaint();
+        let active = document.activeElement;
+        while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+        const atBody = !active || active === document.body || active === document.documentElement;
+        const idx = atBody ? -1 : focusables.findIndex((f) => f.element === active);
+        return { atBody, idx, entry: idx >= 0 ? measureFocused(focusables[idx], 'tab') : null };
+      };
 
       window.scrollTo(previousScroll.x, previousScroll.y);
       if (previousActive instanceof HTMLElement) {
         previousActive.focus({ preventScroll: true });
       }
 
-      return {
-        focusablesScanned: focusables.length,
-        headerObscured: obscured.filter((entry) => entry.kind === 'header'),
-        footerObscured: obscured.filter((entry) => entry.kind === 'footer'),
-        skippedFrames,
-      };
+      // Tab starts from the top of the document: blur and move the sequential-navigation starting point (Chromium keeps the last focused element as the start otherwise).
+      document.activeElement?.blur?.();
+      window.scrollTo(0, 0);
+      document.getSelection()?.collapse(document.body, 0);
+      return { focusablesScanned: focusables.length, focusObscured, skippedFrames };
     });
 
+    // Real Tab navigation over the first stops at the scan viewport: what a keyboard user sees. A control focus() left obscured but Tab leaves clear is no finding;
+    // one Tab leaves obscured is confirmed; one Tab never reached within the limit stays a question (focus()-only measurement).
+    const tabbed = new Map();
+    try {
+      for (let n = 0; n < TAB_STOPS; n++) {
+        await fork.page.keyboard.press('Tab');
+        const stop = await fork.page.evaluate(() => globalThis.__adaObscureTab());
+        if (stop.atBody) { if (tabbed.size || n > 1) break; continue; } // the first Tab after the reset may land on the document itself
+        if (stop.idx >= 0 && !tabbed.has(stop.idx)) tabbed.set(stop.idx, stop.entry);
+      }
+    } catch { /* a focus handler navigated or closed the page: the focus() measurements stand as questions */ }
+    await fork.page.evaluate(() => { document.activeElement?.blur?.(); }).catch(() => {});
+    const final = [];
+    for (const { idx, entry } of result.focusObscured) {
+      if (!tabbed.has(idx)) final.push({ ...entry, method: 'focus-only' });
+      else if (tabbed.get(idx)) final.push(tabbed.get(idx));
+      else final.push({ ...entry, method: 'focus-only' }); // Tab (forward only) left it clear: a question, not a confirmed failure
+    }
+    for (const [idx, entry] of tabbed) if (entry && !result.focusObscured.some((f) => f.idx === idx)) final.push(entry);
+
     const snapshot = getSnapshot(context);
+    const lift = (entry) => ({
+      element: matchSnapshotElement(snapshot, entry.element),
+      overlaySelector: entry.overlaySelector,
+      overlayChain: entry.overlayChain,
+      proof: entry.proof,
+      method: entry.method,
+      translucent: entry.translucent === true,
+    });
     return {
       focusablesScanned: result.focusablesScanned,
-      headerObscured: result.headerObscured.map((entry) => ({
-        element: matchSnapshotElement(snapshot, entry.element),
-        overlaySelector: entry.overlaySelector,
-      })),
-      footerObscured: result.footerObscured.map((entry) => ({
-        element: matchSnapshotElement(snapshot, entry.element),
-        overlaySelector: entry.overlaySelector,
-      })),
+      headerObscured: final.filter((entry) => entry.kind === 'header').map(lift),
+      footerObscured: final.filter((entry) => entry.kind === 'footer').map(lift),
       skippedFrames: result.skippedFrames,
     };
   } finally {

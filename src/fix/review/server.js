@@ -75,7 +75,6 @@ const PUBLIC_ERROR_MESSAGES = {
   ROLLBACK_CONFIRMATION_REQUIRED: 'Sandbox rollback requires explicit confirmation.',
   ROLLBACK_VERIFICATION_FAILED: 'Sandbox rollback verification failed.',
   APPLY_HANDLER_REQUIRED: 'Apply handler is unavailable.',
-  APPLY_STARTED: 'Apply is already in progress.',
   APPLY_IN_PROGRESS: 'Apply is already in progress.',
   APPLY_ALREADY_COMPLETED: 'Apply has already completed for this session.',
   BODY_TOO_LARGE: 'The request body is too large.',
@@ -132,7 +131,7 @@ async function drainBody(req) {
   }
 }
 
-async function readJsonBody(req, maxBytes = MAX_BODY_BYTES) {
+async function readJsonBody(req, maxBytes = MAX_BODY_BYTES, { requireObject = true } = {}) {
   const chunks = [];
   let total = 0;
   for await (const chunk of req) {
@@ -144,17 +143,32 @@ async function readJsonBody(req, maxBytes = MAX_BODY_BYTES) {
   }
   const raw = Buffer.concat(chunks).toString('utf8').trim();
   if (!raw) return {};
+  let parsed;
   try {
-    return JSON.parse(raw);
+    parsed = JSON.parse(raw);
   } catch {
     throw Object.assign(new Error('INVALID_JSON'), { code: 'INVALID_JSON' });
   }
+  if (requireObject && (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))) {
+    throw Object.assign(new Error('INVALID_JSON'), { code: 'INVALID_JSON' });
+  }
+  return parsed;
 }
 
 function validateToken(req, res, serverState) {
   const token = req.headers[TOKEN_HEADER];
   if (!tokensEqual(serverState.token, token)) {
     sendJson(res, 403, { error: 'FORBIDDEN_TOKEN', message: 'Access denied.' });
+    return false;
+  }
+  return true;
+}
+
+// DNS rebinding: a rebound hostname still sends its own name in Host, so only our literal loopback address passes.
+function validateHostAndOrigin(req, res, serverState) {
+  const origin = req.headers.origin;
+  if (req.headers.host !== serverState.host || (origin !== undefined && origin !== serverState.origin)) {
+    sendJson(res, 403, { error: 'FORBIDDEN_HOST', message: 'Access denied.' });
     return false;
   }
   return true;
@@ -294,6 +308,7 @@ export async function startReviewServer({
   let nonce = randomBytes(16).toString('base64url');
   const serverState = {
     token,
+    host: null,
     origin: null,
     url: null,
     reviewUrl: null,
@@ -304,6 +319,10 @@ export async function startReviewServer({
       const requestUrl = new URL(req.url || '/', serverState.url || `http://${LOOPBACK_HOST}/`);
       const pathname = requestUrl.pathname;
       const needsBody = req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH';
+      if (!validateHostAndOrigin(req, res, serverState)) {
+        if (needsBody) await drainBody(req);
+        return;
+      }
       const isMutation = req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH' || req.method === 'DELETE';
 
       if (req.method === 'GET' && (pathname === '/' || pathname === '/index.html')) {
@@ -538,7 +557,7 @@ export async function startReviewServer({
         }
         let body;
         try {
-          body = await readJsonBody(req);
+          body = await readJsonBody(req, MAX_BODY_BYTES, { requireObject: false });
           validateRollbackBody(body);
         } catch (error) {
           if (error.code === 'BODY_TOO_LARGE') throw error;
@@ -574,21 +593,12 @@ export async function startReviewServer({
 
       sendJson(res, 405, { error: 'METHOD_NOT_ALLOWED', message: 'Method not allowed.' });
     } catch (error) {
-      if (error.code === 'BODY_TOO_LARGE') {
-        sendJson(res, 413, { error: 'BODY_TOO_LARGE', message: PUBLIC_ERROR_MESSAGES.BODY_TOO_LARGE });
-        return;
-      }
-      if (error.code === 'INVALID_JSON') {
-        sendJson(res, 400, { error: 'INVALID_JSON', message: PUBLIC_ERROR_MESSAGES.INVALID_JSON });
-        return;
-      }
-      if (error.code === 'BAD_REQUEST') {
-        sendJson(res, 400, { error: 'BAD_REQUEST', message: PUBLIC_ERROR_MESSAGES.BAD_REQUEST });
-        return;
-      }
-      sendJson(res, 500, { error: 'INTERNAL_ERROR', message: 'An unexpected error occurred.' });
+      const mapped = mapReviewError(error);
+      sendJson(res, mapped.status, mapped.payload);
     }
   });
+
+  persistReviewState(state);
 
   await new Promise((resolve, reject) => {
     server.once('error', reject);
@@ -598,10 +608,9 @@ export async function startReviewServer({
   const address = server.address();
   const resolvedPort = typeof address === 'object' && address ? address.port : port;
   serverState.url = `http://${host}:${resolvedPort}/`;
+  serverState.host = `${host}:${resolvedPort}`;
   serverState.origin = `http://${host}:${resolvedPort}`;
   serverState.reviewUrl = `${serverState.url}#token=${token}`;
-
-  persistReviewState(state);
 
   return {
     host,

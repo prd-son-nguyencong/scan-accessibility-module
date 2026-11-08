@@ -7,6 +7,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'serious', priority: 6 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'guesses whether a nav landmark holds the key site navigation',
     checks: [
       {
         id: 'landmarks:navigation-misuse',
@@ -39,6 +41,8 @@ export default [
     standard: { version: 'Best Practice', level: 'n/a', criterion: 'n/a' },
     severity: { impact: 'minor', priority: 5 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'guesses that a form is a search form',
     checks: [
       {
         id: 'landmarks:search-form-mismatch',
@@ -70,6 +74,8 @@ export default [
     standard: { version: 'Best Practice', level: 'n/a', criterion: 'n/a' },
     severity: { impact: 'moderate', priority: 6 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'guesses that a contentinfo landmark lacks global site information',
     checks: [
       {
         id: 'landmarks:region-footer-misuse',
@@ -108,6 +114,8 @@ export default [
     standard: { version: 'Best Practice', level: 'n/a', criterion: 'n/a' },
     severity: { impact: 'moderate', priority: 5 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'counts footer landmarks, but which ones are global is a heuristic',
     checks: [
       {
         id: 'landmarks:region-footer-single',
@@ -140,6 +148,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'moderate', priority: 6 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'guesses which element holds global site information',
     checks: [
       {
         id: 'landmarks:region-footer-mismatch',
@@ -178,6 +188,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'moderate', priority: 4 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'whether an element functions as an article is a judgement about content',
     checks: [
       {
         id: 'landmarks:article-misuse',
@@ -210,6 +222,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'moderate', priority: 4 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'guesses which navigation region is a breadcrumb from its content',
     checks: [
       {
         id: 'landmarks:breadcrumbs-mismatch',
@@ -240,13 +254,15 @@ export default [
     category: 'landmarks',
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'moderate', priority: 4 },
-    automation: 'deterministic',
+    automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'one main landmark per page is HTML/ARIA convention; several can still be exposed meaningfully',
     checks: [{
       id: 'landmarks:region-main-single',
       profiles: ['standards', 'commercial-parity'],
       evaluator: 'landmark-graph',
       options: { mode: 'region-main-single' },
-      classification: 'confirmed',
+      classification: 'potential',
     }],
     reporting: {
       title: 'Each page should include at most one main landmark',
@@ -262,6 +278,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'moderate', priority: 4 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'guesses that a main landmark lacks main content',
     checks: [
       {
         id: 'landmarks:region-main-misuse',
@@ -310,6 +328,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'moderate', priority: 4 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'guesses which content is main content',
     checks: [
       {
         id: 'landmarks:region-main-mismatch',
@@ -355,6 +375,8 @@ export default [
     standard: { version: 'Best Practice', level: 'n/a', criterion: 'n/a' },
     severity: { impact: 'serious', priority: 5 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'commercial-parity guess about which wrapper is the main navigation',
     checks: [
       {
         id: 'parity:nav-wrapper-missing-role',

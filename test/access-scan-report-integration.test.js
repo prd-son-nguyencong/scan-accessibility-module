@@ -974,6 +974,5 @@ test('HTML scanner evidence recognizes skipped run status with matching CSS', ()
     }],
   });
 
-  assert.match(reportHtml, /\.scanner-status--skipped\s*\{/);
-  assert.match(reportHtml, /scanner-status--skipped/);
+  assert.match(reportHtml, /1 skipped/);
 });

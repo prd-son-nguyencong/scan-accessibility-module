@@ -6,6 +6,7 @@ import {
   getSnapshot,
   queryCandidates,
 } from './lib/runtime-context.js';
+import { withDeadline } from '../engine/deadline.js';
 
 const TABLE_ROLES = new Set(['table', 'grid']);
 const ROW_ROLES = new Set(['row', 'rowgroup']);
@@ -23,7 +24,7 @@ export default {
     const findings = [];
 
     if (mode === 'table-headers') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (isPresentationTable(element)) continue;
         if (hasColumnHeaders(snapshot, indexes, element)) continue;
         const rows = getTableRows(snapshot, indexes, element);
@@ -34,7 +35,7 @@ export default {
     }
 
     if (mode === 'table-nesting') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (!hasAncestor(snapshot, indexes, element, (ancestor) => (
           ancestor.tag === 'table' || TABLE_ROLES.has(ancestor.attributes.role || '')
         ))) continue;
@@ -44,7 +45,7 @@ export default {
     }
 
     if (mode === 'table-roles') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         const role = element.attributes.role;
         if (!TABLE_ROLES.has(role || '')) continue;
         const rows = getDescendants(snapshot, indexes, element, (child) => (
@@ -61,7 +62,7 @@ export default {
     }
 
     if (mode === 'table-caption') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (isPresentationTable(element)) continue;
         if (!hasColumnHeaders(snapshot, indexes, element)) continue;
         const caption = getDescendants(snapshot, indexes, element, (child) => child.tag === 'caption');
@@ -73,7 +74,7 @@ export default {
     }
 
     if (mode === 'table-header-empty') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         const text = getSemanticSubtreeText(snapshot, indexes, element).trim();
         const hasImgAlt = getDescendants(snapshot, indexes, element, (child) => (
           child.tag === 'img' && child.attributes.alt
@@ -85,7 +86,7 @@ export default {
     }
 
     if (mode === 'table-misuse') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (element.tag !== 'table') continue;
         if (isPresentationTable(element)) continue;
         const ths = getDescendants(snapshot, indexes, element, (child) => child.tag === 'th');
@@ -107,7 +108,7 @@ export default {
     }
 
     if (mode === 'table-row-header-mismatch') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (element.tag !== 'th' || element.attributes.scope) continue;
         const rowParent = element.parentId != null ? indexes.byElementId.get(element.parentId) : null;
         if (!rowParent || rowParent.tag !== 'tr') continue;

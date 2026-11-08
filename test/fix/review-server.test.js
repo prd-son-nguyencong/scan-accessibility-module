@@ -8,6 +8,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { request as httpRequest } from 'node:http';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildScanReportV2 } from '../../src/reporter/report-v2.js';
@@ -797,4 +798,59 @@ test('parallel sandbox rollback HTTP requests invoke handler once', async () => 
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+function rawRequest(server, { method = 'GET', path = '/', headers = {}, body } = {}) {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest({ host: LOOPBACK_HOST, port: server.port, method, path, headers }, (res) => {
+      let text = '';
+      res.on('data', (c) => { text += c; });
+      res.on('end', () => resolve({ status: res.statusCode, text }));
+    });
+    req.on('error', reject);
+    req.end(body);
+  });
+}
+
+test('refuses a foreign Host (DNS rebinding) even with the token, and a foreign Origin on GET', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-server-'));
+  try {
+    const { server } = await startHarness(root);
+    const rebound = await rawRequest(server, { path: '/api/snapshot', headers: { host: `rebind.example:${server.port}`, [TOKEN_HEADER]: server.token } });
+    assert.equal(rebound.status, 403);
+    assert.equal((await rawRequest(server, { path: '/', headers: { host: 'localhost' } })).status, 403);
+    const foreignOrigin = await rawRequest(server, { path: '/api/snapshot', headers: { origin: 'http://evil.test', [TOKEN_HEADER]: server.token } });
+    assert.equal(foreignOrigin.status, 403);
+    const ok = await rawRequest(server, { path: '/api/snapshot', headers: { [TOKEN_HEADER]: server.token } });
+    assert.equal(ok.status, 200);
+    await server.close();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('non-object JSON bodies are a 400, not a 500', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-review-server-'));
+  try {
+    const { server } = await startHarness(root);
+    for (const body of ['null', '[]', '7']) {
+      const res = await fetch(`${server.url}api/preferences`, { method: 'POST', headers: mutationHeaders(server), body });
+      assert.equal(res.status, 400, body);
+      assert.equal((await res.json()).error, 'INVALID_JSON');
+    }
+    await server.close();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('APPLY_STARTED keeps the decision-lock message and is not defined twice', () => {
+  assert.equal(PUBLIC_ERROR_MESSAGES.APPLY_STARTED, 'Decisions cannot be changed after apply starts.');
+  const source = readFileSync(new URL('../../src/fix/review/server.js', import.meta.url), 'utf8');
+  assert.equal(source.match(/^\s+APPLY_STARTED:/gm).length, 1);
+});
+
+test('a failing first persist rejects before the server listens', async () => {
+  const state = { raw: {}, sessionDir: null };
+  await assert.rejects(startReviewServer({ state }), (error) => error.code === 'PERSIST_FAILED');
 });

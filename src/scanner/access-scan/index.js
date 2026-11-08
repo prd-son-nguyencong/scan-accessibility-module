@@ -1,3 +1,4 @@
+import { resilientGoto } from '../browser.js';
 import { getSharedBuiltInRuleRegistry } from './engine/builtin-registry.js';
 import { runRules } from './engine/runner.js';
 import {
@@ -60,15 +61,7 @@ export function findingToViolation(registry, finding, options = {}) {
  */
 async function navigateForScan(page, url) {
   await installRuntimeHooks(page);
-  try {
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
-  } catch (err) {
-    if (!isPlaywrightNavigationTimeout(err)) {
-      throw err;
-    }
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForTimeout(3000);
-  }
+  await resilientGoto(page, url);
 }
 
 /**
@@ -101,6 +94,7 @@ function buildSessionMetrics(session, {
  * @param {string} url
  * @param {{
  *   skipRules?: string[],
+ *   onlyRules?: Set<string>,  // a re-verification run evaluates just these rules
  *   profile?: import('./engine/schema.js').ProfileId,
  *   includeThirdParty?: boolean,
  *   skipNavigation?: boolean,
@@ -112,16 +106,18 @@ function buildSessionMetrics(session, {
  *   stabilityTimeoutMs?: number,
  *   stabilityMinObserveMs?: number,
  *   session?: Awaited<ReturnType<typeof createScanSession>>,
+ *   configureForkedPage?: (request: { page: import('playwright').Page }) => Promise<void>,
  *   onExecutionRecords?: (
  *     records: import('./engine/runner.js').RuleExecutionRecord[],
- *     meta: { profile: string, sessionMetrics: Record<string, number> },
+ *     meta: { profile: string, sessionMetrics: Record<string, number>, timings: { activate: number, snapshot: number, rules: number } },
  *   ) => void,
  * }} [options]
  */
 export async function scanWithAccessScan(page, url, options = {}) {
   const profile = resolveScanProfile(options);
   const {
-    skipRules = [],
+    skipRules: configuredSkipRules = [],
+    onlyRules = null,
     skipNavigation = false,
     activateContent = true,
     externalNavigationCount = 0,
@@ -131,6 +127,7 @@ export async function scanWithAccessScan(page, url, options = {}) {
     stabilityTimeoutMs,
     stabilityMinObserveMs,
     session: providedSession,
+    configureForkedPage,
     onExecutionRecords,
   } = options;
 
@@ -140,16 +137,28 @@ export async function scanWithAccessScan(page, url, options = {}) {
     scannerNavigationCount = 1;
   }
 
+  const timings = {};
+  const lap = (name, from) => { timings[name] = Date.now() - from; };
+  let t = Date.now();
   const activation = activateContent && !signal?.aborted
     ? await activateDynamicContent(page)
     : { frameCount: 0, scrollCount: 0 };
+  lap('activate', t);
+  t = Date.now();
 
   const registry = await getSharedBuiltInRuleRegistry();
+  const skipRules = onlyRules
+    ? [...configuredSkipRules, ...registry.listRules().map((rule) => rule.id).filter((id) => !onlyRules.has(id))]
+    : configuredSkipRules;
   const session = providedSession || await createScanSession(page, {
+    profile,
     stabilityQuietMs,
     stabilityTimeoutMs,
     stabilityMinObserveMs,
+    configureForkedPage,
   });
+  lap('snapshot', t);
+  t = Date.now();
 
   const { findings, executionRecords } = await runRules({
     registry,
@@ -163,6 +172,7 @@ export async function scanWithAccessScan(page, url, options = {}) {
     ruleTimeoutMs,
     signal,
   });
+  lap('rules', t);
 
   const sessionMetrics = buildSessionMetrics(session, {
     externalNavigationCount,
@@ -176,6 +186,7 @@ export async function scanWithAccessScan(page, url, options = {}) {
       onExecutionRecords(executionRecords, {
         profile,
         sessionMetrics,
+        timings,
       });
     } catch (observerErr) {
       const message = observerErr instanceof Error ? observerErr.message : String(observerErr);

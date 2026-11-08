@@ -59,13 +59,13 @@ test('hybrid build revision mismatch fails closed', () => {
 test('hybrid missing remote build revision fails closed', () => {
   const result = resolveFixCapability(hybridBase({ remoteRevision: null }));
   assert.equal(result.canFix, false);
-  assert.equal(result.reason, 'BUILD_REVISION_MISSING');
+  assert.equal(result.reason, 'MISSING_BUILD_REVISION');
 });
 
 test('hybrid missing local build revision fails closed', () => {
   const result = resolveFixCapability(hybridBase({ localRevision: null }));
   assert.equal(result.canFix, false);
-  assert.equal(result.reason, 'BUILD_REVISION_MISSING');
+  assert.equal(result.reason, 'MISSING_BUILD_REVISION');
 });
 
 test('hybrid instrumentation digest mismatch fails closed', () => {
@@ -79,13 +79,13 @@ test('hybrid instrumentation digest mismatch fails closed', () => {
 test('hybrid missing remote instrumentation digest fails closed', () => {
   const result = resolveFixCapability(hybridBase({ remoteInstrumentationDigest: null }));
   assert.equal(result.canFix, false);
-  assert.equal(result.reason, 'INSTRUMENTATION_DIGEST_MISSING');
+  assert.equal(result.reason, 'MISSING_INSTRUMENTATION_DIGEST');
 });
 
 test('hybrid missing local instrumentation digest fails closed', () => {
   const result = resolveFixCapability(hybridBase({ localInstrumentationDigest: null }));
   assert.equal(result.canFix, false);
-  assert.equal(result.reason, 'INSTRUMENTATION_DIGEST_MISSING');
+  assert.equal(result.reason, 'MISSING_INSTRUMENTATION_DIGEST');
 });
 
 test('hybrid target mode requires attestation even for localhost URL', () => {
@@ -100,7 +100,7 @@ test('hybrid target mode requires attestation even for localhost URL', () => {
   });
   assert.equal(result.mode, 'hybrid');
   assert.equal(result.canFix, false);
-  assert.equal(result.reason, 'BUILD_REVISION_MISSING');
+  assert.equal(result.reason, 'MISSING_BUILD_REVISION');
 });
 
 test('url-only target with added localRoot requires hybrid attestation', () => {
@@ -117,7 +117,7 @@ test('local-only target downgrade cannot skip hybrid attestation for remote URL'
   });
   assert.equal(result.mode, 'hybrid');
   assert.equal(result.canFix, false);
-  assert.equal(result.reason, 'BUILD_REVISION_MISSING');
+  assert.equal(result.reason, 'MISSING_BUILD_REVISION');
 });
 
 test('local-only target mode stays local-only for localhost URL', () => {
@@ -147,4 +147,12 @@ test('hybrid deployment URL mismatch fails closed', () => {
   }));
   assert.equal(result.canFix, false);
   assert.equal(result.reason, 'DEPLOYMENT_URL_MISMATCH');
+});
+
+test('localhost:pw@evil is remote (hybrid), loopback aliases stay local-only', () => {
+  const mode = (url) => resolveFixCapability({ url, localRoot: '/repo', targetMode: 'local-only' }).mode;
+  assert.equal(mode('http://localhost:pw@evil.example/'), 'hybrid');
+  assert.equal(mode('http://localhost.evil.com/'), 'hybrid');
+  assert.equal(mode('http://[::1]:1234/'), 'local-only');
+  assert.equal(mode('http://localhost:1234/'), 'local-only');
 });

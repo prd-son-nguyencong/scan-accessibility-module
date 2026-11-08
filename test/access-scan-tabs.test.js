@@ -1,19 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { getBrowser, closeBrowser } from '../src/scanner/browser.js';
+import { closeBrowser } from '../src/scanner/browser.js';
+import { requireBrowser } from './helpers/require-browser.js';
 import {
   createFixturePage,
   scanFixtureWithAccessScan,
 } from './helpers/access-scan-contract.js';
 
 test('production engine detects missing tablist semantics on roleless tab interfaces', async (t) => {
-  let browser;
-  try {
-    browser = await getBrowser();
-  } catch (error) {
-    t.skip(`Playwright browser unavailable: ${error.message}`);
-    return;
-  }
+  const browser = await requireBrowser(t);
+  if (!browser) return;
 
   try {
     const page = await createFixturePage(browser, `
@@ -39,13 +35,8 @@ test('production engine detects missing tablist semantics on roleless tab interf
 });
 
 test('production engine ignores accordion and listbox widgets when scanning tabs', async (t) => {
-  let browser;
-  try {
-    browser = await getBrowser();
-  } catch (error) {
-    t.skip(`Playwright browser unavailable: ${error.message}`);
-    return;
-  }
+  const browser = await requireBrowser(t);
+  if (!browser) return;
 
   try {
     const accordion = await createFixturePage(browser, `

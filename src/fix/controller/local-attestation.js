@@ -145,7 +145,7 @@ export function loadTrustedLocalAttestation(localRoot) {
 
   const currentRevision = getLocalBuildRevision(root);
   if (!currentRevision) {
-    return { ok: false, reason: 'BUILD_REVISION_MISSING' };
+    return { ok: false, reason: 'MISSING_BUILD_REVISION' };
   }
   if (isBuildRevisionDirty(currentRevision)) {
     return { ok: false, reason: 'BUILD_REVISION_DIRTY' };
@@ -173,10 +173,14 @@ export function loadTrustedLocalAttestation(localRoot) {
   }
 
   const manifest = manifestRead.value || {};
-  const resolved = resolveScanAttestation(manifest, persisted, currentRevision, deploymentUrl);
+  const resolved = resolveScanAttestation(manifest, persisted, currentRevision, deploymentUrl, root);
 
   if (resolved.entryCount === 0 || resolved.status === 'missing-instrumentation') {
     return { ok: false, reason: 'LOCAL_ATTESTATION_MISSING' };
+  }
+  // A sidecar that names a digest the manifest (plus recorded source hashes) does not reproduce was edited or is stale.
+  if (resolved.status === 'recomputed' && persisted.instrumentationDigest != null) {
+    return { ok: false, reason: 'ATTESTATION_SIDECAR_STALE' };
   }
 
   return {
@@ -187,6 +191,8 @@ export function loadTrustedLocalAttestation(localRoot) {
       deploymentUrl,
       status: resolved.status,
       entryCount: resolved.entryCount,
+      sourceHashes: resolved.sourceHashes,
+      changedSources: resolved.changedSources,
       buildRevisionDirty: isBuildRevisionDirty(currentRevision),
     },
   };

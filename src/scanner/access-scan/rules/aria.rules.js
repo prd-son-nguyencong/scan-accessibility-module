@@ -7,6 +7,8 @@ export default [
     standard: { version: 'WCAG 2.1', level: 'A', criterion: '2.5.3' },
     severity: { impact: 'serious', priority: 3 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'label-in-name matching of visible text is approximate',
     checks: [
       {
         id: 'aria:visible-text-part-of-accessible-name',
@@ -46,6 +48,8 @@ export default [
     standard: { version: 'WCAG 2.1', level: 'A', criterion: '2.5.3' },
     severity: { impact: 'serious', priority: 3 },
     automation: 'manual',
+    kind: 'manual',
+    kindRationale: 'legacy label-in-name finding; no check runs, a person must compare label and visible text',
     checks: [],
     reporting: {
       title: 'Legacy aria-labelledby label-in-name finding',

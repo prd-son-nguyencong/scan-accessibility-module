@@ -475,8 +475,7 @@ test('buildCanonicalUnifiedDiff matches live header aria-current insertion shape
   const root = mkdtempSync(join(tmpdir(), 'ada-candidate-'));
   try {
     const relPath = 'src/partials/layout/header.liquid';
-    const headerPath = join(process.cwd(), '..', 'src/partials/layout/header.liquid');
-    const content = readFileSync(headerPath, 'utf8');
+    const content = readFileSync(new URL('../fixtures/fix/header.liquid', import.meta.url), 'utf8');
     writeLiquid(root, relPath, content);
     const oldText = [
       '          <a',

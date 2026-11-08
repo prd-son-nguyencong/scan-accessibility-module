@@ -20,10 +20,6 @@ const RUNTIME_ROOT = path.join(__dirname, '../src/scanner/access-scan/runtime');
 
 const FORBIDDEN_SOURCE_TOKENS = [
   'paradox',
-  'bnetesting',
-  'BNE',
-  'Fresenius',
-  'Hitachi',
   'data-testid',
   'referenceHtml',
   'reference-snapshot',

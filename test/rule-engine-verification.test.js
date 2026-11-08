@@ -296,7 +296,7 @@ test('verification gate: visibility eligibility matrix covers hidden, inert, opa
 
       const mismatchResult = await runStandardsRules(page, ['VisibilityMismatch']);
       assert.equal(mismatchResult.result.findings.length, 1);
-      assert.equal(mismatchResult.result.findings[0].violationType, 'confirmed');
+      assert.equal(mismatchResult.result.findings[0].violationType, 'potential');
       assert.match(mismatchResult.result.findings[0].element.outerHTML, /aria-hidden-visible/);
       assert.ok(!mismatchResult.result.findings.some((finding) => /decorative-hero/.test(finding.element.outerHTML)));
 

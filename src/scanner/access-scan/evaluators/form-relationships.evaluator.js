@@ -5,6 +5,7 @@ import {
   getSnapshot,
   queryCandidates,
 } from './lib/runtime-context.js';
+import { withDeadline } from '../engine/deadline.js';
 
 /** @type {import('../engine/loader.js').EvaluatorModule} */
 export default {
@@ -18,7 +19,7 @@ export default {
     const findings = [];
 
     if (mode === 'form-submit-button-mismatch') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         const controls = getDescendants(snapshot, indexes, element, (child) => (
           child.tag === 'button' || (child.tag === 'input' && child.attributes.type === 'submit')
         ));
@@ -34,7 +35,7 @@ export default {
     }
 
     if (mode === 'form-context-change-warning') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         const hasOnchange = Boolean(
           element.attributes.onchange || element.attributes.onChange,
         );
@@ -53,7 +54,7 @@ export default {
     }
 
     if (mode === 'main-navigation-mismatch') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         const links = getDescendants(snapshot, indexes, element, (child) => (
           child.tag === 'a' && Boolean(child.attributes.href)
         ));
@@ -72,7 +73,7 @@ export default {
     }
 
     if (mode === 'main-navigation-layout-parity') {
-      for (const navigation of candidates) {
+      for (const navigation of withDeadline(candidates)) {
         const inBanner = (
           navigation.tag === 'header'
           || navigation.attributes.role === 'banner'

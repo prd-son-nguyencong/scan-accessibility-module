@@ -1,14 +1,29 @@
+import { existsSync, readFileSync } from 'node:fs';
 import { isIP } from 'node:net';
+import { fileURLToPath } from 'node:url';
 
+import { classifyHost } from '../../../src/utils/host-classify.js';
 import { CorpusToolingError, CORPUS_TOOLING_ERROR_CODES } from './errors.js';
 import { resolvePublicHostAddresses } from './dns-policy.js';
 
 export const CASE_ID_PATTERN = /^[a-z0-9-]+$/;
 
+/** Optional gitignored file; its `reviewedHostSuffixes` add non-default oracle/staging hosts so none ship in the repo. */
+const LOCAL_MANIFEST_PATH = process.env.ADA_CORPUS_SOURCE_MANIFEST_LOCAL
+  || fileURLToPath(new URL('../source-manifest.local.json', import.meta.url));
+
+function loadLocalHostSuffixes() {
+  if (!existsSync(LOCAL_MANIFEST_PATH)) return [];
+  const { reviewedHostSuffixes } = JSON.parse(readFileSync(LOCAL_MANIFEST_PATH, 'utf8'));
+  return Array.isArray(reviewedHostSuffixes)
+    ? reviewedHostSuffixes.filter((s) => typeof s === 'string' && s.startsWith('.'))
+    : [];
+}
+
 export const REVIEWED_SOURCE_HOST_SUFFIXES = Object.freeze([
   '.preview.sites.stg.paradox.ai',
   '.sites.stg.paradox.ai',
-  '.preview.sites.stg.mchire.com',
+  ...loadLocalHostSuffixes(),
 ]);
 
 const ALLOWED_HTTPS_PORT = 443;
@@ -21,9 +36,7 @@ const FORBIDDEN_SCHEMES = new Set(['file:', 'data:', 'javascript:', 'ftp:']);
 function isForbiddenHost(host = '') {
   const normalized = String(host).toLowerCase().replace(/\.$/, '');
   if (!normalized) return true;
-  if (normalized === 'localhost') return true;
-  if (normalized.endsWith('.localhost')) return true;
-  if (normalized.endsWith('.local')) return true;
+  if (classifyHost(normalized).kind !== 'public') return true;
   if (normalized === 'metadata.google.internal') return true;
   return false;
 }

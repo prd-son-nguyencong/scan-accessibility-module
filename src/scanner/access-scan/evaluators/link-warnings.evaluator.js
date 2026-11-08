@@ -5,6 +5,7 @@ import {
   normalizeText,
   queryCandidates,
 } from './lib/runtime-context.js';
+import { withDeadline } from '../engine/deadline.js';
 
 /**
  * @param {string} text
@@ -24,7 +25,7 @@ export default {
     /** @type {import('../../engine/loader.js').EvaluatorResult['findings']} */
     const findings = [];
 
-    for (const element of candidates) {
+    for (const element of withDeadline(candidates)) {
       const href = element.attributes.href || '';
       const text = deriveAccessibleWarningText(element, indexes);
 

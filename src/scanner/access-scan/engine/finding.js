@@ -1,4 +1,5 @@
 import { createViolation } from '../../../schema.js';
+import { capImpactForKind, hasMeasuredValue, hasProof, verdictFor } from '../../../utils/verdict.js';
 
 /**
  * @typedef {import('./schema.js').ViolationType} ViolationType
@@ -146,7 +147,7 @@ export function normalizeFinding(candidate, rule, meta = {}) {
     ruleId: rule.id,
     violationType,
     severity: {
-      impact: rule.severity.impact,
+      impact: candidate.impact || rule.severity.impact,
       priority: rule.severity.priority,
       wcagRef: formatWcagRef(rule.standard),
     },
@@ -180,7 +181,7 @@ export function normalizeFinding(candidate, rule, meta = {}) {
  *   layer?: string,
  *   source?: Record<string, unknown>,
  *   fix?: Record<string, unknown>,
- *   rule?: Pick<RuleDescriptor, 'fix'>,
+ *   rule?: Pick<RuleDescriptor, 'fix' | 'kind'>,
  * }} options
  */
 export function toViolation(finding, options = {}) {
@@ -195,7 +196,7 @@ export function toViolation(finding, options = {}) {
     ruleId: finding.ruleId,
     layer: options.layer || 'accessScan',
     wcagRef: finding.severity.wcagRef,
-    impact: finding.severity.impact,
+    impact: capImpactForKind(options.rule?.kind || 'heuristic', finding.severity.impact),
     priority: finding.severity.priority,
     element: {
       outerHTML: finding.element.outerHTML,
@@ -210,6 +211,10 @@ export function toViolation(finding, options = {}) {
     },
   });
 
+  // A rule without a kind (custom descriptor) is treated as heuristic: never fails a gate on a guess.
+  violation.kind = options.rule?.kind || 'heuristic';
+  violation.verdict = verdictFor({ kind: violation.kind, violationType: finding.violationType });
+
   violation.element.framePath = finding.element.framePath;
   violation.element.shadowPath = finding.element.shadowPath;
 
@@ -218,6 +223,17 @@ export function toViolation(finding, options = {}) {
     ...finding.evidence,
     violationType: finding.violationType,
   };
+  // A confirmed structural finding records the rule's documented fact unless the check supplied one. A behavioural rule (it measures a
+  // rendered state: focus, geometry) has no such fallback: its check must record the measurement, else settleFinding leaves it 'likely'.
+  if (violation.verdict === 'confirmed' && !hasProof(violation.evidence.proof) && options.rule?.kindRationale && options.rule.automation !== 'behavioral') {
+    // The opening tag plus the rule's rationale is a measurement only when the tag carries a value read from the live DOM (an attribute value, a number); a bare tag
+    // (`<title />`) with the rule's wording is a description: a 'dom-structure' proof, needs-review until the check records its own measurement (evidence.proof).
+    const open = (finding.element.outerHTML || '').match(/^\s*<[^>]*>/)?.[0];
+    if (open) {
+      const fact = `${open.slice(0, 300)}: ${options.rule.kindRationale}`;
+      violation.evidence.proof = { type: hasMeasuredValue(open) ? 'measured-fact' : 'dom-structure', fact };
+    }
+  }
 
   return violation;
 }

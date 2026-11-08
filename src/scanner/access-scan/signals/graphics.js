@@ -4,6 +4,7 @@ import {
 import { normalizeText } from '../evaluators/lib/runtime-context.js';
 import { isActiveContent } from './lib/dom.js';
 import { createDomFact, SIGNAL_FAMILIES } from './types.js';
+import { withDeadline } from '../engine/deadline.js';
 
 function isPointerTransparentImageOverlay(snapshot, indexes, element) {
   return (
@@ -80,7 +81,7 @@ function collectRepeatedHiddenActionSymbols(snapshot, indexes) {
   /** @type {Map<string, number[]>} */
   const groups = new Map();
 
-  for (const element of snapshot.elements) {
+  for (const element of withDeadline(snapshot.elements)) {
     if (
       element.tag !== 'svg'
       || element.attributes['aria-hidden'] !== 'true'
@@ -171,7 +172,7 @@ function collectGraphicsFacts(snapshot, indexes) {
   const facts = [];
   const repeatedHiddenActionSymbols = collectRepeatedHiddenActionSymbols(snapshot, indexes);
 
-  for (const element of snapshot.elements) {
+  for (const element of withDeadline(snapshot.elements)) {
     if (isPointerTransparentImageOverlay(snapshot, indexes, element)) {
       facts.push(createDomFact(
         SIGNAL_FAMILIES.GRAPHICS,

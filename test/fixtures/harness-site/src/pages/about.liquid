@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>About</title>
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+{% render "header" %}
+<main id="main">
+  <section class="hero">
+    <h1>About</h1>
+    <p class="lead">{{data:site.about}}</p>
+    <form class="signup"><label for="email">Email</label> <input id="email" type="text"></form>
+    <a href="https://example.invalid/">Read more</a>
+  </section>
+</main>
+<footer class="site-footer">{{component:footer}}</footer>
+<script src="/menu.js"></script>
+</body>
+</html>

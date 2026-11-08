@@ -26,6 +26,7 @@ test('buildAxeScannerRuns preserves engine, viewport, state, and raw counts', ()
     viewport: { name: 'mobile', width: 390, height: 844 },
     pageState: 'initial',
     status: 'complete',
+    htmlSource: 'live-dom',
     evidence: {
       issueGroups: 7,
       affectedNodes: 7,
@@ -106,6 +107,7 @@ test('buildLighthouseScannerRuns keeps device engine and PSI provenance separate
     evidence: {
       scores: { performance: 60 },
       fetchTime: '2026-07-15T00:00:00.000Z',
+      deviceProvenance: null,
       accessibility: {
         rawAuditCount: 54,
         issueGroups: 7,

@@ -7,6 +7,7 @@ import {
   getSnapshot,
   queryCandidates,
 } from './lib/runtime-context.js';
+import { withDeadline } from '../engine/deadline.js';
 
 /**
  * @param {import('../../runtime/types.js').Snapshot} snapshot
@@ -20,6 +21,9 @@ function hasFormControlLabel(snapshot, indexes, element) {
   return false;
 }
 
+// Types that have their own name rules (checkbox/radio) or are named by value/alt/not user-facing.
+const NAMED_ELSEWHERE_TYPES = new Set(['hidden', 'submit', 'button', 'reset', 'image', 'checkbox', 'radio']);
+
 /** @type {import('../../engine/loader.js').EvaluatorModule} */
 export default {
   id: 'form-label',
@@ -31,9 +35,19 @@ export default {
     /** @type {import('../../engine/loader.js').EvaluatorResult['findings']} */
     const findings = [];
 
-    for (const element of candidates) {
+    for (const element of withDeadline(candidates)) {
       if (mode === 'checkbox-missing-label' || mode === 'radio-missing-label') {
         if (!hasFormControlLabel(snapshot, indexes, element)) {
+          findings.push(elementFinding(element));
+        }
+        continue;
+      }
+
+      if (mode === 'field-missing-name') {
+        if (element.tag === 'input' && NAMED_ELSEWHERE_TYPES.has((element.attributes.type || 'text').toLowerCase())) continue;
+        if (element.hiddenFromAT) continue;
+        // placeholder and value are not names; title is a last-resort name.
+        if (!hasFormControlLabel(snapshot, indexes, element) && !element.attributes.title?.trim()) {
           findings.push(elementFinding(element));
         }
         continue;

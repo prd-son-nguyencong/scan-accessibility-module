@@ -1,3 +1,4 @@
+import '../helpers/hermetic-env.mjs';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,10 +13,8 @@ import {
 } from '../../src/tracer/page-attestation.js';
 import { sanitizeAttestationReason } from '../../src/tracer/attestation-reasons.js';
 import { canonicalizeDeploymentUrl } from '../../src/tracer/deployment-url.js';
-import {
-  applyRemoteHintAttribution,
-  searchLiquidHintMatches,
-} from '../../src/tracer/remote-hint-trace.js';
+import { searchLiquidHintMatches } from '../../src/tracer/remote-hint-trace.js';
+import { applyRemoteHintAttribution } from '../../src/tracer/trace-element.js';
 import { deriveScanTargetAndTrace } from '../../src/tracer/scan-target.js';
 import { loadTrustedLocalAttestation } from '../../src/fix/controller/local-attestation.js';
 import { resolveFixCapability } from '../../src/fix/controller/mode-gate.js';

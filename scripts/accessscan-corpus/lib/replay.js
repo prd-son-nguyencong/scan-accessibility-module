@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { normalizeCorpusRuleId } from '../../../src/reporter/rule-aliases.js';
 import { resolveScanProfile } from '../../../src/scanner/access-scan/engine/profiles.js';
@@ -12,21 +12,21 @@ import { ingestAccessScanReport, normalizeReportFindings } from './ingest.js';
 import { buildSemanticFromSnapshotElement } from './landmark.js';
 import { sanitizeSemanticDescriptor } from './sanitize.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PLAYWRIGHT_TMP_ROOT = path.resolve(__dirname, '../../../.tmp-accessscan-corpus-playwright');
-mkdirSync(PLAYWRIGHT_TMP_ROOT, { recursive: true });
+const PLAYWRIGHT_TMP_ROOT = path.join(os.tmpdir(), 'ada-accessscan-corpus-playwright');
 
 /**
  * Ensures Playwright can create artifact temp directories in this environment.
  */
 export function ensurePlaywrightTempDir() {
   if (!process.env.TMPDIR) {
+    mkdirSync(PLAYWRIGHT_TMP_ROOT, { recursive: true });
     process.env.TMPDIR = PLAYWRIGHT_TMP_ROOT;
     return;
   }
   try {
     mkdirSync(process.env.TMPDIR, { recursive: true });
   } catch {
+    mkdirSync(PLAYWRIGHT_TMP_ROOT, { recursive: true });
     process.env.TMPDIR = PLAYWRIGHT_TMP_ROOT;
   }
 }

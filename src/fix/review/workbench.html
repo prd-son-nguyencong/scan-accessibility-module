@@ -93,10 +93,27 @@
         .mobile-tab-panel[data-active="true"] { display: block; }
         .decision-bar { position: sticky; bottom: 0; z-index: 6; }
       }
+      .security-warning { padding: 0.65rem 1rem; background: var(--warning); color: #fff; font-size: 0.875rem; font-weight: 600; }
+      .sandbox-card { padding: 0.65rem 1rem; border-top: 1px solid var(--border); background: var(--panel); font-size: 0.8125rem; display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; }
+      .sandbox-card[hidden] { display: none; }
+      .sandbox-card button { min-height: var(--target); border-radius: 4px; border: 1px solid var(--border); background: var(--bg); cursor: pointer; padding: 0 0.85rem; }
+      .sandbox-card button:disabled { opacity: 0.45; cursor: not-allowed; }
+      :root { --diff-add-bg: #e6f6ec; --diff-add-text: #05603a; --diff-remove-bg: #fdeceb; --diff-remove-text: #912018; --diff-gutter: #4b5565; }
+      @media (prefers-color-scheme: dark) { :root { --diff-add-bg: #12301f; --diff-add-text: #8ae3b0; --diff-remove-bg: #3a1a18; --diff-remove-text: #ffb4ab; --diff-gutter: #a7b0c0; } }
+      .diff-scroll { overflow: auto; max-width: 100%; border: 1px solid var(--border); border-radius: 4px; }
+      .diff-table { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: 0.8125rem; }
+      .diff-table td, .diff-table th { padding: 0 0.4rem; vertical-align: top; white-space: pre; }
+      .diff-gutter { color: var(--diff-gutter); text-align: right; user-select: none; }
+      .diff-row-added { background: var(--diff-add-bg); color: var(--diff-add-text); }
+      .diff-row-hunk, .diff-row-meta { color: var(--muted); }
+      .diff-row-removed { background: var(--diff-remove-bg); color: var(--diff-remove-text); }
+      .diff-raw-scroll pre { white-space: pre; margin: 0; }
+      .diff-file-heading { margin: 0.5rem 0 0.25rem; font-size: 0.8125rem; font-family: var(--mono); }
     </style>
   </head>
   <body class="app-shell">
     <a class="skip-link" href="#review-main">Skip to review panel</a>
+    <div class="security-warning" id="security-warning" role="alert" hidden></div>
     <header class="app-header" role="banner">
       <div>
         <h1>Accessibility &amp; Performance Fix Review</h1>
@@ -144,6 +161,10 @@
       </section>
     </main>
 
+    <section class="sandbox-card" id="sandbox-status" aria-label="Sandbox status" hidden>
+      <span id="sandbox-status-text"></span>
+      <button type="button" id="rollback-btn" disabled>Rollback sandbox</button>
+    </section>
     <div class="gate-banner" id="apply-gate" role="status" aria-live="polite"></div>
     <footer class="decision-bar" aria-label="Decision actions">
       <button type="button" id="propose-btn">Generate proposal</button>
@@ -179,6 +200,17 @@
       </form>
     </dialog>
 
+    <dialog id="rollback-dialog" aria-labelledby="rollback-dialog-title">
+      <form method="dialog" id="rollback-form">
+        <h2 id="rollback-dialog-title">Rollback sandbox</h2>
+        <p>Restores the sandbox copy to its pre-apply bytes. The original source is never modified.</p>
+        <menu>
+          <button type="button" id="rollback-cancel">Cancel</button>
+          <button type="submit" id="rollback-confirm" value="confirm">Confirm rollback</button>
+        </menu>
+      </form>
+    </dialog>
+
     <dialog id="manual-map-dialog" aria-labelledby="manual-map-dialog-title">
       <form method="dialog" id="manual-map-form">
         <h2 id="manual-map-dialog-title">Manual source mapping</h2>
@@ -196,7 +228,8 @@
     <div id="status-live" class="visually-hidden" aria-live="assertive"></div>
     <style nonce="__NONCE__">.visually-hidden{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}</style>
 
-    <script nonce="__NONCE__">
+    <script type="module" nonce="__NONCE__">
+      import { renderDiffContent } from '/review/diff-view.js';
       (function initReviewWorkbench() {
         const TOKEN_HEADER = '__TOKEN_HEADER__';
         const state = { token: '', snapshot: null, selectedUnitId: null, manualMapFindingId: null, manualCheckAck: {}, preferences: { mode: 'accessibility', search: '', sourceFilter: 'all', statusFilter: 'all', severityFilter: 'all', typeFilter: 'all', activeTab: 'list' } };
@@ -211,6 +244,8 @@
           statusFacets: Array.from(document.querySelectorAll('.status-facets button')),
           tabs: [document.getElementById('tab-source'), document.getElementById('tab-list'), document.getElementById('tab-review')],
           panels: [document.getElementById('panel-source'), document.getElementById('panel-list'), document.getElementById('panel-review')],
+          securityWarning: document.getElementById('security-warning'), sandboxStatus: document.getElementById('sandbox-status'), sandboxStatusText: document.getElementById('sandbox-status-text'),
+          rollbackBtn: document.getElementById('rollback-btn'), rollbackDialog: document.getElementById('rollback-dialog'), rollbackForm: document.getElementById('rollback-form'), rollbackConfirm: document.getElementById('rollback-confirm'),
           rejectDialog: document.getElementById('reject-dialog'), rejectForm: document.getElementById('reject-form'), rejectReason: document.getElementById('reject-reason'),
           reviseDialog: document.getElementById('revise-dialog'), reviseForm: document.getElementById('revise-form'), revisionNote: document.getElementById('revision-note'),
           manualMapDialog: document.getElementById('manual-map-dialog'), manualMapForm: document.getElementById('manual-map-form'),
@@ -245,6 +280,7 @@
         function scrubTokenFromUrl() {
           if (window.location.hash) history.replaceState(null, '', window.location.pathname + window.location.search);
         }
+        function diffRenderOptions() { return { snapshotDiffTrimmed: Boolean(state.snapshot?.snapshotDiffTrimmed) }; }
         function announce(message) { els.statusLive.textContent = ''; window.setTimeout(function(){ els.statusLive.textContent = message; }, 20); }
         function clearElement(node) { while (node.firstChild) node.removeChild(node.firstChild); }
         function appendText(parent, tag, text, className) { const el = document.createElement(tag); if (className) el.className = className; el.textContent = text; parent.appendChild(el); return el; }
@@ -334,6 +370,25 @@
           section.appendChild(wrapper);
           parent.appendChild(section);
         }
+        function renderHarnessEvidence(evidence, parent) {
+          const box = document.createElement('details');
+          appendText(box, 'summary', 'Harness evidence: ' + boundText(String(evidence.decision || 'review') + ', risk ' + String(evidence.risk), 80));
+          const table = document.createElement('table');
+          (evidence.gateTable || []).forEach(function(row) {
+            const tr = document.createElement('tr');
+            appendText(tr, 'td', String(row.gate));
+            appendText(tr, 'td', row.pass ? 'pass' : 'FAIL');
+            appendText(tr, 'td', String(row.issues) + ' issue(s)');
+            table.appendChild(tr);
+          });
+          box.appendChild(table);
+          const shots = evidence.screenshots || {};
+          appendText(box, 'p', 'Screenshots before: ' + boundText((shots.before || []).map(function(s) { return s.path; }).join(', '), 400));
+          appendText(box, 'p', 'Screenshots after: ' + boundText((shots.after || []).map(function(s) { return s.path; }).join(', '), 400));
+          if (evidence.scanDelta) appendText(box, 'p', 'Scan delta: fixed ' + (evidence.scanDelta.fixed || 0) + ', new ' + (evidence.scanDelta.added || 0));
+          if (evidence.diff) appendText(box, 'pre', boundText(evidence.diff, 2000));
+          parent.appendChild(box);
+        }
         function renderAccessibilityReview(accessibility, unit, parent) {
           renderSourceSnippets(accessibility.snippets, parent);
           renderScannerEvidence(accessibility.evidence, parent);
@@ -345,6 +400,7 @@
           if (candidate?.cisTelemetry) {
             appendText(proposalSection, 'p', 'Telemetry: calls=' + (candidate.cisTelemetry.sessionCalls || 0) + ', outcome=' + (candidate.cisTelemetry.outcome || 'unknown'));
           }
+          if (candidate?.harness) renderHarnessEvidence(candidate.harness, proposalSection);
           const attestations = candidate?.manualCheckAttestations || [];
           const checks = attestations.length ? attestations : (candidate?.manualChecks || []).map(function(label, index) {
             return { checkId: unit.fixUnitId + ':' + index, label: label };
@@ -378,7 +434,8 @@
           if (unit.candidateHash) appendText(section, 'p', 'Candidate hash: ' + unit.candidateHash);
           if (unit.diffHash) appendText(section, 'p', 'Diff hash: ' + unit.diffHash);
           if (unit.candidate?.verification) appendText(section, 'p', 'Verification: ' + unit.candidate.verification.status);
-          appendText(section, 'pre', accessibility.diff?.text || 'Proposal generation pending.');
+          if (accessibility.diff) renderDiffContent(section, accessibility.diff, diffRenderOptions());
+          else appendText(section, 'p', 'Proposal generation pending.');
           if (unit.diffApproved) appendText(section, 'p', 'Exact diff approved.');
           else if (unit.reviewStatus === 'accepted' && unit.verified) appendText(section, 'p', 'Exact diff approval required before Apply.');
           parent.appendChild(section);
@@ -433,7 +490,10 @@
           const section = document.createElement('section');
           section.className = 'review-section';
           appendText(section, 'h3', 'Multi-file plan');
-          appendText(section, 'pre', JSON.stringify(performance.plan || {}, null, 2));
+          const plan = performance.plan || {};
+          if ((plan.files || []).length) appendText(section, 'p', 'Files: ' + plan.files.join(', '));
+          if (plan.diff) renderDiffContent(section, plan.diff, diffRenderOptions());
+          else appendText(section, 'p', 'No candidate diff yet.');
           parent.appendChild(section);
         }
         function selectedUnit() { return visibleUnits().find(function(u){ return u.fixUnitId === state.selectedUnitId; }) || visibleUnits()[0] || null; }
@@ -534,7 +594,7 @@
           appendText(els.reviewPanel, 'p', 'Status: ' + unit.reviewStatus + ' · Severity: ' + unit.severity);
           if (unit.blockedReason) appendText(els.reviewPanel, 'p', 'Blocked: ' + unit.blockedReason);
           if (unit.decision?.revisionNote) appendText(els.reviewPanel, 'p', 'Revision requested: ' + unit.decision.revisionNote);
-          if (unit.editorLink) { const link = document.createElement('p'); const a = document.createElement('a'); a.href = unit.editorLink; a.textContent = 'Open source owner in editor'; a.rel = 'noopener noreferrer'; link.appendChild(a); els.reviewPanel.appendChild(link); }
+          const ownerHref = safeEditorHref(unit.editorLink); if (ownerHref) { const link = document.createElement('p'); const a = document.createElement('a'); a.href = ownerHref; a.textContent = 'Open source owner in editor'; a.rel = 'noopener noreferrer'; link.appendChild(a); els.reviewPanel.appendChild(link); }
 
           if (state.preferences.mode === 'accessibility') {
             const accessibility = (state.snapshot.accessibility?.sources || []).flatMap(function(s){ return s.units; }).find(function(u){ return u.fixUnitId === unit.fixUnitId; });
@@ -583,6 +643,39 @@
           els.approveDiffBtn.disabled = !unit || !accepted || !unit.verified || !unit.candidateHash || !unit.diffHash || unit.diffApproved;
         }
 
+        function renderSecurityAndSandbox() {
+          const transport = state.snapshot?.transportSecurity;
+          els.securityWarning.hidden = transport !== 'insecure-dev';
+          if (transport === 'insecure-dev') {
+            els.securityWarning.textContent = 'Unverified TLS — development only.' + (state.snapshot?.devAuthBypass ? ' Development auth bypass is enabled.' : '');
+          }
+          const sandbox = state.snapshot?.sandbox;
+          els.sandboxStatus.hidden = !sandbox;
+          if (sandbox) {
+            els.sandboxStatusText.textContent = 'Sandbox: ' + sandbox.targetFile + (sandbox.rollbackCompleted ? ' · rolled back' : sandbox.rollbackInFlight ? ' · rollback in progress' : sandbox.rollbackAvailable ? ' · rollback available' : ' · nothing to roll back');
+          }
+          els.rollbackBtn.disabled = !state.snapshot?.sandbox?.rollbackAvailable;
+        }
+
+        async function rollbackSandbox() {
+          if (els.rollbackDialog.getAttribute('aria-busy') === 'true') return;
+          els.rollbackDialog.setAttribute('aria-busy', 'true');
+          els.rollbackConfirm.disabled = true;
+          els.rollbackBtn.disabled = true;
+          try {
+            const payload = await apiFetch('/api/sandbox/rollback', { method: 'POST', body: JSON.stringify({ confirm: true }) });
+            state.snapshot = payload.snapshot;
+            els.rollbackDialog.close();
+            announce('Sandbox restored byte-for-byte. Original source remained unchanged.');
+          } catch (error) {
+            announce('Rollback failed: ' + error.message);
+          } finally {
+            els.rollbackDialog.removeAttribute('aria-busy');
+            els.rollbackConfirm.disabled = false;
+            renderAll(false);
+          }
+        }
+
         function renderApplyGate() {
           const gate = state.snapshot?.applyGate;
           if (!gate) { els.applyGate.textContent = 'Loading apply gate…'; els.applyBtn.disabled = true; return; }
@@ -620,7 +713,7 @@
 
         function renderAll(refreshFilters) {
           if (refreshFilters !== false) renderFilters();
-          renderSourceList(); renderUnitList(); renderReviewPanel(); renderDecisionButtons(); renderApplyGate();
+          renderSourceList(); renderUnitList(); renderReviewPanel(); renderDecisionButtons(); renderApplyGate(); renderSecurityAndSandbox();
           setActiveTab(state.preferences.activeTab || 'list');
         }
 
@@ -749,6 +842,10 @@
           els.applyBtn.addEventListener('click', function(){ applyAccepted().catch(function(e){ announce('Apply failed: ' + e.message); }); });
           els.traceAllBtn.addEventListener('click', function(){ apiFetch('/api/trace/all', { method: 'POST', body: '{}' }).then(function(p){ state.snapshot = p; announce('Trace refreshed.'); renderAll(false); }).catch(function(e){ announce('Trace all failed: ' + e.message); }); });
           els.batchAcceptBtn.addEventListener('click', function(){ batchAcceptVerified().catch(function(e){ announce('Batch accept failed: ' + e.message); }); });
+          els.rollbackBtn.addEventListener('click', function(){ els.rollbackDialog.showModal(); });
+          document.getElementById('rollback-cancel').addEventListener('click', function(){ if (els.rollbackDialog.getAttribute('aria-busy') !== 'true') els.rollbackDialog.close(); });
+          els.rollbackDialog.addEventListener('cancel', function(event){ if (els.rollbackDialog.getAttribute('aria-busy') === 'true') event.preventDefault(); });
+          els.rollbackForm.addEventListener('submit', function(event){ event.preventDefault(); rollbackSandbox(); });
           document.getElementById('manual-map-cancel').addEventListener('click', function(){ els.manualMapDialog.close(); });
           els.manualMapForm.addEventListener('submit', function(event){
             event.preventDefault();

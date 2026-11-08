@@ -1,3 +1,4 @@
+import { isLoopbackUrl } from '../../utils/host-classify.js';
 import { CIS_MODEL_DISCOVERY_LIMITS, CIS_POC_LIMITS, CIS_VALIDATION_LIMITS } from './limits.js';
 import { estimateMessagesTokenCount } from './parser.js';
 
@@ -15,7 +16,6 @@ export class CisTransportError extends Error {
   }
 }
 
-const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
 const ALLOWED_MESSAGE_ROLES = new Set(['system', 'user', 'assistant']);
 /** Canonical selectable chat model IDs — no pipe composite registry entries. */
 const MODEL_ID_PATTERN = /^[a-z0-9][a-z0-9._:-]{0,199}$/i;
@@ -41,7 +41,7 @@ function isTlsVerificationError(error) {
  * @param {string} hostname
  */
 export function isLoopbackHost(hostname) {
-  return LOOPBACK_HOSTS.has(String(hostname).toLowerCase());
+  return isLoopbackUrl(String(hostname));
 }
 
 /**
@@ -201,7 +201,8 @@ export function extractModelInventory(body) {
     if (id === undefined || typeof id !== 'string') {
       throw new CisTransportError('TRANSPORT_INVALID_RESPONSE', 'CIS model ID is invalid.');
     }
-    if (COMPOSITE_INVENTORY_ID_PATTERN.test(id)) {
+    // Registry rows whose id contains '|' are composite pipeline entries, never selectable chat models: skip them whatever their length.
+    if (id.includes('|') || COMPOSITE_INVENTORY_ID_PATTERN.test(id)) {
       continue;
     }
     if (!MODEL_ID_PATTERN.test(id)) {

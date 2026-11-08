@@ -1,7 +1,7 @@
-import { mkdtempSync, rmSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { CORPUS_SCHEMA_VERSION } from '../../../src/scanner/access-scan/corpus/constants.js';
 import {
@@ -20,9 +20,6 @@ import {
   sanitizeSnapshot,
 } from './sanitize.js';
 
-const __draftDirname = path.dirname(fileURLToPath(import.meta.url));
-const DRAFT_VALIDATION_TMP_ROOT = path.resolve(__draftDirname, '../../../.tmp-accessscan-corpus-tests');
-mkdirSync(DRAFT_VALIDATION_TMP_ROOT, { recursive: true });
 
 /** @type {{ reassert: (draftDir: string) => string } | null} */
 let draftPathGuardOverride = null;
@@ -150,7 +147,7 @@ export async function generateDraftCase(request) {
 
   assertNoRedactionLeaks(serialized);
 
-  const tempDir = mkdtempSync(path.join(DRAFT_VALIDATION_TMP_ROOT, 'ada-corpus-draft-'));
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), 'ada-corpus-draft-'));
   try {
     await validateDraftSerialized(serialized, tempDir);
   } finally {

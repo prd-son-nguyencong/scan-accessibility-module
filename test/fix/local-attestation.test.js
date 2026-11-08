@@ -1,3 +1,4 @@
+import '../helpers/hermetic-env.mjs';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -139,7 +140,7 @@ test('trusted loader fails closed when current build revision is unavailable', (
     writeTempProject(root);
     const loaded = loadTrustedLocalAttestation(root);
     assert.equal(loaded.ok, false);
-    assert.equal(loaded.reason, 'BUILD_REVISION_MISSING');
+    assert.equal(loaded.reason, 'MISSING_BUILD_REVISION');
   } finally {
     if (previous === undefined) delete process.env.ADA_SCAN_BUILD_REVISION;
     else process.env.ADA_SCAN_BUILD_REVISION = previous;

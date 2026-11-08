@@ -14,6 +14,7 @@ export {
  */
 export function createViolation({
   ruleId,
+  canonicalRuleId = null,
   layer,
   category = 'accessibility',
   wcagRef = null,
@@ -26,10 +27,11 @@ export function createViolation({
   return {
     id: randomUUID(),
     ruleId,
+    ...(canonicalRuleId ? { canonicalRuleId } : {}),
     layer,
     category,
     wcagRef,
-    impact,
+    impact: IMPACT_ORDER.includes(impact) ? impact : 'moderate',
     priority,
     count: 1,
     foundAt: new Date().toISOString(),

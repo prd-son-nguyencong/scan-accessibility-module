@@ -14,3 +14,9 @@ export function injectScanAttestation(
     deploymentUrl?: string | null;
   },
 ): string;
+
+/**
+ * Scan-build plugin (`SCAN_MODE=true`): adds `data-ada-src="file:line"` to host elements in .jsx/.tsx and emits
+ * `ada-react-src.json` for the `react` source adapter.
+ */
+export function reactSourceAttrPlugin(): Plugin;

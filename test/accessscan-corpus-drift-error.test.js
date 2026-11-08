@@ -11,10 +11,10 @@ import { CorpusToolingError, CORPUS_TOOLING_ERROR_CODES } from '../scripts/acces
 
 test('normalizeSanitizedDriftError redacts hosts secrets and URLs from Playwright failures', () => {
   const normalized = normalizeSanitizedDriftError(new Error(
-    'page.goto: net::ERR_CONNECTION_REFUSED at https://user:secret@hitachi728.preview.sites.stg.paradox.ai/jobs',
+    'page.goto: net::ERR_CONNECTION_REFUSED at https://user:secret@site-728.preview.sites.stg.paradox.ai/jobs',
   ));
   assert.equal(normalized.errorCode, 'network_failure');
-  assert.doesNotMatch(normalized.message, /hitachi728|paradox\.ai|secret|https?:\/\//i);
+  assert.doesNotMatch(normalized.message, /site-728|paradox\.ai|secret|https?:\/\//i);
 
   const timeout = normalizeSanitizedDriftError(new Error('Timeout 30000ms exceeded'));
   assert.equal(timeout.errorCode, 'navigation_timeout');
@@ -57,9 +57,9 @@ test('drift summary and artifact remain neutral for error cases with null snapsh
 test('tooling errors sanitize outbound messages without leaking source url details', () => {
   const error = new CorpusToolingError(
     CORPUS_TOOLING_ERROR_CODES.FORBIDDEN_SOURCE_URL,
-    'Navigation host is not on the reviewed allowlist at https://hitachi728.preview.sites.stg.paradox.ai/jobs',
+    'Navigation host is not on the reviewed allowlist at https://site-728.preview.sites.stg.paradox.ai/jobs',
   );
   const normalized = normalizeSanitizedDriftError(error);
   assert.equal(normalized.errorCode, 'forbidden_source_url');
-  assert.doesNotMatch(normalized.message, /hitachi728|paradox\.ai|https?:\/\//i);
+  assert.doesNotMatch(normalized.message, /site-728|paradox\.ai|https?:\/\//i);
 });

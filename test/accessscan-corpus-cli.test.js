@@ -110,6 +110,19 @@ test('corpus capture CLI rejects non-initial pageState for live url capture', ()
   rmSync(draftRoot, { recursive: true, force: true });
 });
 
+test('corpus capture CLI refuses non-public --url unless --allow-private-url', () => {
+  const draftRoot = createTestTempDir('cli-guard-');
+  const { stdout, status } = runCli('scripts/accessscan-corpus/capture.js', [
+    '--draft', path.join(draftRoot, 'guard-case'),
+    '--id', 'guard-case',
+    '--report', path.join(FIXTURE_ROOT, 'report-neutral-empty-list.json'),
+    '--url', 'http://169.254.169.254/',
+  ]);
+  assert.equal(status, 1);
+  assert.equal(JSON.parse(stdout).errorCode, 'forbidden_source_url');
+  rmSync(draftRoot, { recursive: true, force: true });
+});
+
 test('corpus capture CLI generates draft from injectable local fixtures', () => {
   const draftRoot = createTestTempDir('cli-draft-');
   const draftDir = path.join(draftRoot, 'cli-neutral-empty-list');

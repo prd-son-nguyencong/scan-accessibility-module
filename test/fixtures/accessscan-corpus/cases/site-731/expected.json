@@ -7,7 +7,7 @@
       "canonicalRuleId": "ButtonDiscernible",
       "violationType": "confirmed",
       "evidence": {
-        "checkId": "interactive:button-discernible"
+        "checkId": "interactive:button-discernible-authored"
       },
       "element": {
         "semantic": {
@@ -29,7 +29,7 @@
       "canonicalRuleId": "ButtonDiscernible",
       "violationType": "confirmed",
       "evidence": {
-        "checkId": "interactive:button-discernible"
+        "checkId": "interactive:button-discernible-authored"
       },
       "element": {
         "semantic": {
@@ -51,7 +51,7 @@
       "canonicalRuleId": "ButtonDiscernible",
       "violationType": "confirmed",
       "evidence": {
-        "checkId": "interactive:button-discernible"
+        "checkId": "interactive:button-discernible-authored"
       },
       "element": {
         "semantic": {

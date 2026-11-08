@@ -8,7 +8,9 @@ import {
   DEFAULT_STABILITY_TIMEOUT_MS,
   REQUIRES_ISOLATED_STATE,
 } from './constants.js';
+import { readAxNames } from './ax-names.js';
 import { deepFreeze } from './deep-freeze.js';
+import { trackContext } from '../../../utils/scan-scope.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BROWSER_RUNTIME_SOURCE = readFileSync(
@@ -43,6 +45,9 @@ export async function installRuntimeHooks(page) {
  * @param {import('playwright').Page} page
  * @param {{
  *   url?: string,
+ *   profile?: string,
+ *     'standards' takes accessible names from the browser accessibility tree;
+ *     any other value keeps the in-page legacy computation (commercial parity).
  *   stabilityQuietMs?: number,
  *   stabilityTimeoutMs?: number,
  *   stabilityMinObserveMs?: number,
@@ -99,6 +104,22 @@ export async function createScanSession(page, options = {}) {
     };
   }, { quietMs, timeoutMs, minObserveMs });
 
+  if (options.profile === 'standards') {
+    try {
+      const names = await readAxNames(page);
+      for (const element of payload.snapshot.elements) {
+        if (names.has(element.id)) element.accessibleName = names.get(element.id);
+      }
+    } catch (error) {
+      payload.snapshot.diagnostics.push({
+        code: 'accname-cdp-unavailable',
+        inspected: false,
+        message: 'Accessibility-tree names unavailable; in-page name computation used.',
+        details: { error: error instanceof Error ? error.message : String(error) },
+      });
+    }
+  }
+
   cachedSnapshot = /** @type {import('./types.js').Snapshot} */ (deepFreeze({
     elements: payload.snapshot.elements,
     diagnostics: payload.snapshot.diagnostics,
@@ -129,6 +150,7 @@ export async function createScanSession(page, options = {}) {
           viewport: { width: 1280, height: 900 },
           storageState,
         });
+        trackContext(forkContext);
         forkedPage = await forkContext.newPage();
         forkedPage.on('console', (message) => {
           if (message.type() === 'error' || message.type() === 'warning') {
@@ -173,7 +195,7 @@ export async function createScanSession(page, options = {}) {
         await forkedPage.setContent(html, { waitUntil: 'domcontentloaded' });
       }
 
-      const scanSession = await createScanSession(forkedPage);
+      const scanSession = await createScanSession(forkedPage, { profile: options.profile });
 
       return {
         page: forkedPage,
@@ -182,8 +204,11 @@ export async function createScanSession(page, options = {}) {
         requiresIsolatedState: REQUIRES_ISOLATED_STATE,
         isolationMode,
         cleanup: async () => {
-          if (forkedPage) await forkedPage.close();
-          if (forkContext) await forkContext.close();
+          try {
+            if (forkedPage) await forkedPage.close();
+          } finally {
+            if (forkContext) await forkContext.close(); // a failing page close must not leak the context
+          }
         },
       };
     } catch (error) {

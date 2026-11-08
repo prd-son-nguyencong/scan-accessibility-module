@@ -39,7 +39,6 @@ const SIGNAL_FORBIDDEN_TOKENS = [
   'corpus',
   'site-',
   'profile:',
-  'bnetesting',
   'paradox',
   'credentialGate',
   'disclosureTriggersExamined',

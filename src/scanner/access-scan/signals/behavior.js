@@ -10,6 +10,7 @@ import {
   isActiveContent, isNavLandmark, isSearchLandmark,
 } from './lib/dom.js';
 import { createDomFact, SIGNAL_FAMILIES } from './types.js';
+import { withDeadline } from '../engine/deadline.js';
 
 function collectNavigationSignals(snapshot, indexes, scanUrl) {
   /** @type {import('../runtime/types.js').SnapshotElement[]} */
@@ -123,7 +124,7 @@ function collectSubmenuRows(snapshot, indexes) {
       const buttons = children.filter((child) => (
         child.tag === 'button' || child.attributes.role === 'button'
       ));
-      // Breadcrumb/submenu parity is a compact link+disclosure pair — not a
+      // Breadcrumb/submenu rows are a compact link+disclosure pair — not a
       // full primary-nav toolbar that happens to include one mega-menu button.
       if (links.length === 0 || buttons.length === 0) continue;
       if (links.length > 2 || buttons.length > 2 || children.length > 4) continue;
@@ -325,7 +326,7 @@ function collectSearchObservations(snapshot, indexes) {
   /** @type {Array<{ element: import('../runtime/types.js').SnapshotElement, targetStrategy: string, inputId: number }>} */
   const observations = [];
 
-  for (const input of snapshot.elements) {
+  for (const input of withDeadline(snapshot.elements)) {
     if (input.tag !== 'input' || !isActiveContent(input)) continue;
     if (!isSearchInput(snapshot, indexes, input)) continue;
     if (hasAncestor(snapshot, indexes, input, isSearchLandmark)) continue;

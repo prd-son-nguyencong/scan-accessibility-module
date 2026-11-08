@@ -1,8 +1,29 @@
-node_modules/
+node_modules
 dist/
 scan-reports/
+.ada-scan/
 .env
 .env.*
 !.env.example
 *.log
 .DS_Store
+.ada-scan/
+.pw.cjs
+.tmp-*/
+test/.tmp-*/
+oracle-artifacts/
+
+# real customer names/URLs (see scripts/accessscan-corpus/*.local.example.json)
+scripts/accessscan-corpus/source-manifest.local.json
+scripts/accessscan-corpus/redaction-tokens.local.json
+
+# private working files, never commit (see docs/release-data-audit.md)
+.eval/
+.ada-worktrees/
+eval/site-map.local.json
+cis-env*
+.cis-env*
+*.local.json
+!*.local.example.json
+.ada-fix/
+*.pem.local

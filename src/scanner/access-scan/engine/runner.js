@@ -2,7 +2,7 @@ import { filterChecksForProfile, PROFILES } from './profiles.js';
 import { normalizeFinding } from './finding.js';
 import { projectFindings } from './projection.js';
 import { resolveCheckClassification } from './classification.js';
-import { createRuleDeadline } from './deadline.js';
+import { createRuleDeadline, deadlineStorage } from './deadline.js';
 
 /**
  * @typedef {import('./registry.js').RuleRegistry} RuleRegistry
@@ -207,7 +207,6 @@ export async function runRules({
     for (const check of checks) {
       const evaluator = evaluators.get(check.evaluator);
       const checkStartedAt = Date.now();
-      const deadline = createRuleDeadline({ timeoutMs: ruleTimeoutMs, parentSignal: signal });
       /** @type {CheckExecutionRecord} */
       const checkRecord = {
         checkId: check.id,
@@ -218,8 +217,13 @@ export async function runRules({
       };
 
       try {
+        // A cancelled scan starts no further evaluators.
+        if (signal?.aborted) {
+          throw Object.assign(new Error('Scan cancelled'), { errorCode: 'scan_cancelled' });
+        }
+        const deadline = createRuleDeadline({ timeoutMs: ruleTimeoutMs, parentSignal: signal });
         const raw = await deadline.run(
-          evaluator.evaluate(context, check, { signal: deadline.signal }),
+          deadlineStorage.run(deadline, () => evaluator.evaluate(context, check, { signal: deadline.signal })),
         );
         const result = normalizeEvaluatorResult(raw);
 
@@ -237,7 +241,8 @@ export async function runRules({
             normalizeFinding(
               {
                 ...candidate,
-                violationType,
+                // A finding may only be weaker than its check (a convention deviation of a rule that also has hard failures).
+                violationType: candidate.violationType === 'manual-review' ? 'manual-review' : violationType,
               },
               rule,
               { checkId: check.id, profile: checkProfile },

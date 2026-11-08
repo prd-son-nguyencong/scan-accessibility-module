@@ -206,3 +206,35 @@ test('generateLighthouseAccessibilityViolations merges viewport evidence', () =>
   assert.equal(normalized.element.selector, '#sort');
   assert.equal(normalized.evidence.viewports.length, 2);
 });
+
+test('fetchPSI sends the API key in a header, never in the URL, and redacts errors', async () => {
+  const { fetchPSI } = await import('../src/scanner/lighthouse.js');
+  const realFetch = globalThis.fetch;
+  const prevKey = process.env.GOOGLE_API_KEY;
+  const calls = [];
+  try {
+    process.env.GOOGLE_API_KEY = 'SECRET-KEY-123';
+    globalThis.fetch = async (url, opts) => {
+      calls.push({ url: String(url), headers: opts.headers });
+      return { ok: true, json: async () => ({}) };
+    };
+    await fetchPSI('https://example.com/', 'mobile');
+    assert.equal(calls[0].headers['X-Goog-Api-Key'], 'SECRET-KEY-123');
+    assert.ok(!/key=/i.test(calls[0].url) && !calls[0].url.includes('SECRET-KEY-123'));
+
+    globalThis.fetch = async () => ({
+      ok: false, status: 403, statusText: 'Forbidden',
+      text: async () => JSON.stringify({ error: { message: 'bad https://x/?key=SECRET-KEY-123&a=1 SECRET-KEY-123' } }),
+    });
+    await assert.rejects(fetchPSI('https://example.com/', 'mobile', 0), (e) => !e.message.includes('SECRET-KEY-123') && /\[redacted\]/.test(e.message));
+
+    delete process.env.GOOGLE_API_KEY;
+    calls.length = 0;
+    globalThis.fetch = async (url, opts) => { calls.push(opts.headers); return { ok: true, json: async () => ({}) }; };
+    await fetchPSI('https://example.com/', 'mobile');
+    assert.deepEqual(calls[0], {});
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey === undefined) delete process.env.GOOGLE_API_KEY; else process.env.GOOGLE_API_KEY = prevKey;
+  }
+});

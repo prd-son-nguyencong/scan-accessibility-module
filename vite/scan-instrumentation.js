@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import fg from 'fast-glob';
 import {
@@ -11,13 +11,17 @@ import {
   resolveDeploymentUrlFromEnv,
 } from '../src/tracer/trusted-deployment-url.js';
 import { readBoundedFile } from '../src/fix/review/secure-io.js';
+import { hashSourceFiles } from '../src/tracer/preimage.js';
 
-const DEFAULT_DIST_MAP = [
-  { dist: 'dist/partials/', src: 'src/partials/', ext: '.liquid' },
-  { dist: 'dist/pages/', src: 'src/pages/', ext: '.liquid' },
-  { dist: 'dist/layouts/', src: 'src/layouts/', ext: '.liquid' },
-  { dist: 'dist/components/', src: 'src/components/', ext: '.liquid' },
-];
+const defaultDistMap = (outDir) => ['partials', 'pages', 'layouts', 'components']
+  .map((d) => ({ dist: `${outDir}/${d}/`, src: `src/${d}/`, ext: '.liquid' }));
+
+// Write-then-rename so a crashed build never leaves a half-written manifest.
+function writeFileAtomic(file, data) {
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, data);
+  renameSync(tmp, file);
+}
 
 const SIDECAR_SCHEMA_VERSION = '1.1.0';
 const MAX_CONFIG_BYTES = 256 * 1024;
@@ -53,11 +57,17 @@ export function loadHostScanConfig(projectRoot) {
   if (!existsSync(configPath) || !isRegularFile(configPath)) return {};
   const contained = assertPathContainedInRoot(resolvedRoot, configPath);
   const raw = readBoundedFile(contained.resolvedCandidate, MAX_CONFIG_BYTES);
-  if (raw == null) return {};
+  if (raw == null) {
+    throw new Error(`[scan-instrumentation] .scan-config.json is unreadable or larger than ${MAX_CONFIG_BYTES} bytes.`);
+  }
   try {
-    return JSON.parse(raw);
-  } catch {
-    return {};
+    const parsed = JSON.parse(raw);
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('config must be a JSON object');
+    return parsed;
+  } catch (err) {
+    const msg = `[scan-instrumentation] invalid .scan-config.json: ${err.message}`;
+    console.warn(msg);
+    throw new Error(msg);
   }
 }
 
@@ -89,7 +99,7 @@ function assertRelativePathContained(root, relPath) {
   return candidate;
 }
 
-export function sanitizeDistMap(projectRoot, distMap = DEFAULT_DIST_MAP) {
+export function sanitizeDistMap(projectRoot, distMap = defaultDistMap('dist')) {
   const resolvedRoot = resolveProjectRoot(projectRoot);
   const safe = [];
   for (const entry of distMap) {
@@ -102,7 +112,7 @@ export function sanitizeDistMap(projectRoot, distMap = DEFAULT_DIST_MAP) {
       ext: entry.ext || '.liquid',
     });
   }
-  return safe.length ? safe : DEFAULT_DIST_MAP;
+  return safe.length ? safe : defaultDistMap('dist');
 }
 
 export function injectScanAttestation(html, attestation = {}) {
@@ -110,19 +120,39 @@ export function injectScanAttestation(html, attestation = {}) {
 }
 
 export function scanInstrumentationPlugin() {
+  let resolved = null;
+  let buildFailed = false;
   return {
     name: 'scan-instrumentation',
     apply: 'build',
 
-    async closeBundle() {
-      if (process.env.SCAN_MODE !== 'true') return;
+    configResolved(cfg) {
+      resolved = cfg;
+    },
 
-      const projectRoot = process.cwd();
+    buildEnd(error) {
+      if (error) buildFailed = true;
+    },
+
+    closeBundle: {
+      order: 'post',
+      async handler() {
+      if (process.env.SCAN_MODE !== 'true' || buildFailed) return;
+
+      const projectRoot = resolved?.root || process.cwd();
       const config = loadHostScanConfig(projectRoot);
-      const outDir = resolveSafeOutDir(projectRoot, config.outDir || 'dist');
+      // The resolved Vite outDir wins over .scan-config.json so both always agree.
+      const outDir = resolveSafeOutDir(
+        projectRoot,
+        resolved ? relative(resolveProjectRoot(projectRoot), resolve(projectRoot, resolved.build.outDir)) || '.' : config.outDir || 'dist',
+      );
       const distMap = sanitizeDistMap(
         projectRoot,
-        Array.isArray(config.distMap) && config.distMap.length ? config.distMap : DEFAULT_DIST_MAP,
+        // An untouched template distMap (rooted at dist/) follows the real outDir.
+        Array.isArray(config.distMap) && config.distMap.length
+          && JSON.stringify(config.distMap) !== JSON.stringify(defaultDistMap('dist'))
+          ? config.distMap
+          : defaultDistMap(outDir),
       );
 
       const manifest = {};
@@ -135,11 +165,13 @@ export function scanInstrumentationPlugin() {
       }
 
       const outDirAbs = join(projectRoot, outDir);
-      if (!existsSync(outDirAbs)) mkdirSync(outDirAbs, { recursive: true });
+      if (!existsSync(outDirAbs)) return; // nothing was emitted (failed or empty build)
       assertPathContainedInRoot(projectRoot, outDirAbs);
 
       const sortedManifest = normalizeInstrumentationManifest(manifest);
-      const instrumentationDigest = instrumentationManifestDigest(sortedManifest);
+      // Build-time content hashes of every traced source: the digest commits to them and the report re-checks them.
+      const sourceHashes = hashSourceFiles(projectRoot, Object.values(sortedManifest));
+      const instrumentationDigest = instrumentationManifestDigest(sortedManifest, sourceHashes);
       const deploymentResolved = resolveDeploymentUrlForBuild(projectRoot);
       const deploymentUrl = deploymentResolved.ok
         ? deploymentResolved.deploymentUrl
@@ -151,6 +183,7 @@ export function scanInstrumentationPlugin() {
         instrumentationDigest,
         deploymentUrl: deploymentUrl || null,
         entryCount: Object.keys(sortedManifest).length,
+        sourceHashes,
       };
 
       if (attestation.buildRevision && attestation.deploymentUrl) {
@@ -168,12 +201,16 @@ export function scanInstrumentationPlugin() {
         console.warn('[scan-instrumentation] deploymentUrl missing; HTML attestation markers omitted (hybrid fix unavailable).');
       }
 
+      // The instrumented (marker-carrying) pages as emitted, after the attestation meta tags.
+      attestation.renderedHashes = hashSourceFiles(projectRoot, Object.keys(sortedManifest));
+
       const manifestPath = join(outDirAbs, 'scan-manifest.json');
       const sidecarPath = join(outDirAbs, 'scan-attestation.json');
-      writeFileSync(manifestPath, JSON.stringify(sortedManifest, null, 2));
-      writeFileSync(sidecarPath, JSON.stringify(attestation, null, 2));
+      writeFileAtomic(manifestPath, JSON.stringify(sortedManifest, null, 2));
+      writeFileAtomic(sidecarPath, JSON.stringify(attestation, null, 2));
 
       console.log(`[scan-instrumentation] ${outDir}/scan-manifest.json — ${Object.keys(sortedManifest).length} entries`);
+      },
     },
   };
 }

@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0.0",
   "fixture": "neutral-standards-characterization",
-  "digest": "618ea94f978f8caa948abf954e8884420dd9afbc1643622b153569ecc91c31ec",
+  "digest": "76442ce2b8ce591ad75fe73972cae9f330c41f869cf0bceec60356c5ef38c7d0",
   "findingCount": 11,
   "signature": [
     {
@@ -46,7 +46,7 @@
     },
     {
       "ruleId": "NoRoleApplication",
-      "violationType": "confirmed",
+      "violationType": "potential",
       "checkId": "general:no-role-application"
     },
     {

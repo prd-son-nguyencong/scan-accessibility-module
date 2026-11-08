@@ -40,7 +40,7 @@ export function normalizedBlockFromBytes(bytes, startLine, endLine) {
     }
     parts.push(trimmed);
     if (lineNumber < endLine) {
-      byteAtCodeUnit.push(lines[lineNumber - 1].lineEnd);
+      byteAtCodeUnit.push(lines[lineNumber - 1].contentEnd); // the joining newline starts where the line content ends (a blank first line made oldText begin at the next line)
     }
   }
   return {

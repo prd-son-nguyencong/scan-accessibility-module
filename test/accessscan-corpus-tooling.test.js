@@ -161,12 +161,12 @@ test('sanitizeTextValue redacts api keys Bearer tokens and secrets', () => {
 });
 
 test('findRedactionLeaks and assertNoRedactionLeaks fail closed on brand and host leakage', () => {
-  const leaks = findRedactionLeaks('https://vendor.example/jobs and mcdonald', 'payload');
+  const leaks = findRedactionLeaks('https://vendor.example/jobs and paradox', 'payload');
   assert.ok(leaks.some((entry) => /host or URL leakage/i.test(entry)));
   assert.ok(leaks.some((entry) => /forbidden token/i.test(entry)));
 
   assert.throws(
-    () => assertNoRedactionLeaks({ 'snapshot.json': '{"text":"mcdonald"}' }),
+    () => assertNoRedactionLeaks({ 'snapshot.json': '{"text":"paradox"}' }),
     (error) => error instanceof CorpusToolingError
       && error.errorCode === CORPUS_TOOLING_ERROR_CODES.REDACTION_LEAK,
   );

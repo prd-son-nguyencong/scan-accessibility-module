@@ -13,6 +13,7 @@ import {
   normalizeText,
   queryCandidates,
 } from './lib/runtime-context.js';
+import { withDeadline } from '../engine/deadline.js';
 
 const FOOTER_HINT_PATTERNS = [
   /\bcopyright\b/i,
@@ -122,7 +123,7 @@ export default {
     const findings = [];
 
     if (mode === 'navigation-misuse') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         const links = getDescendants(snapshot, indexes, element, (child) => (
           child.tag === 'a' && Boolean(child.attributes.href)
         ));
@@ -146,7 +147,7 @@ export default {
           continue;
         }
         // Pagination-as-navigation: commercial samples this alongside unlabeled
-        // disclosure navs (career sites). Labeled primary navs (Americold) stay clean.
+        // disclosure navs (career sites). Labeled primary navs stay clean.
         if (isPaginationNavigationLandmark(snapshot, indexes, element)) {
           const hasUnlabeledDisclosureNav = candidates.some((candidate) => (
             candidate.id !== element.id
@@ -173,7 +174,7 @@ export default {
     }
 
     if (mode === 'navigation-multi-list-parity') {
-      for (const navigation of candidates) {
+      for (const navigation of withDeadline(candidates)) {
         if (
           navigation.attributes['aria-label']?.trim()
           || navigation.attributes['aria-labelledby']?.trim()
@@ -206,7 +207,7 @@ export default {
     }
 
     if (mode === 'search-form-mismatch') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (element.tag === 'search' || element.attributes.role === 'search') continue;
         const searchInput = getDescendants(snapshot, indexes, element, (child) => (
           child.tag === 'input'
@@ -219,7 +220,7 @@ export default {
     }
 
     if (mode === 'region-footer-misuse') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         const text = getSemanticSubtreeText(snapshot, indexes, element);
         const links = getDescendants(snapshot, indexes, element, (child) => (
           child.tag === 'a' && Boolean(child.attributes.href)
@@ -267,7 +268,7 @@ export default {
 
     if (mode === 'region-footer-mismatch') {
       let scanned = 0;
-      for (const body of candidates) {
+      for (const body of withDeadline(candidates)) {
         const outsideGlobalInformation = getDescendants(snapshot, indexes, body, (element) => {
           scanned += 1;
           if (!element.rendered || element.hiddenFromAT || isFooterLandmark(element)) return false;
@@ -284,7 +285,7 @@ export default {
     }
 
     if (mode === 'article-misuse') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         const hasHeading = getDescendants(snapshot, indexes, element, (child) => (
           /^h[1-6]$/.test(child.tag)
         )).length > 0;
@@ -296,7 +297,7 @@ export default {
     }
 
     if (mode === 'article-region-parity') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         findings.push(elementFinding(element, {
           structuralPattern: 'rendered-article-region',
         }));
@@ -305,7 +306,7 @@ export default {
     }
 
     if (mode === 'breadcrumbs-mismatch') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         const hasBreadcrumbStructure = getDescendants(snapshot, indexes, element, (child) => (
           child.tag === 'ol'
         )).length > 0;
@@ -328,12 +329,14 @@ export default {
     }
 
     if (mode === 'region-main-misuse') {
-      for (const element of candidates) {
+      // Screen-reader-only text does not make a visually empty main substantial: it is skipped, with everything inside it.
+      const unseen = (candidate) => isVisuallyClipped(candidate) || hasAncestor(snapshot, indexes, candidate, isVisuallyClipped);
+      for (const element of withDeadline(candidates)) {
         const nestedInMain = hasAncestor(snapshot, indexes, element, isMainLandmark);
         const hasHeading = getDescendants(snapshot, indexes, element, (child) => (
-          /^h[1-6]$/.test(child.tag)
+          /^h[1-6]$/.test(child.tag) && !unseen(child)
         )).length > 0;
-        const textLength = getSemanticSubtreeText(snapshot, indexes, element).length;
+        const textLength = getSemanticSubtreeText(snapshot, indexes, element, unseen).length;
         if (nestedInMain || (textLength < 50 && !hasHeading)) {
           findings.push(elementFinding(element));
         }
@@ -368,7 +371,7 @@ export default {
     // "nested nav wrapper missing role" heuristic. Does not alter any
     // existing mode branch above.
     if (mode === 'nav-wrapper-missing-role-parity') {
-      for (const navigation of candidates) {
+      for (const navigation of withDeadline(candidates)) {
         const wrapperChildren = snapshot.elements.filter((child) => (
           child.parentId === navigation.id
           && sameScope(child, navigation)
@@ -390,6 +393,17 @@ export default {
     });
   },
 };
+
+/** Visually hidden but present for screen readers (sr-only, visually-hidden): 1px box, clipped to nothing, or fully transparent. */
+function isVisuallyClipped(element) {
+  const { rect, computedStyle: style = {} } = element;
+  return Boolean(
+    (rect && rect.width <= 1 && rect.height <= 1)
+    || /^rect\(0(px)?,? 0(px)?,? 0(px)?,? 0(px)?\)$/.test(style.clip || '')
+    || /inset\(50%\)/.test(style.clipPath || '')
+    || style.opacity === '0',
+  );
+}
 
 /**
  * @param {import('../runtime/types.js').Snapshot} snapshot

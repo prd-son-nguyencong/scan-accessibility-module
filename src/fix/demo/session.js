@@ -390,6 +390,7 @@ export async function runFreshSandboxScan({
     '--no-psi',
     '--no-fail',
     '--force-build',
+    '--out-dir', 'scan-reports', // the report is read from here below; the scan default is .ada-scan/
   ], trustedSandboxRoot, {
     timeoutMs: 300_000,
     extraEnv: { ADA_SCAN_ROOT: trustedSandboxRoot },

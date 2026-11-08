@@ -1,17 +1,17 @@
 {
   "schemaVersion": "1.0.0",
-  "description": "Tooling-only opaque source manifest for cross-site accessScan corpus seeding. Production src modules must not import this file. oracleEvidenceDigest is auditable without retaining raw artifacts: recapture a fresh oracle payload and run `pnpm corpus:seed --verify-digest --id <site-id> --artifact <path>`; verification fails closed on mismatch and must not leave raw oracle artifacts committed.",
+  "description": "Tooling-only opaque source manifest (real labels and source URLs live in the gitignored source-manifest.local.json; see source-manifest.local.example.json) for cross-site accessScan corpus seeding. Production src modules must not import this file. oracleEvidenceDigest is auditable without retaining raw artifacts: recapture a fresh oracle payload and run `pnpm corpus:seed --verify-digest --id <site-id> --artifact <path>`; verification fails closed on mismatch and must not leave raw oracle artifacts committed.",
   "entries": [
     {
       "id": "site-124",
-      "label": "Elevance Health 124",
-      "sourceUrl": "https://elevance-health124.preview.sites.stg.paradox.ai/",
+      "label": "site-124",
+      "sourceUrl": "https://site-124.preview.sites.stg.paradox.ai/",
       "seedStatus": "seeded",
       "caseId": "site-124",
       "captureProvenance": {
         "stableCaptureHashes": [
-          "sha256:e5fea372198a2c5ea45e1dd7504717406886cdb1ebb7aaded9bb8a529b8c2d13",
-          "sha256:e5fea372198a2c5ea45e1dd7504717406886cdb1ebb7aaded9bb8a529b8c2d13"
+          "sha256:995de4348f2f5fb6f46a5792bbf165b550c78a6478fd0595e6608986e2d1e25b",
+          "sha256:995de4348f2f5fb6f46a5792bbf165b550c78a6478fd0595e6608986e2d1e25b"
         ],
         "captureCount": 2,
         "captureMode": "oracle-evidence-slice",
@@ -35,14 +35,14 @@
     },
     {
       "id": "site-203",
-      "label": "McDonalds 203",
-      "sourceUrl": "https://mcdonalds203.preview.sites.stg.mchire.com/",
+      "label": "site-203",
+      "sourceUrl": "https://site-203.preview.sites.stg.paradox.ai/",
       "seedStatus": "seeded",
       "caseId": "site-203",
       "captureProvenance": {
         "stableCaptureHashes": [
-          "sha256:4e7b4d5f7cc57f15ea67837348282763c14996efcbee146b824564718c164cf0",
-          "sha256:4e7b4d5f7cc57f15ea67837348282763c14996efcbee146b824564718c164cf0"
+          "sha256:61fe6c215999a30b5eb3c823f66364e13d0e44ac8ee0380f164160a665d38f46",
+          "sha256:61fe6c215999a30b5eb3c823f66364e13d0e44ac8ee0380f164160a665d38f46"
         ],
         "captureCount": 2,
         "captureMode": "oracle-evidence-slice",
@@ -66,8 +66,8 @@
     },
     {
       "id": "site-375",
-      "label": "Americold 375",
-      "sourceUrl": "https://americold375.sites.stg.paradox.ai/",
+      "label": "site-375",
+      "sourceUrl": "https://site-375.preview.sites.stg.paradox.ai/",
       "seedStatus": "seeded",
       "caseId": "site-375",
       "captureProvenance": {
@@ -97,8 +97,8 @@
     },
     {
       "id": "site-538",
-      "label": "CarMax 538",
-      "sourceUrl": "https://carmax538.preview.sites.stg.paradox.ai/",
+      "label": "site-538",
+      "sourceUrl": "https://site-538.preview.sites.stg.paradox.ai/",
       "seedStatus": "seeded",
       "caseId": "site-538",
       "captureProvenance": {
@@ -128,8 +128,8 @@
     },
     {
       "id": "site-695",
-      "label": "BNE Testing 695",
-      "sourceUrl": "https://bnetesting695.preview.sites.stg.paradox.ai/",
+      "label": "site-695",
+      "sourceUrl": "https://site-695.preview.sites.stg.paradox.ai/",
       "seedStatus": "seeded",
       "caseId": "site-695",
       "captureProvenance": {
@@ -159,8 +159,8 @@
     },
     {
       "id": "site-710",
-      "label": "Fresenius 710",
-      "sourceUrl": "https://fresenius710.preview.sites.stg.paradox.ai/",
+      "label": "site-710",
+      "sourceUrl": "https://site-710.preview.sites.stg.paradox.ai/",
       "seedStatus": "seeded",
       "caseId": "site-710",
       "captureProvenance": {
@@ -182,8 +182,8 @@
     },
     {
       "id": "site-728",
-      "label": "Hitachi 728",
-      "sourceUrl": "https://hitachi728.preview.sites.stg.paradox.ai/",
+      "label": "site-728",
+      "sourceUrl": "https://site-728.preview.sites.stg.paradox.ai/",
       "seedStatus": "seeded",
       "caseId": "site-728",
       "captureProvenance": {
@@ -213,14 +213,14 @@
     },
     {
       "id": "site-731",
-      "label": "Fresenius 731",
-      "sourceUrl": "https://fresenius731.preview.sites.stg.paradox.ai/",
+      "label": "site-731",
+      "sourceUrl": "https://site-731.preview.sites.stg.paradox.ai/",
       "seedStatus": "seeded",
       "caseId": "site-731",
       "captureProvenance": {
         "stableCaptureHashes": [
-          "sha256:d6b41d5aef819446f672e41273f06a55812f3c886dd9cdf0a83be1b52d9b3857",
-          "sha256:d6b41d5aef819446f672e41273f06a55812f3c886dd9cdf0a83be1b52d9b3857"
+          "sha256:724bd5025513f989a20b461e59f67751a76870036b085d40eeba4764e5f9ae5e",
+          "sha256:724bd5025513f989a20b461e59f67751a76870036b085d40eeba4764e5f9ae5e"
         ],
         "captureCount": 2,
         "captureMode": "oracle-evidence-slice",

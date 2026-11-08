@@ -5,11 +5,14 @@ import {
   getSnapshot,
   queryCandidates,
 } from './lib/runtime-context.js';
+import { withDeadline } from '../engine/deadline.js';
 
 const DIRECTIONAL_LABELS = [
   'increase', 'decrease', 'increment', 'decrement', 'up', 'down', 'left', 'right',
   'next', 'previous', 'plus', 'minus', 'more', 'less',
 ];
+
+const DIRECTIONAL_PATTERN = new RegExp(`\\b(?:${DIRECTIONAL_LABELS.join('|')})\\b`);
 
 /** @type {import('../engine/loader.js').EvaluatorModule} */
 export default {
@@ -23,7 +26,7 @@ export default {
     const findings = [];
 
     if (mode === 'dragging-alternative') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (element.tag === 'input' && element.attributes.type === 'range') continue;
         if (hasDirectionalAlternative(snapshot, indexes, element)) continue;
         findings.push(elementFinding(element));
@@ -71,8 +74,8 @@ function findAssociationContainer(snapshot, indexes, element) {
     }
   }
 
-  const ancestors = [element, ...getAncestors(snapshot, indexes, element)];
-  return ancestors.find((ancestor) => (
+  // Start above the target: a slider <div> must not be its own association container.
+  return getAncestors(snapshot, indexes, element).find((ancestor) => (
     ancestor.tag === 'section'
     || ancestor.tag === 'div'
     || ancestor.tag === 'fieldset'
@@ -93,7 +96,7 @@ function isDirectionalControl(control, target) {
   ].filter(Boolean).join(' ').toLowerCase();
 
   if (!label.trim()) return false;
-  if (DIRECTIONAL_LABELS.some((token) => label.includes(token))) return true;
+  if (DIRECTIONAL_PATTERN.test(label)) return true;
   if (/[+\-↑↓←→]/.test(label)) return true;
 
   const controls = control.attributes['aria-controls'] || '';

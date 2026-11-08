@@ -32,7 +32,7 @@ function collectTopAnchoredHeaders(snapshot) {
 
 /**
  * Bottom-anchored contentinfo/footer chrome (chat widgets, sticky site footers).
- * Commercial also samples contentinfo nested inside a fixed/sticky ancestor
+ * Reference also samples contentinfo nested inside a fixed/sticky ancestor
  * (Olivia chat popover) even when the landmark itself is `position: static`.
  *
  * @param {import('../runtime/types.js').Snapshot} snapshot

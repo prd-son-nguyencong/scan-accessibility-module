@@ -164,6 +164,15 @@ test('extractModelInventory skips composite registry rows and returns only canon
   assert.equal(COMPOSITE_INVENTORY_ID_PATTERN.test('anthropic.claude-sonnet-5'), false);
 });
 
+test('extractModelInventory skips an over-long composite registry row instead of failing the whole inventory', () => {
+  const long = `rag_${'x'.repeat(110)}|3`;
+  assert.equal(COMPOSITE_INVENTORY_ID_PATTERN.test(long), false);
+  assert.deepEqual(
+    extractModelInventory({ models: [{ model: 'anthropic.claude-sonnet-5' }, { model: long }] }),
+    ['anthropic.claude-sonnet-5'],
+  );
+});
+
 test('extractModelInventory still rejects non-composite invalid model IDs', () => {
   for (const id of [
     'model/with/slash',

@@ -20,6 +20,7 @@
  * @property {boolean} visuallyVisible
  * @property {boolean} hiddenFromAT
  * @property {boolean} focusable
+ * @property {boolean=} focusRevealed A :focus/:focus-visible stylesheet rule changes the element's clip, position, size or opacity (skip-link reveal).
  *
  * @typedef {object} RuntimeDiagnostic
  * @property {string} code

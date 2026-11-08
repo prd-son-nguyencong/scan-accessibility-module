@@ -1,8 +1,10 @@
 import { existsSync, readFileSync } from 'fs';
 import fg from 'fast-glob';
 import path from 'path';
-import { getProjectRoot, urlToPageFile } from '../utils/paths.js';
-import { resolveFromPageUrl, clearResolverCache } from './resolve-source.js';
+import { getProjectRoot, urlToPageFile, distToSrcLiquid } from '../utils/paths.js';
+import { resolveProject } from '../utils/project.js';
+import { resolveFromPageUrl, getBuiltPageHtml, clearResolverCache, isBuiltOutputDisabled } from './resolve-source.js';
+import { traceElement, traceToSourceFields } from './trace-element.js';
 import { computeSourcePreimage } from './preimage.js';
 
 const ROOT = getProjectRoot();
@@ -10,13 +12,26 @@ const ROOT = getProjectRoot();
 // In-memory caches — reset by clearPartialCache() after each instrumented build
 let partialContentsCache = null;
 let manifestCache = null;
+let projectCache = null;
+
+function project() {
+  return (projectCache ||= resolveProject());
+}
+
+const NO_SOURCE = { file: 'unknown', line: null, confidence: 'none', method: 'no-source-project' };
+
+/** A page-level guess (src/pages/<x>.liquid) is only honest when a source project is present (template dir or build manifest). */
+function hasSourceProject() {
+  return existsSync(project().pagesDir) || existsSync(project().manifestPath);
+}
 
 // ─── Cache helpers ────────────────────────────────────────────────────────────
 
 async function loadPartialContents() {
   if (partialContentsCache) return partialContentsCache;
   partialContentsCache = {};
-  const files = await fg('dist/partials/**/*.html', { cwd: ROOT });
+  if (isBuiltOutputDisabled()) return partialContentsCache;
+  const files = await fg(`${project().outDir}/partials/**/*.html`, { cwd: ROOT });
   for (const file of files) {
     const fullPath = path.join(ROOT, file);
     if (existsSync(fullPath)) {
@@ -28,7 +43,8 @@ async function loadPartialContents() {
 
 function loadManifest() {
   if (manifestCache) return manifestCache;
-  const manifestPath = path.join(ROOT, 'dist', 'scan-manifest.json');
+  if (isBuiltOutputDisabled()) { manifestCache = {}; return manifestCache; }
+  const manifestPath = project().manifestPath;
   if (!existsSync(manifestPath)) { manifestCache = {}; return manifestCache; }
   try {
     manifestCache = JSON.parse(readFileSync(manifestPath, 'utf8'));
@@ -102,7 +118,7 @@ function findLineInSource(sourceFile, snippetHtml) {
 }
 
 function distPathToSourcePath(distPath) {
-  return distPath.replace(/^dist\//, 'src/').replace(/\.html$/, '.liquid');
+  return distToSrcLiquid(distPath, project().distMap);
 }
 
 export function normalizeTraceAttestation(source, root = ROOT) {
@@ -188,9 +204,10 @@ async function traceToSource(snippetHtml, pageUrl) {
   }
 
   // 2. URL → page source file (low confidence — correct file, no line)
+  if (!hasSourceProject()) return { ...NO_SOURCE };
   try {
     const urlPath = new URL(pageUrl).pathname;
-    const pageFile = urlToPageFile(urlPath);
+    const pageFile = urlToPageFile(urlPath, { ...project(), root: ROOT });
     const line = searchKey.length > 10 ? findLineInSource(pageFile, snippetHtml) : null;
     return attachPreimage({
       file: pageFile,
@@ -210,7 +227,41 @@ async function traceToSource(snippetHtml, pageUrl) {
  * Returns { file, line, confidence }.
  */
 export async function mapViolationToSource(node, pageUrl) {
-  return traceToSource(node.html, pageUrl);
+  return reconcileWithTrace(await traceToSource(node.html, pageUrl), node.html, pageUrl);
+}
+
+const OWNER_PROVEN_METHODS = new Set(['instrumentation-manifest', 'page-html-comment', 'pdk-partial-boundary', 'pdk-render-boundary']);
+
+/**
+ * traceElement is the single authority on confidence: the heuristics above only propose a file.
+ * Several equally good places become unresolved (the caller falls back to the page and lists
+ * candidates); a `high` the unified trace cannot confirm is replaced by its verdict or capped.
+ */
+function reconcileWithTrace(legacy, html, pageUrl) {
+  const outerHTML = (html || '').trim();
+  if (!legacy?.file || legacy.file === 'unknown' || outerHTML.length < 10 || !hasSourceProject()) return legacy;
+  let pageFile = null;
+  try { pageFile = urlToPageFile(new URL(pageUrl).pathname, { ...project(), root: ROOT }); } catch { /* page unknown */ }
+  const result = traceElement({
+    outerHTML,
+    mode: 'local',
+    root: ROOT,
+    pageFile,
+    devHost: (() => { try { return new URL(pageUrl).hostname; } catch { return undefined; } })(),
+    pageHtml: getBuiltPageHtml(pageUrl) || undefined,
+    ownerFile: OWNER_PROVEN_METHODS.has(legacy.method) ? legacy.file : null,
+  });
+  const trace = { traceConfidence: result.confidence, traceReason: result.reason };
+  if (result.confidence === 'ambiguous' && legacy.confidence !== 'low') {
+    return { file: 'unknown', line: null, confidence: 'none', method: 'unresolved', ...trace };
+  }
+  if (legacy.confidence !== 'high') return { ...legacy, ...trace };
+  if (result.candidates.length === 1) {
+    const traced = traceToSourceFields(result, ROOT).source;
+    // Same file: keep how the owner was proven (manifest, marker) as the method.
+    return { ...legacy, ...traced, method: traced.file === legacy.file ? legacy.method : traced.method };
+  }
+  return { ...legacy, confidence: 'medium', ...trace };
 }
 
 /**
@@ -218,10 +269,11 @@ export async function mapViolationToSource(node, pageUrl) {
  * Uses URL → page source only.
  */
 export async function mapDescriptionToSource(pageUrl) {
+  if (!hasSourceProject()) return { ...NO_SOURCE };
   try {
     const urlPath = new URL(pageUrl).pathname;
     return {
-      file: urlToPageFile(urlPath),
+      file: urlToPageFile(urlPath, { ...project(), root: ROOT }),
       line: null,
       confidence: 'low',
       method: 'url-fallback',
@@ -239,5 +291,6 @@ export async function mapDescriptionToSource(pageUrl) {
 export function clearPartialCache() {
   partialContentsCache = null;
   manifestCache = null;
+  projectCache = null;
   clearResolverCache();
 }

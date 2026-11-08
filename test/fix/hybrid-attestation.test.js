@@ -1,3 +1,4 @@
+import '../helpers/hermetic-env.mjs';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -93,7 +94,7 @@ test('plugin sidecar and rendered HTML expose matching immutable attestation mar
     process.env.ADA_SCAN_BUILD_REVISION = REVISION;
 
     const plugin = scanInstrumentationPlugin();
-    await plugin.closeBundle.call({});
+    await plugin.closeBundle.handler.call({});
 
     const sidecar = JSON.parse(readFileSync(join(root, 'dist', 'scan-attestation.json'), 'utf8'));
     assert.equal(sidecar.schemaVersion, '1.1.0');
@@ -205,7 +206,7 @@ test('mode gate fails closed for missing markers dirty revision and mismatches',
     attestationStatus: 'complete',
   };
 
-  assert.equal(resolveFixCapability({ ...base, remoteRevision: null }).reason, 'BUILD_REVISION_MISSING');
+  assert.equal(resolveFixCapability({ ...base, remoteRevision: null }).reason, 'MISSING_BUILD_REVISION');
   assert.equal(resolveFixCapability({
     ...base,
     attestationStatus: 'malformed',
@@ -239,7 +240,7 @@ test('local sidecar tamper and symlink escapes fail closed', () => {
     const root = mkdtempSync(join(tmpdir(), 'ada-hybrid-local-'));
     const outside = mkdtempSync(join(tmpdir(), 'ada-hybrid-out-'));
     try {
-      const { digest } = writeHybridAttestationProject(root);
+      writeHybridAttestationProject(root);
       assert.equal(loadTrustedLocalAttestation(root).ok, true);
 
       writeFileSync(join(root, 'dist', 'scan-attestation.json'), JSON.stringify({
@@ -248,9 +249,9 @@ test('local sidecar tamper and symlink escapes fail closed', () => {
         deploymentUrl: DEPLOYMENT_URL,
       }));
       const tampered = loadTrustedLocalAttestation(root);
-      assert.equal(tampered.ok, true);
-      assert.equal(tampered.attestation.instrumentationDigest, digest);
-      assert.notEqual(tampered.attestation.instrumentationDigest, 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+      // A persisted digest the manifest does not reproduce is a tampered/stale sidecar, not something to recompute past.
+      assert.equal(tampered.ok, false);
+      assert.equal(tampered.reason, 'ATTESTATION_SIDECAR_STALE');
 
       writeFileSync(join(root, '.scan-config.json'), JSON.stringify({ outDir: 'escape-out' }));
       symlinkSync(outside, join(root, 'escape-out'));
@@ -298,13 +299,15 @@ test('trusted trace rejects stale or missing preimages and ambiguous verified ma
     }]);
     assert.equal(missing[0].reason, 'SOURCE_PREIMAGE_MISMATCH');
 
+    // The sort partial finding: the second candidate (index.liquid) is a different verified source for it.
+    const sortFinding = findings.find((f) => f.source.file === 'src/partials/jobs/sort.liquid');
     const ambiguousInbox = createSourceTraceInbox({
       reportId: report.reportId,
       localRoot: root,
       candidates: [{
-        findingId: findings[0].findingId,
+        findingId: sortFinding.findingId,
         partials: [
-          findings[0].source,
+          sortFinding.source,
           sourceMap['src/pages/index.liquid'] && {
             file: 'src/pages/index.liquid',
             line: 30,
@@ -315,7 +318,7 @@ test('trusted trace rejects stale or missing preimages and ambiguous verified ma
         ].filter(Boolean),
       }],
     });
-    const ambiguous = traceAllFindings(ambiguousInbox, [findings[0]]);
+    const ambiguous = traceAllFindings(ambiguousInbox, [sortFinding]);
     assert.equal(ambiguous[0].reason, 'AMBIGUOUS_MAPPING');
   } finally {
     rmSync(root, { recursive: true, force: true });

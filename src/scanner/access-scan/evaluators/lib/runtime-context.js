@@ -193,7 +193,7 @@ export function getScanUrl(context) {
  * @param {ReturnType<typeof buildSnapshotIndexes>} indexes
  * @param {SnapshotElement} element
  */
-export function getSemanticSubtreeText(snapshot, indexes, element) {
+export function getSemanticSubtreeText(snapshot, indexes, element, skip = null) {
   if (element.accessibleName?.trim()) {
     return element.accessibleName.trim();
   }
@@ -205,7 +205,7 @@ export function getSemanticSubtreeText(snapshot, indexes, element) {
   }
 
   for (const child of getDescendants(snapshot, indexes, element, (candidate) => (
-    candidate.attributes['aria-hidden'] !== 'true' && !candidate.hiddenFromAT
+    candidate.attributes['aria-hidden'] !== 'true' && !candidate.hiddenFromAT && !skip?.(candidate)
   ))) {
     if (child.accessibleName?.trim()) {
       parts.push(child.accessibleName.trim());

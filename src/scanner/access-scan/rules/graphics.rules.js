@@ -7,6 +7,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.1.1' },
     severity: { impact: 'serious', priority: 2 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'a missing alt/name on a functional image is a markup fact',
     checks: [
       {
         id: 'graphics:image-discernible',
@@ -39,6 +41,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.1.1' },
     severity: { impact: 'moderate', priority: 3 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'whether alt text is informative and accurate needs human reading',
     checks: [{
       id: 'graphics:image-discernible-correctly',
       profiles: ['standards'],
@@ -61,6 +65,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.1.1' },
     severity: { impact: 'minor', priority: 4 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'guesses that an element is used as an image from its styling',
     checks: [
       {
         id: 'graphics:image-misuse',
@@ -93,6 +99,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.1.1' },
     severity: { impact: 'serious', priority: 6 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'whether an icon is meaningful or decorative is a judgement',
     checks: [
       {
         id: 'graphics:icon-discernible',
@@ -126,6 +134,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.1.1' },
     severity: { impact: 'minor', priority: 4 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'whether a graphic is decorative is a judgement about intent',
     checks: [{
       id: 'graphics:decorative-graphic-exposed',
       profiles: ['standards'],
@@ -148,6 +158,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.1.1' },
     severity: { impact: 'moderate', priority: 4 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'whether a CSS background image is functional or decorative needs intent',
     checks: [{
       id: 'graphics:background-image-discernible',
       profiles: ['standards'],

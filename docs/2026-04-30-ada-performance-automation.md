@@ -153,7 +153,7 @@ scripts/scan/
 
 ```bash
 pnpm scan              # Scan localhost:1234 (auto-starts server if needed)
-pnpm scan:fix          # Scan + rule-based auto-fix
+pnpm scan:fix          # Scan + trusted CIS fix (default)
 pnpm scan:fix:ai       # Scan + rule-fix + CIS AI escalation
 pnpm scan:url <url>    # Scan a remote preview URL
 pnpm scan:baseline     # Save current state as ROI baseline
@@ -192,6 +192,6 @@ All AI requests route to `POST /v1alpha1/predictions` on the Workday CIS proxy.
 |---|---|
 | 1 | `pnpm scan` — traced JSON report with source file + line per violation |
 | 2 | Full Layer 2 + 3 (keyboard, ARIA live, focus traps, screen reader) |
-| 3 | `pnpm scan:fix` — rule-based fixes with git stash rollback |
+| 3 | `pnpm scan:fix` — trusted CIS fix flow (rule-based legacy fixer needs `--legacy-fix`; no stash rollback) |
 | 4 | `pnpm scan:fix --ai` — Lighthouse + CIS AI fixer |
 | 5 | `pnpm scan:baseline` + `pnpm scan:report` — ROI comparison documents |

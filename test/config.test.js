@@ -47,3 +47,11 @@ test('scan config template publishes the default axe viewport matrix', () => {
   );
   assert.deepEqual(template.axe, DEFAULT_CONFIG.axe);
 });
+
+test('scan config template ships the external opt-in block and no stale usePSI', () => {
+  const template = JSON.parse(
+    readFileSync(new URL('../templates/scan-config.default.json', import.meta.url), 'utf8'),
+  );
+  assert.deepEqual(template.external, DEFAULT_CONFIG.external);
+  assert.equal(template.usePSI, undefined);
+});

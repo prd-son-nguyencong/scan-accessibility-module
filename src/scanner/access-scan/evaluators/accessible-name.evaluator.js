@@ -10,6 +10,7 @@ import {
   hasAccessibleName,
   queryCandidates,
 } from './lib/runtime-context.js';
+import { withDeadline } from '../engine/deadline.js';
 
 /**
  * @param {import('../../runtime/types.js').Snapshot} snapshot
@@ -126,7 +127,7 @@ export default {
     /** @type {import('../../engine/loader.js').EvaluatorResult['findings']} */
     const findings = [];
 
-    for (const element of candidates) {
+    for (const element of withDeadline(candidates)) {
       if (mode === 'button-missing-name') {
         const missing = check.options?.authoredNameOnly
           ? !hasAuthoredControlName(element)
@@ -138,8 +139,13 @@ export default {
       }
 
       if (mode === 'anchor-link-missing-name') {
-        const href = element.attributes.href || '';
+        const href = (element.attributes.href || '').trim();
         if (!href || href === '#') continue;
+        if (check.options?.anyHref) {
+          // javascript: is ButtonMismatch territory; non-fragment chrome links belong to nav-link-missing-name.
+          if (href.toLowerCase().startsWith('javascript:')) continue;
+          if (!href.startsWith('#') && hasChromeLandmarkAncestor(snapshot, indexes, element)) continue;
+        }
         if (!hasAccessibleName(element) && !hasImageAltDescendant(snapshot, indexes, element)) {
           findings.push(elementFinding(element));
         }

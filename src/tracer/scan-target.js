@@ -2,8 +2,11 @@ import { loadScanAttestation } from './build-instrumented.js';
 import { loadTrustedLocalAttestation, resolveTrustedRoot } from '../fix/controller/local-attestation.js';
 import { resolveFixCapability } from '../fix/controller/mode-gate.js';
 import { deriveRemoteScanTarget } from './page-attestation.js';
-import { applyAttestedRemoteTracing } from './remote-hint-trace.js';
+import { applyAttestedRemoteTracing, markStaleTraces } from './trace-element.js';
 import { sanitizeAttestationReason } from './attestation-reasons.js';
+import { detectSourceDrift } from './source-drift.js';
+import { findChangedSources } from './preimage.js';
+import { getProjectRoot } from '../utils/paths.js';
 
 function normalizePageAttestationEntries(pageResults = []) {
   return pageResults.map((result) => ({
@@ -40,6 +43,7 @@ export function deriveScanTargetAndTrace({
   let tracedPageResults = pageResults;
   let targetFields;
   let capability = null;
+  let sourceDrift = null;
 
   if (isUrlMode) {
     const pageEntries = normalizePageAttestationEntries(pageResults);
@@ -53,6 +57,7 @@ export function deriveScanTargetAndTrace({
     targetFields.attestationReason = sanitizeAttestationReason(targetFields.attestationReason);
 
     if (resolvedSourceRoot) {
+      sourceDrift = detectSourceDrift(resolvedSourceRoot, { outDir: config?.outDir });
       const loaded = loadLocalAttestation(resolvedSourceRoot);
       capability = resolveCapability({
         targetMode: targetFields.mode,
@@ -78,7 +83,10 @@ export function deriveScanTargetAndTrace({
       }
 
       if (capability?.canFix) {
-        tracedPageResults = traceRemoteViolations(pageResults, resolvedSourceRoot);
+        tracedPageResults = markStaleTraces(
+          traceRemoteViolations(pageResults, resolvedSourceRoot, { outDir: config?.outDir }),
+          loaded.ok ? loaded.attestation.changedSources : [],
+        );
       }
     }
   } else {
@@ -86,6 +94,12 @@ export function deriveScanTargetAndTrace({
       || (manifest && Object.keys(manifest).length > 0 && config
         ? loadScanAttestation(config).instrumentationDigest
         : null);
+
+    // Hashes are re-checked now, at report time, not when the build was loaded.
+    tracedPageResults = markStaleTraces(
+      pageResults,
+      scanAttestation?.sourceHashes ? findChangedSources(getProjectRoot(), scanAttestation.sourceHashes) : [],
+    );
 
     targetFields = {
       mode: 'local-only',
@@ -103,5 +117,6 @@ export function deriveScanTargetAndTrace({
     pageResults: tracedPageResults,
     resolvedSourceRoot,
     capability,
+    sourceDrift,
   };
 }

@@ -11,6 +11,7 @@ import {
   getSnapshot,
   queryCandidates,
 } from './lib/runtime-context.js';
+import { withDeadline } from '../engine/deadline.js';
 
 /** @type {import('../engine/loader.js').EvaluatorModule} */
 export default {
@@ -26,7 +27,7 @@ export default {
     if (mode === 'link-navigation-ambiguous') {
       /** @type {Map<string, Set<string>>} */
       const textToHrefs = new Map();
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (isActionOnlyHref(element.attributes.href || '')) continue;
         const purpose = getLinkPurpose(snapshot, indexes, element);
         if (!purpose.text || purpose.text.length < 3) continue;
@@ -34,7 +35,7 @@ export default {
         if (!textToHrefs.has(purpose.key)) textToHrefs.set(purpose.key, new Set());
         textToHrefs.get(purpose.key).add(href);
       }
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (isActionOnlyHref(element.attributes.href || '')) continue;
         const purpose = getLinkPurpose(snapshot, indexes, element);
         if (!purpose.text) continue;
@@ -145,7 +146,7 @@ export default {
         return { status: 'inapplicable', candidatesScanned: 0, findings: [] };
       }
 
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         const href = element.attributes.href || '';
         if (!href || href === '#' || href.startsWith('#')) continue;
         if (element.attributes['aria-current']) continue;
@@ -202,15 +203,22 @@ function findLinkPurposeContext(snapshot, indexes, element) {
     if (['html', 'body', 'main', 'header', 'nav', 'footer'].includes(ancestor.tag)) {
       return false;
     }
-    const headings = getDescendants(
-      snapshot,
-      indexes,
-      ancestor,
-      (child) => /^h[1-6]$/.test(child.tag),
-    );
-    return headings.length === 1;
+    let counts = headingCountsByIndexes.get(indexes);
+    if (!counts) headingCountsByIndexes.set(indexes, counts = new Map());
+    if (!counts.has(ancestor.id)) {
+      counts.set(ancestor.id, getDescendants(
+        snapshot,
+        indexes,
+        ancestor,
+        (child) => /^h[1-6]$/.test(child.tag),
+      ).length);
+    }
+    return counts.get(ancestor.id) === 1;
   }) || null;
 }
+
+/** Heading counts per ancestor, shared by every link under it (otherwise each link re-walks the subtree). */
+const headingCountsByIndexes = new WeakMap();
 
 /**
  * Commercial parity compares the authored link purpose globally rather than
@@ -320,11 +328,11 @@ function isDeicticLinkPurpose(purpose) {
 function collectAmbiguousLinkCandidates(snapshot, indexes, candidates) {
   /** @type {Map<number, import('../runtime/types.js').SnapshotElement>} */
   const byId = new Map();
-  for (const element of candidates) {
+  for (const element of withDeadline(candidates)) {
     byId.set(element.id, element);
   }
 
-  for (const element of snapshot.elements) {
+  for (const element of withDeadline(snapshot.elements)) {
     if (byId.has(element.id)) continue;
     if (element.tag !== 'a' || !element.attributes.href) continue;
     // Skip explicitly inert/ARIA-hidden hosts; CSS visibility fades still count.

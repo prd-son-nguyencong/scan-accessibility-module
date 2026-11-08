@@ -104,7 +104,7 @@ test('complex rules comprehensive fixture emits standards classifications only',
     StrongMismatch: 'potential',
     EmphasisMismatch: 'potential',
     VisibilityMisuse: 'potential',
-    VisibilityMismatch: 'confirmed',
+    VisibilityMismatch: 'potential',
     BreadcrumbsNav: 'confirmed',
     SalePriceDiscernible: 'potential',
     LinkAnchorAmbiguous: 'potential',
@@ -113,13 +113,13 @@ test('complex rules comprehensive fixture emits standards classifications only',
     FormSubmitButtonMismatch: 'confirmed',
     MainNavigationMismatch: 'potential',
     NavigationMisuse: 'potential',
-    RegionMainContentSingle: 'confirmed',
+    RegionMainContentSingle: 'potential', // convention-only: heuristic rule
     SearchFormMismatch: 'potential',
     ImageDiscernible: 'confirmed',
     ImageMisuse: 'potential',
     IconDiscernible: 'potential',
     TableHeaders: 'potential',
-    TableNesting: 'confirmed',
+    TableNesting: 'potential', // convention-only: heuristic rule
     TablistRole: 'confirmed',
     TabAriaSelected: 'confirmed',
     TabListMisuse: 'confirmed',
@@ -129,7 +129,7 @@ test('complex rules comprehensive fixture emits standards classifications only',
   await withPage(
     `
       <html lang="en"><head><title>Complex fixture</title></head><body>
-        <span id="bold-span" style="font-weight:700">Important</span>
+        <p>Read <span id="bold-span" style="font-weight:700">Important</span> notes</p>
         <span id="italic-span" style="font-style:italic">Emphasis</span>
         <div id="hidden-interactive" hidden><button id="hidden-btn">Go</button></div>
         <p id="visually-hidden-at" style="opacity:0">Screen reader only copy here for misuse</p>
@@ -257,7 +257,7 @@ test('correctly roled tabpanel without label emits only TabpanelLabelledBy', asy
       assert.equal(findingsForRule(result, 'TabPanelMismatch').length, 0);
       const labelledBy = findingsForRule(result, 'TabpanelLabelledBy');
       assert.equal(labelledBy.length, 1);
-      assert.equal(labelledBy[0].violationType, 'confirmed');
+      assert.equal(labelledBy[0].violationType, 'potential'); // recommended practice, not a WCAG failure
       assert.notEqual(labelledBy[0].violationType, 'commercial-parity');
     },
   );
@@ -364,9 +364,10 @@ test('focus obscuration audit covers open shadow root overlays with resolvable p
             }
           </style>
           <div id="shadow-bar">Bar</div>
-          <button id="shadow-btn" style="position:fixed;top:8px;left:8px">Under bar</button>
+          <button id="shadow-btn" style="position:absolute;top:8px;left:8px">Under bar</button>
         \`;
       </script>
+      <div style="height:2000px"></div>
     `,
     async (page) => {
       const { result } = await runComplexRules(page, ['StickyHeaderObscuresFocus']);
@@ -390,7 +391,8 @@ test('focus obscuration audit covers same-origin iframe overlays with resolvable
           }
         </style>
         <div id=&quot;frame-bar&quot;>Bar</div>
-        <button id=&quot;frame-btn&quot; style=&quot;position:fixed;top:8px;left:8px&quot;>Under bar</button>
+        <button id=&quot;frame-btn&quot; style=&quot;position:absolute;top:8px;left:8px&quot;>Under bar</button>
+        <div style=&quot;height:2000px&quot;></div>
       "></iframe>
     `,
     async (page) => {
@@ -420,8 +422,8 @@ test('focus obscuration behavioral audit covers sticky header and footer overlay
       </style>
       <header id="sticky-header">Header</header>
       <footer id="sticky-footer">Footer</footer>
-      <button id="under-header" style="position:fixed;top:4px;left:8px">Header target</button>
-      <button id="above-footer" style="position:fixed;bottom:4px;left:8px">Footer target</button>
+      <button id="under-header" style="position:absolute;top:4px;left:8px">Header target</button>
+      <button id="above-footer" style="position:absolute;bottom:4px;left:8px">Footer target</button>
     `,
     async (page) => {
       const { result } = await runComplexRules(page, [
@@ -554,7 +556,7 @@ test('strong mismatch excludes interactive and heading-style spans while retaini
     `
       <a href="/jobs"><span id="interactive-bold" style="font-weight: 700">Search jobs</span></a>
       <span id="heading-bold" class="heading-3" style="font-weight: 700">At a glance</span>
-      <span id="standalone-bold" data-value="110000" style="font-weight: 700">110,000</span>
+      <p>Salary <span id="standalone-bold" data-value="110000" style="font-weight: 700">up to 110,000</span> yearly</p>
     `,
     async (page) => {
       const { result } = await runComplexRules(page, ['StrongMismatch']);
@@ -586,7 +588,7 @@ test('strong mismatch excludes bold text referenced as a control label', async (
     `
       <span id="query-label" style="font-weight: 700">I'm Looking For</span>
       <input aria-labelledby="query-label">
-      <span id="result-total" style="font-weight: 700">1198</span>
+      <p>Found <span id="result-total" style="font-weight: 700">many open roles</span> today</p>
     `,
     async (page) => {
       const { result } = await runComplexRules(page, ['StrongMismatch']);
@@ -846,7 +848,7 @@ test('visibility misuse and mismatch exclude viewport-only offscreen and decorat
       assert.ok(!misuseFindings.some((finding) => /non-hiding-clip-path/.test(finding.element.outerHTML)));
 
       assert.equal(mismatchFindings.length, 3);
-      assert.ok(mismatchFindings.every((finding) => finding.violationType === 'confirmed'));
+      assert.ok(mismatchFindings.every((finding) => finding.violationType === 'potential'));
       assert.ok(mismatchFindings.some((finding) => /aria-hidden-copy/.test(finding.element.outerHTML)));
       assert.ok(mismatchFindings.some((finding) => /aria-hidden-interactive/.test(finding.element.outerHTML)));
       assert.ok(mismatchFindings.some((finding) => /aria-hidden-parent/.test(finding.element.outerHTML)));
@@ -1096,7 +1098,7 @@ test('every COMPLEX_RULE_ID has an explicit standards firing assertion in focuse
     SalePriceDiscernible: '<p><del id="sale-price">$19.99</del> <span>$9.99</span></p>',
     SearchFormMismatch: '<form id="search-form"><input type="search" name="q"><button type="submit">Search</button></form>',
     StickyHeaderObscuresFocus: null,
-    StrongMismatch: '<span style="font-weight:700">Important</span>',
+    StrongMismatch: '<p>Read <span style="font-weight:700">Important</span> notes</p>',
     TabAriaControls: '<div role="tablist"><button role="tab" id="tab-1">One</button></div>',
     TabAriaSelected: '<div role="tablist"><button role="tab" id="tab-1" aria-controls="panel-1">One</button></div><div role="tabpanel" id="panel-1">Panel</div>',
     TabListMisuse: '<div role="tablist" id="empty-tablist"></div>',

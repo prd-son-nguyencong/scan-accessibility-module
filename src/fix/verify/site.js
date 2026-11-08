@@ -9,6 +9,27 @@ import { join, normalize, relative, resolve } from 'node:path';
 import { randomInt } from 'node:crypto';
 import { assertLoopbackSiteUrl, ShadowVerificationError } from './shadow.js';
 
+const VITE_CONFIG_FILES = Object.freeze([
+  'vite.config.js',
+  'vite.config.mjs',
+  'vite.config.cjs',
+  'vite.config.ts',
+  'vite.config.mts',
+  'vite.config.cts',
+]);
+
+export function hasRegularViteConfig(localRoot) {
+  return VITE_CONFIG_FILES.some((name) => {
+    const file = join(localRoot, name);
+    try {
+      const stat = lstatSync(file);
+      return existsSync(file) && stat.isFile() && !stat.isSymbolicLink();
+    } catch {
+      return false;
+    }
+  });
+}
+
 const LOOPBACK_HOST = '127.0.0.1';
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 
@@ -58,6 +79,7 @@ function readRegularFile(filePath) {
  */
 export function createStaticSiteAdapter({ outDir = 'dist' } = {}) {
   return {
+    kind: 'static',
     async start(shadowRoot, { signal } = {}) {
       const siteRoot = resolve(shadowRoot, outDir);
       if (!existsSync(siteRoot)) {
@@ -80,14 +102,22 @@ export function createStaticSiteAdapter({ outDir = 'dist' } = {}) {
         }
         try {
           const filePath = resolveContainedFile(siteRootReal, req.url || '/');
-          const bytes = readRegularFile(filePath);
+          let served = filePath;
+          let bytes = readRegularFile(filePath);
+          // Clean URLs: /x answers x.html, then x/index.html (the Paradox export and the dev server both route this way).
+          if (!bytes && !/\.\w+$/.test(filePath)) {
+            for (const alt of [`${filePath}.html`, join(filePath, 'index.html')]) {
+              bytes = readRegularFile(alt);
+              if (bytes) { served = alt; break; }
+            }
+          }
           if (!bytes) {
             res.writeHead(404, { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
             res.end('Not found');
             return;
           }
           res.writeHead(200, {
-            'Content-Type': contentTypeFor(filePath),
+            'Content-Type': contentTypeFor(served),
             'Cache-Control': 'no-store',
             'X-Content-Type-Options': 'nosniff',
           });
@@ -138,6 +168,7 @@ export function createStaticSiteAdapter({ outDir = 'dist' } = {}) {
  */
 export function createViteSiteAdapter() {
   return {
+    kind: 'vite',
     async start(shadowRoot, { signal } = {}) {
       if (signal?.aborted) {
         throw new ShadowVerificationError('CANCELLED', 'Vite site start was cancelled.');
@@ -161,6 +192,8 @@ export function createViteSiteAdapter() {
           root: shadowRootReal,
           clearScreen: false,
           logLevel: 'silent',
+          // The dep cache defaults to <root>/node_modules/.vite, which is the ORIGINAL project's folder when node_modules is linked into the shadow.
+          cacheDir: join(shadowRootReal, '.ada-scan', 'vite-cache'),
           server: {
             host: LOOPBACK_HOST,
             port,

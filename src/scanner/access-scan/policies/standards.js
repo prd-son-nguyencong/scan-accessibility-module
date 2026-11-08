@@ -1,7 +1,7 @@
 import { getIndexes } from '../evaluators/lib/runtime-context.js';
 import { visibleTextIsInAccessibleName } from './lib/accessible-name.js';
 import { factsByKind, findingFromFact, resolveSubject } from './lib/resolve.js';
-import { qualifiesVisibilityMismatch } from './lib/visibility-standards.js';
+import { getAncestorsWithAccessibleName, qualifiesVisibilityMismatch } from './lib/visibility-standards.js';
 
 /**
  * Standards policy maps generic DOM facts to standards-profile candidate findings.
@@ -35,6 +35,15 @@ export function mapFactToStandardsFindings(fact, context, mode) {
       if (finding) findings.push(finding);
     }
     return findings;
+  }
+
+  if ((!mode || mode === 'icon-discernible') && (fact.kind === 'graphics.unlabeled-icon' || fact.kind === 'graphics.hidden-symbol')) {
+    // Decorative (role=presentation/none) icons and icons inside a named link/button are already fine.
+    const icon = resolveSubject(indexes, fact);
+    const snapshot = /** @type {{ snapshot: import('../runtime/types.js').Snapshot }} */ (context).snapshot;
+    if (icon && (['presentation', 'none'].includes(icon.attributes.role) || getAncestorsWithAccessibleName(snapshot, indexes, icon))) {
+      return findings;
+    }
   }
 
   if ((!mode || mode === 'icon-discernible') && fact.kind === 'graphics.unlabeled-icon') {

@@ -91,3 +91,14 @@ test('deduplicateViolations retains distinct axe targets with identical HTML', (
   assert.equal(unified.length, 2);
   assert.equal(scanner.deduplicateViolations(unified).length, 2);
 });
+
+test('deduplicateViolations drops a Lighthouse accessibility finding that axe already reports (same rule and selector)', () => {
+  const mk = (layer, category, selector) => ({
+    ruleId: 'color-contrast', layer, category,
+    element: { outerHTML: '<p class="x">Hello world</p>', selector },
+  });
+  const out = scanner.deduplicateViolations([mk('axe', 'accessibility', 'p.x'), mk('lighthouse', 'accessibility', 'p.x')]);
+  assert.deepEqual(out.map((v) => v.layer), ['axe']);
+  const other = scanner.deduplicateViolations([mk('axe', 'accessibility', 'p.x'), mk('lighthouse', 'accessibility', 'p.y')]);
+  assert.equal(other.length, 2);
+});

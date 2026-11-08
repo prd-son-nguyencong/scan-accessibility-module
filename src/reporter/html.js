@@ -1,26 +1,44 @@
-import { writeFileSync } from 'fs';
+import { writeFileSync, mkdirSync } from 'fs';
 import path from 'path';
-import { getProjectRoot } from '../utils/paths.js';
+import { getReportsDir } from '../utils/paths.js';
+import { classifyOrigin } from '../tracer/ownership.js';
+import { ownerBadge as badgeOf, ownerHtml as htmlOf, groupNotYourCode, notYourCodeHtml, OWNER_KEYS } from './origin-display.js';
+
+// Reports from before origin existed carry none: classify from the markup, as the scanner did offline.
+const originOf = (v) => v.origin || classifyOrigin({ ruleId: v.ruleId, outerHTML: v.element?.outerHTML, selector: v.element?.selector, ownership: v.ownership, platformOwned: v.platformOwned });
+const ownerBadge = (o) => badgeOf(o);
+const ownerHtml = (o) => htmlOf(o);
+import { buildReportHtml } from './ui/render.js';
+import { escapeHtml as esc } from '../utils/escape-html.js';
 import { groupViolations, ACCESSSCAN_CATEGORIES } from '../schema.js';
+import { skippedPagesHtml } from './qa-report.js';
+import { excludedNote } from '../utils/thresholds.js';
+import { GATE_NOTE, totalsLabel, w3cEngineNote, runStatusLabel } from './wording.js';
+import { wcagCoverageSentence } from '../utils/wcag-criteria.js';
 import { getAccessScanCategory, getAccessScanRuleRequirement } from '../scanner/access-scan/engine/public-catalog.js';
 
-const ROOT = getProjectRoot();
-const REPORTS_DIR = path.join(ROOT, 'scan-reports');
 
 const TOOL_CONFIG = [
   { id: 'axe', label: 'Axe-core', layer: 'axe', color: '#4040bf', icon: 'M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zm-1-15a1 1 0 112 0v6a1 1 0 11-2 0V7zm0 10a1 1 0 112 0 1 1 0 01-2 0z' },
   { id: 'accessScan', label: 'AccessScan', layer: 'accessScan', color: '#ff385c', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z' },
   { id: 'w3c', label: 'Nu Checker HTML + W3C', layer: 'w3c', color: '#460479', icon: 'M14.7 6.3a1 1 0 010 1.4L10.4 12l4.3 4.3a1 1 0 01-1.4 1.4l-5-5a1 1 0 010-1.4l5-5a1 1 0 011.4 0z' },
+  { id: 'htmlValidate', label: 'HTML validity (offline)', layer: 'htmlValidate', color: '#6b3fa0', icon: 'M14.7 6.3a1 1 0 010 1.4L10.4 12l4.3 4.3a1 1 0 01-1.4 1.4l-5-5a1 1 0 010-1.4l5-5a1 1 0 011.4 0z' },
   { id: 'links', label: 'Dead Link Checker', layer: 'links', color: '#c13515', icon: 'M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1' },
   { id: 'behavioral', label: 'Behavioral Scanners', layers: ['keyboard', 'focusTrap', 'ariaLive', 'dynamicContent', 'screenReader'], color: '#0d7377', icon: 'M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122' },
-  { id: 'performance', label: 'Performance', layer: 'lighthouse', color: '#222222', icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
+  { id: 'lighthouseA11y', label: 'Accessibility (Lighthouse)', layer: 'lighthouse', category: 'accessibility', color: '#2f6f9f', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z' },
+  { id: 'performance', label: 'Performance', layer: 'lighthouse', notCategory: 'accessibility', color: '#222222', icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
 ];
 
-function esc(str = '') {
-  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
 
 /** Sum occurrence counts so Serious/Total match Nu message totals (not fix-unit cards). */
+/** Violations a tool section owns: its layer(s), and for Lighthouse only its own category so a11y audits never count as Performance. */
+export function toolViolations(tool, violations = []) {
+  const inLayers = tool.layers ? violations.filter((v) => tool.layers.includes(v.layer)) : violations.filter((v) => v.layer === tool.layer);
+  if (tool.category) return inLayers.filter((v) => v.category === tool.category);
+  if (tool.notCategory) return inLayers.filter((v) => v.category !== tool.notCategory);
+  return inLayers;
+}
+
 export function countIssueOccurrences(violations = []) {
   return violations.reduce((sum, violation) => {
     const count = Number.isInteger(violation.count) && violation.count > 0
@@ -78,8 +96,126 @@ function prettyHtml(raw) {
   return out.trimEnd();
 }
 
+const INCOMPLETE_NOTE = '<div class="no-issues"><span>No issues reported - scan incomplete, this is not a pass</span></div>';
+
+function isIncompleteScan(report) {
+  const summary = report.summary || {};
+  return (summary.pagesFailed || 0) > 0 || (summary.pagesPartial || 0) > 0;
+}
+
+function buildIncompleteBanner(report) {
+  if (!isIncompleteScan(report)) return '';
+  const failed = [];
+  const partial = [];
+  for (const page of report.pages || []) {
+    if (page.status === 'failed') {
+      failed.push(`${esc(page.url)}: not scanned (${esc(page.failure?.message || page.failure?.reason || 'failed')})`);
+    } else if (page.status === 'partial') {
+      const layers = page.partialReasons?.map((r) => `${r.layer} ${r.reason}${r.gating ? '' : ' [supplementary]'}`)
+        ?? (page.scannerRuns || [])
+          .filter((run) => ['error', 'timeout', 'skipped'].includes(run.status))
+          .map((run) => `${run.layer} ${run.status}`);
+      partial.push(`${esc(page.url)}: partial (${esc(layers.join(', '))})`);
+    }
+  }
+  const skipped = (report.pages || []).filter((p) => p.status === 'skipped-empty').map((p) => `${esc(p.url || p.route || p.name)}: skipped-empty (${esc(p.skipped?.note || 'empty page')}); not a failure`);
+  const dropped = (report.droppedRoutes || []).map((d) => `${esc(d.route)}: dropped (not served, HTTP ${esc(d.status)}); not scanned and not a failure`);
+  const group = (title, items) => (items.length ? `<li><strong>${title}</strong><ul>${items.map((item) => `<li>${item}</li>`).join('')}</ul></li>` : '');
+  return `<section class="incomplete-banner" role="alert">
+  <h2>&#9888; Incomplete scan</h2>
+  <p>Results below do not cover everything. A clean total is not a pass.${report.allowIncomplete ? ' Exit code 2 was suppressed by --allow-incomplete.' : ''}</p>
+  <ul>${group(`Failed (${failed.length})`, failed)}${group(`Partial (${partial.length})`, partial)}${group(`Skipped-empty (${skipped.length})`, skipped)}${group(`Dropped, not served (${dropped.length})`, dropped)}</ul>
+</section>`;
+}
+
+export function buildGateSection(report) {
+  const gate = report.thresholds;
+  if (!gate) return '';
+  const engine = w3cEngineNote((report.pages || []).flatMap((p) => p.scannerRuns || []), (report.pages || []).flatMap((p) => p.violations || []));
+  const rows = gate.pages.flatMap((page) => [
+    ...page.metrics.map((m) => `<tr><td>${esc(page.url)}</td><td>${esc(m.id)}${m.id.startsWith('w3c.') && engine ? `<br><small>${esc(engine)}</small>` : ''}</td><td>${esc(String(m.actual ?? 'n/a'))} / ${esc(String(m.target))}</td><td>${esc(m.status)}${m.reason ? ` - ${esc(m.reason)}` : ''}</td></tr>`),
+    ...(page.excluded ? [`<tr><td>${esc(page.url)}</td><td colspan="3">${esc(excludedNote(page.excluded))}</td></tr>`] : []),
+  ]);
+  return `<section class="quality-gate">
+  <h2>Quality gate: ${gate.failed ? 'failed' : 'passed'}</h2>
+  <p>${esc(GATE_NOTE)}</p>
+  <table><thead><tr><th scope="col">Page</th><th scope="col">Metric</th><th scope="col">Actual / target</th><th scope="col">Status</th></tr></thead><tbody>${rows.join('')}</tbody></table>
+</section>`;
+}
+
+/** Fixed / remaining / new against the baseline, matched by stableId; null comparison renders nothing. */
+export function buildComparisonSection(report) {
+  const c = report.comparison;
+  if (!c) return '';
+  const { totals: t } = c;
+  const rows = c.pages.map((p) => `<tr><td>${esc(p.route)}</td><td>${esc(p.fixed)}</td><td>${esc(p.remaining)}</td><td>${esc(p.new)}</td></tr>`);
+  const notes = [
+    ...c.addedPages.map((r) => `${esc(r)}: page added, not in the baseline`),
+    ...c.removedPages.map((r) => `${esc(r)}: not scanned this time, not counted as fixed`),
+    ...c.notCompared.map((n) => `${esc(n.route)}: not compared (${esc(n.reason)})`),
+    ...c.warnings.map((w) => `Warning: ${esc(w)}`),
+  ];
+  return `<section class="comparison">
+  <h2>Compared with ${esc(c.baseline.source)} (${esc(c.baseline.generatedAt)}): fixed ${esc(t.fixed)}, remaining ${esc(t.remaining)}, new ${esc(t.new)}</h2>
+  <p>Matched by finding id, confirmed and likely findings only. Needs review (not compared): ${esc(t.needsReview.baseline)} before, ${esc(t.needsReview.current)} now.</p>
+  ${notes.length ? `<ul>${notes.map((n) => `<li>${n}</li>`).join('')}</ul>` : ''}
+  ${rows.length ? `<table><thead><tr><th scope="col">Page</th><th scope="col">Fixed</th><th scope="col">Remaining</th><th scope="col">New</th></tr></thead><tbody>${rows.join('')}</tbody></table>` : ''}
+</section>`;
+}
+
+export function buildParitySection(report) {
+  const parity = report.parity;
+  if (!parity) return '';
+  const rows = parity.pages.flatMap((page) => page.findings.map((f) => `<tr><td>${esc(page.url)}</td><td>${esc(f.ruleId)}</td><td>${esc(f.impact)}</td><td><code>${esc(f.selector)}</code></td></tr>`));
+  const errors = parity.pages.filter((p) => p.error).map((p) => `<li>${esc(p.url)}: ${esc(p.error)}</li>`).join('');
+  return `<section class="parity-supplement">
+  <h2>Supplementary: commercial-parity profile</h2>
+  <p>Gate profile: ${esc((report.profiles || ['standards'])[0])}. These findings are extra information from a commercial-scanner-style profile. They are not counted in the totals, the quality gate or the exit code.</p>
+  ${errors ? `<ul>${errors}</ul>` : ''}
+  ${rows.length ? `<table><thead><tr><th scope="col">Page</th><th scope="col">Rule</th><th scope="col">Impact</th><th scope="col">Element</th></tr></thead><tbody>${rows.join('')}</tbody></table>` : '<p>No additional findings.</p>'}
+</section>`;
+}
+
+/** "axe, accessScan (multi)": the engines that report this finding and how far they agree; '' for reports without agreement data. */
+const enginesLabel = (v) => (v.enginesAgreeing?.length ? `${v.enginesAgreeing.join(', ')} (${v.agreement})` : '');
+
+/** "N confirmed, M likely, K need review" over occurrence counts; null when no violation carries a verdict. */
+export function verdictSummaryLine(violations = []) {
+  if (!violations.some((v) => v.verdict)) return null;
+  const n = (verdict) => countIssueOccurrences(violations.filter((v) => v.verdict === verdict && v.impact !== 'info'));
+  return `${n('confirmed')} confirmed, ${n('likely')} likely, ${n('needs-review')} need review`;
+}
+
+/** Confidence counts plus the findings that never fail a gate, each under its own heading. */
+export function buildVerdictSection(violations = []) {
+  const line = verdictSummaryLine(violations);
+  if (!line) return '';
+  const list = (verdict, heading, note) => {
+    const items = violations.filter((v) => v.verdict === verdict && v.impact !== 'info');
+    if (items.length === 0) return '';
+    const rows = items.map((v) => `<tr><td>${esc(v.ruleId)}</td><td>${esc(v.impact)}</td><td>${countIssueOccurrences([v])}</td><td>${esc(enginesLabel(v))}</td><td><code>${esc(v.element?.selector || '')}</code></td></tr>`);
+    return `<h3>${heading}</h3><p>${note}</p>
+  <table><thead><tr><th scope="col">Rule</th><th scope="col">Impact</th><th scope="col">Count</th><th scope="col">Engines agreeing</th><th scope="col">Element</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
+  };
+  return `<section class="verdicts">
+  <h2>Findings by confidence: ${esc(line)}</h2>
+  <p>Only confirmed findings (a machine can decide) count toward the quality gate and exit code.</p>
+  ${list('likely', 'Likely issues', 'Heuristic rules that guess intent, and confirmed findings with no traced source line (untraced: locate manually); they do not fail the gate.')}
+  ${list('needs-review', 'Needs review', 'Cannot be decided automatically; a person must check.')}
+</section>`;
+}
+
+/** "Not your code (N)": vendor-script, platform-widget and iframe findings by vendor/component, with pages, rules and what to do. */
+export function buildOwnershipSection(violations = [], pages = null) {
+  const items = (pages || [{ url: '', violations }]).flatMap((p) => (p.violations || []).map((v) => ({
+    origin: originOf(v), rule: v.ruleId, page: p.url || p.page || '', count: Number.isInteger(v.count) && v.count > 0 ? v.count : 1, impact: v.impact,
+  })));
+  return notYourCodeHtml(groupNotYourCode(items), 'None of them count in the quality gate unless gate.countPlatform / gate.countThirdParty is set.');
+}
+
 export function writeHtmlReport(report) {
-  const outPath = path.join(REPORTS_DIR, 'scan-visual.html');
+  mkdirSync(getReportsDir(), { recursive: true });
+  const outPath = path.join(getReportsDir(), 'scan-visual.html');
   writeFileSync(outPath, buildHtml(report));
   return outPath;
 }
@@ -105,7 +241,7 @@ function impactBadge(impact) {
     minor:    { bg: 'rgba(0,138,5,0.07)',    text: '#007003', border: 'rgba(0,138,5,0.25)' },
   };
   const s = map[impact] || { bg: '#f7f7f7', text: '#929292', border: '#dddddd' };
-  return `<span class="badge" style="background:${s.bg};color:${s.text};border:1px solid ${s.border}">${impact || 'info'}</span>`;
+  return `<span class="badge" style="background:${s.bg};color:${s.text};border:1px solid ${s.border}">${esc(impact || 'info')}</span>`;
 }
 
 function svgIcon(pathD, size = 16, color = '#222222') {
@@ -150,7 +286,7 @@ function scannerRunMetrics(run = {}) {
       ? `${check.status} (${Object.entries(check.statusCounts).map(([status, count]) => `${status}:${count}`).join(', ')})`
       : check.status;
     metrics.push(
-      `${esc(check.checkId)}: ${esc(statusLabel)}, ${check.candidateCount} candidates, ${check.findingCount} findings`,
+      `${check.checkId}: ${statusLabel}, ${check.candidateCount} candidates, ${check.findingCount} findings`,
     );
   }
   return metrics;
@@ -176,7 +312,7 @@ export function buildScannerRunEvidence(pages = []) {
           <h3>${esc(engine)}</h3>
           <p>${esc(page.name || page.url || 'Scanned page')} · ${esc(run.layer || 'unknown layer')}</p>
         </div>
-        <span class="scanner-status scanner-status--${status}">${esc(status)}</span>
+        <span class="scanner-status scanner-status--${status}">${esc(runStatusLabel({ ...run, status }))}</span>
       </div>
       <dl class="scanner-run-context">
         <div><dt>Engine</dt><dd>${esc(run.engine?.version ? `${engine} ${run.engine.version}` : engine)}</dd></div>
@@ -211,7 +347,7 @@ function buildCircleGauge(score, label, size = 120) {
     return `<div class="gauge-wrap">
       <svg width="${size}" height="${size}" viewBox="0 0 120 120">
         <circle cx="60" cy="60" r="${r}" fill="none" stroke="#ebebeb" stroke-width="6"/>
-        <text x="60" y="56" text-anchor="middle" dominant-baseline="central" fill="#929292" font-size="32" font-weight="600" font-family="'Circular','Inter',sans-serif">--</text>
+        <text x="60" y="56" text-anchor="middle" dominant-baseline="central" fill="#929292" font-size="32" font-weight="600" font-family="system-ui,sans-serif">--</text>
       </svg>
       <span class="gauge-lbl">${esc(label)}</span>
     </div>`;
@@ -224,8 +360,8 @@ function buildCircleGauge(score, label, size = 120) {
       <circle cx="60" cy="60" r="${r}" fill="none" stroke="${color}" stroke-width="6"
         stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" stroke-linecap="round"
         transform="rotate(-90 60 60)" class="gauge-ring"/>
-      <text x="60" y="52" text-anchor="middle" dominant-baseline="central" fill="${color}" font-size="32" font-weight="700" font-family="'Circular','Inter',sans-serif">${score}</text>
-      <text x="60" y="76" text-anchor="middle" fill="#929292" font-size="10" font-weight="400" font-family="'Circular','Inter',sans-serif">${score >= 90 ? 'Good' : score >= 50 ? 'Needs Work' : 'Poor'}</text>
+      <text x="60" y="52" text-anchor="middle" dominant-baseline="central" fill="${color}" font-size="32" font-weight="700" font-family="system-ui,sans-serif">${esc(score)}</text>
+      <text x="60" y="76" text-anchor="middle" fill="#929292" font-size="10" font-weight="400" font-family="system-ui,sans-serif">${score >= 90 ? 'Good' : score >= 50 ? 'Needs Work' : 'Poor'}</text>
     </svg>
     <span class="gauge-lbl">${esc(label)}</span>
   </div>`;
@@ -236,6 +372,7 @@ function buildMetricRow(metric) {
   return `<tr>
     <td><span class="metric-dot" style="background:${dotColor}"></span>${esc(metric.label)}</td>
     <td class="metric-val" style="color:${dotColor}">${esc(metric.displayValue)}</td>
+    <td class="metric-target">${esc(metric.target || '')}${metric.rating ? ` (${esc(metric.rating)})` : ''}</td>
   </tr>`;
 }
 
@@ -294,23 +431,34 @@ export function buildPerformanceDashboard(lighthouseData) {
       continue;
     }
     html += `<div class="device-tabs">
-        <button class="device-tab active" onclick="switchDevice(this,'mobile-${esc(pageName)}','desktop-${esc(pageName)}')">
+        <button class="device-tab active" type="button" data-show="mobile-${esc(pageName)}" data-hide="desktop-${esc(pageName)}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg>
           Mobile
         </button>
-        <button class="device-tab" onclick="switchDevice(this,'desktop-${esc(pageName)}','mobile-${esc(pageName)}')">
+        <button class="device-tab" type="button" data-show="desktop-${esc(pageName)}" data-hide="mobile-${esc(pageName)}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
           Desktop
         </button>
       </div>`;
-    if (lh.mobile) html += buildDeviceReport(lh.mobile, `mobile-${pageName}`);
-    if (lh.desktop) html += buildDeviceReport(lh.desktop, `desktop-${pageName}`, true);
+    if (lh.mobile) html += buildDeviceReport(lh.mobile, `mobile-${pageName}`, false, pageData.runSummary?.mobile);
+    if (lh.desktop) html += buildDeviceReport(lh.desktop, `desktop-${pageName}`, true, pageData.runSummary?.desktop);
     html += '</div>';
   }
   return html;
 }
 
-function buildDeviceReport(data, id, hidden = false) {
+function buildRunScores(summary) {
+  if (!summary) return '';
+  const names = [['performance', 'Performance'], ['accessibility', 'Accessibility'], ['bestPractices', 'Best Practices'], ['seo', 'SEO']];
+  const rows = names.map(([k, label]) => {
+    const all = summary.runs.map((r) => r[k] ?? 'n/a').join(', ');
+    const spread = summary.spread[k];
+    return `<tr><td>${esc(label)}</td><td class="metric-val">${esc(summary.median[k] ?? 'n/a')}</td><td>${esc(all)}</td><td>${spread ?? 'n/a'}${spread > 5 ? ' (score variance: treat the median with care)' : ''}</td></tr>`;
+  }).join('');
+  return `<div class="metrics-card"><div class="metrics-title">Scores per run (${summary.runs.length})</div><table class="metrics-table"><tr><th scope="col">Category</th><th scope="col">Median</th><th scope="col">Runs</th><th scope="col">Spread</th></tr>${rows}</table></div>`;
+}
+
+function buildDeviceReport(data, id, hidden = false, runSummary = null) {
   const s = data.scores;
   const gauges = [
     buildCircleGauge(s.performance, 'Performance'),
@@ -392,8 +540,8 @@ function buildDeviceReport(data, id, hidden = false) {
       'uses-responsive-images': 'Serve correctly-sized images via srcset or <picture>',
       'offscreen-images': 'Add loading="lazy" to below-fold images',
       'largest-contentful-paint-element': 'Preload hero image + add fetchpriority="high"',
-      'total-byte-weight': 'Audit asset sizes — compress images, code-split JS',
-      'dom-size': 'Reduce DOM nodes — simplify nested containers',
+      'total-byte-weight': 'Audit asset sizes - compress images, code-split JS',
+      'dom-size': 'Reduce DOM nodes - simplify nested containers',
       'server-response-time': 'Optimize server response (CDN, caching)',
       'uses-text-compression': 'Enable gzip/brotli compression on server',
     };
@@ -441,7 +589,8 @@ function buildDeviceReport(data, id, hidden = false) {
 
   return `<div class="device-panel" id="${esc(id)}" ${hidden ? 'style="display:none"' : ''}>
     <div class="gauges-row">${gauges}</div>
-    ${metricRows ? `<div class="metrics-card"><div class="metrics-title">Core Web Vitals</div><table class="metrics-table">${metricRows}</table></div>` : ''}
+    ${buildRunScores(runSummary)}
+    ${metricRows ? `<div class="metrics-card"><div class="metrics-title">Performance metrics (informational)</div><table class="metrics-table">${metricRows}</table></div>` : ''}
     ${gapHtml}
     ${stepsHtml}
     ${auditGroupsHtml ? `<div class="audit-groups"><div class="metrics-title">Diagnostics</div>${auditGroupsHtml}</div>` : ''}
@@ -460,28 +609,57 @@ function buildSourcePath(v) {
   const fileIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#929292" stroke-width="2"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>';
   const arrowIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FF5A5F" stroke-width="2.5" style="margin: 0 4px;"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>';
   if (partial && page && partial !== page) {
-    const lineStr = line ? `<span class="source-line">:${line}</span>` : '';
+    const lineStr = line ? `<span class="source-line">:${esc(line)}</span>` : '';
     return `<div class="v-source">${fileIcon}<code class="source-page">${esc(page)}</code>${arrowIcon}<code class="source-partial">${esc(partial)}${lineStr}</code></div>`;
   }
-  return `<div class="v-source">${fileIcon}<code>${esc(file)}${line ? `:${line}` : ''}</code></div>`;
+  return `<div class="v-source">${fileIcon}<code>${esc(file)}${line ? `:${esc(line)}` : ''}</code></div>`;
+}
+
+const EVIDENCE_FILE = /^evidence\/[a-f0-9]{64}\.png$/;
+const WCAG_URL = /^https:\/\/www\.w3\.org\/WAI\/WCAG22\/Understanding\/[a-z0-9-]+\.html$/;
+
+function findCapture(v) {
+  return v.evidence?.capture || (v.evidence?.observations || []).map((o) => o.evidence?.capture).find(Boolean) || null;
+}
+
+/** "Why flagged": reason, WCAG link, measured facts, repro recipe and the outlined screenshot (lazy loaded). */
+export function buildWhyFlagged(v) {
+  const c = findCapture(v);
+  if (!c) return '';
+  const rows = [];
+  if (c.ax) rows.push(['Accessible name', `${c.ax.role || 'no role'}: ${c.ax.ignored ? '(ignored in the accessibility tree)' : `"${c.ax.name}"`}`]);
+  const box = c.geometry?.box;
+  if (box) rows.push(['Size', `${box.width} x ${box.height} px at (${box.x}, ${box.y})`]);
+  if (c.styles) rows.push(['Computed styles', Object.entries(c.styles).map(([k, val]) => `${k}: ${val ?? 'n/a'}`).join('; ')]);
+  const r = c.repro;
+  if (r) rows.push(['Reproduce', `open ${r.url}${r.viewport ? ` at ${r.viewport.width}x${r.viewport.height}` : ''}, select ${r.selector} (state: ${r.state})`]);
+  const link = c.wcag?.url && WCAG_URL.test(c.wcag.url)
+    ? `<a href="${esc(c.wcag.url)}" target="_blank" rel="noopener">WCAG ${esc(c.wcag.criterion)} Understanding</a>` : '';
+  const shot = c.screenshot?.file && EVIDENCE_FILE.test(c.screenshot.file)
+    ? `<img class="evidence-shot" src="${esc(c.screenshot.file)}" loading="lazy" width="${Number(c.screenshot.width) || 640}" height="${Number(c.screenshot.height) || 400}" alt="Screenshot of the flagged element, outlined">` : '';
+  return `<details class="why-flagged"><summary>Why flagged</summary>
+    ${c.reason ? `<p class="why-reason">${esc(c.reason)} ${link}</p>` : link}
+    <dl class="why-facts">${rows.map(([k, val]) => `<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`).join('')}</dl>${shot}
+  </details>`;
 }
 
 // ─── Axe-core section builder ────────────────────────────────────────────────
 
-function buildAxeSection(violations) {
+function buildAxeSection(violations, incomplete = false) {
   if (violations.length === 0) {
-    return `<div class="no-issues"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#008a05" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span>All clear &mdash; no axe-core issues found</span></div>`;
+    if (incomplete) return INCOMPLETE_NOTE;
+    return `<div class="no-issues"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#008a05" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span>No automated axe-core issues found</span></div>`;
   }
   const byRule = groupViolations(violations, (v) => v.ruleId);
   let html = '';
   for (const [ruleId, ruleViols] of byRule) {
     const first = ruleViols[0];
     const hint = first.fix?.hint || '';
-    const dequeUrl = `https://dequeuniversity.com/rules/axe/4.10/${ruleId}`;
+    const dequeUrl = `https://dequeuniversity.com/rules/axe/4.10/${encodeURIComponent(ruleId)}`;
     const issueCards = ruleViols.map((v) => {
       const selector = v.element?.selector || '';
       const outerHTML = v.element?.outerHTML || '';
-      return `<div class="violation-card" data-impact="${esc(v.impact)}" data-layer="${esc(v.layer)}" data-category="${esc(v.category)}">
+      return `<div class="violation-card" data-impact="${esc(v.impact)}" data-layer="${esc(v.layer)}" data-category="${esc(v.category)}" data-owner="${ownerBadge(originOf(v)).key}">
         ${selector ? `<div class="v-location"><span class="location-label">Element Location:</span><code>${esc(selector)}</code></div>` : ''}
         ${outerHTML ? `<pre class="code-snippet">${esc(prettyHtml(outerHTML.slice(0, 500)))}</pre>` : ''}
         <div class="v-fix-row">
@@ -492,9 +670,12 @@ function buildAxeSection(violations) {
           ${impactBadge(v.impact)}
           ${v.wcagRef ? `<span class="wcag-tag">${esc(v.wcagRef)}</span>` : ''}
           ${v.fix?.deterministic ? '<span class="fix-auto">Auto-fix</span>' : '<span class="fix-ai">AI-fix</span>'}
+          ${enginesLabel(v) ? `<span class="wcag-tag">Engines agreeing: ${esc(enginesLabel(v))}</span>` : ''}
           <span class="found-date">Found: ${v.foundAt ? new Date(v.foundAt).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' }) : new Date().toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}</span>
         </div>
+        <div class="v-owner">${ownerHtml(originOf(v))}</div>
         ${buildSourcePath(v)}
+        ${buildWhyFlagged(v)}
       </div>`;
     }).join('');
 
@@ -508,7 +689,7 @@ function buildAxeSection(violations) {
       </summary>
       <div class="rule-body">
         <p class="rule-description">${esc(hint)}</p>
-        <a class="rule-link" href="${dequeUrl}" target="_blank" rel="noopener">more information &#x2197;</a>
+        <a class="rule-link" href="${esc(dequeUrl)}" target="_blank" rel="noopener">more information &#x2197;</a>
         ${issueCards}
       </div>
     </details>`;
@@ -564,7 +745,7 @@ export function buildAccessScanRuleCard(ruleId, ruleViols) {
       <span class="snapshot-num">${i + 1}</span>
       <div class="snapshot-content">
         <pre class="code-snippet">${esc(prettyHtml(entry.html.slice(0, 500)))}</pre>
-        ${countBadge}${perHint}${sourcePath}
+        ${countBadge}${perHint}${sourcePath}${buildWhyFlagged(entry.v)}
       </div>
     </div>`;
     }).filter(Boolean).join('');
@@ -588,7 +769,7 @@ export function buildAccessScanRuleCard(ruleId, ruleViols) {
     `<div class="snapshot-block success-snapshot">
       <span class="snapshot-num">${index + 1}</span>
       <div class="snapshot-content">
-        <pre class="code-snippet">${esc(prettyHtml(element.outerHTML.slice(0, 500)))}</pre>
+        <pre class="code-snippet">${esc(prettyHtml((element.outerHTML || '').slice(0, 500)))}</pre>
       </div>
     </div>`
   ).join('');
@@ -609,10 +790,10 @@ export function buildAccessScanRuleCard(ruleId, ruleViols) {
         </div>
         ${codeSnapshots
           ? `<div class="as-snapshots"><span class="as-snap-label">${failCount} code snapshot${failCount === 1 ? '' : 's'} of failed element${failCount === 1 ? '' : 's'}</span>${codeSnapshots}</div>`
-          : `<div class="as-page-level">Page-level violation &mdash; no specific element to display.</div>`}
+          : `<div class="as-page-level">Page-level violation - no specific element to display.</div>`}
         ${successfulContent}`;
 
-  return `<div class="as-rule-card violation-card" data-impact="${esc(first.impact)}" data-layer="accessScan" data-category="accessibility">
+  return `<div class="as-rule-card violation-card" data-impact="${esc(first.impact)}" data-layer="accessScan" data-category="accessibility" data-owner="${ownerBadge(originOf(first)).key}">
     <div class="as-rule-layout">
       <div class="as-rule-left">
         ${leftContent}
@@ -626,15 +807,27 @@ export function buildAccessScanRuleCard(ruleId, ruleViols) {
           <tr><td>Failures</td><td><span class="fail-count">${failCount}</span></td></tr>
           <tr><td>Impact</td><td>${impactLabel}</td></tr>
           <tr><td>Found on</td><td>${foundDate}</td></tr>
+          <tr><td>Owner</td><td>${ownerHtml(originOf(first))}</td></tr>
         </table>
       </div>
     </div>
   </div>`;
 }
 
+/** A card shows one owner, so a rule hit in the site's markup and in a vendor's gets one card each. */
+function splitByOwner(violations) {
+  const by = new Map();
+  for (const v of violations) {
+    const k = ownerBadge(originOf(v)).text;
+    by.set(k, [...(by.get(k) || []), v]);
+  }
+  return [...by.values()];
+}
+
 function buildAccessScanSection(violations, metadata = {}) {
   const totalIssues = violations.length;
-  const isCompliant = totalIssues === 0;
+  const incomplete = metadata.incomplete === true;
+  const isCompliant = totalIssues === 0 && !incomplete;
   const profileLabel = metadata.profile
     ? formatAccessScanProfileLabel(metadata.profile)
     : null;
@@ -653,16 +846,19 @@ function buildAccessScanSection(violations, metadata = {}) {
   }
 
   html += `<div class="as-compliance-bar">
-    <span class="as-compliance-badge ${isCompliant ? 'compliant' : 'non-compliant'}">
-      ${isCompliant ? '&#x2713; Compliant' : '&#x2717; Non-compliant'}
+    <span class="as-compliance-badge ${incomplete && totalIssues === 0 ? 'incomplete' : isCompliant ? 'compliant' : 'non-compliant'}">
+      ${incomplete && totalIssues === 0 ? '&#9888; Incomplete scan' : isCompliant ? '&#x2713; No automated issues found' : '&#x2717; Non-compliant'}
     </span>
-    ${isCompliant
-      ? '<span class="as-compliance-text">Your scan found no accessibility issues. Great job!</span>'
+    ${incomplete && totalIssues === 0
+      ? '<span class="as-compliance-text">Some pages or scanner layers did not complete, so the result cannot be determined.</span>'
+      : isCompliant
+      ? '<span class="as-compliance-text">Automated checks found no issues. Manual review is still required.</span>'
       : '<span class="as-compliance-text">Your scan found serious accessibility issues. Let\'s fix them now to help you meet accessibility requirements and mitigate legal risk.</span>'}
   </div>`;
 
-  if (isCompliant) {
-    return html + `<div class="no-issues"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#008a05" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span>All clear</span></div>`;
+  if (totalIssues === 0) {
+    if (incomplete) return html;
+    return html + `<div class="no-issues"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#008a05" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span>No automated issues found</span></div>`;
   }
 
   const cataloguedRuleIds = new Set(ACCESSSCAN_CATEGORIES.flatMap((category) => category.rules));
@@ -680,11 +876,11 @@ function buildAccessScanSection(violations, metadata = {}) {
     const byRule = groupViolations(catViols, (v) => v.ruleId);
     let ruleCards = '';
     for (const [ruleId, ruleViols] of byRule) {
-      ruleCards += buildAccessScanRuleCard(ruleId, ruleViols);
+      ruleCards += splitByOwner(ruleViols).map((group) => buildAccessScanRuleCard(ruleId, group)).join('');
     }
 
     if (catCount === 0) {
-      ruleCards = `<div class="as-cat-pass"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#008a05" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> No issues found in this category</div>`;
+      ruleCards = `<div class="as-cat-pass"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#008a05" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> No automated issues found in this category</div>`;
     }
 
     html += `<details class="cat-accordion ${catStatusClass}" ${catCount > 0 ? 'open' : ''}>
@@ -702,7 +898,7 @@ function buildAccessScanSection(violations, metadata = {}) {
     const byRule = groupViolations(uncatalogued, (v) => v.ruleId);
     let ruleCards = '';
     for (const [ruleId, ruleViols] of byRule) {
-      ruleCards += buildAccessScanRuleCard(ruleId, ruleViols);
+      ruleCards += splitByOwner(ruleViols).map((group) => buildAccessScanRuleCard(ruleId, group)).join('');
     }
 
     html += `<details class="cat-accordion has-issues uncatalogued" open>
@@ -722,9 +918,10 @@ export { buildAccessScanSection, buildAxeSection, buildGenericViolationSection }
 
 // ─── Generic violations section (W3C, Links, Behavioral) ────────────────────
 
-function buildGenericViolationSection(violations) {
+function buildGenericViolationSection(violations, incomplete = false) {
   if (violations.length === 0) {
-    return `<div class="no-issues"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#008a05" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span>All clear &mdash; no issues found</span></div>`;
+    if (incomplete) return INCOMPLETE_NOTE;
+    return `<div class="no-issues"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#008a05" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span>No automated issues found</span></div>`;
   }
 
   const byRule = groupViolations(violations, (v) => v.ruleId);
@@ -736,17 +933,20 @@ function buildGenericViolationSection(violations) {
       const selector = v.element?.selector || '';
       const occurrence = Number.isInteger(v.count) && v.count > 0 ? v.count : 1;
       const countBadge = occurrence > 1 ? `<span class="dedup-badge">&times;${occurrence}</span>` : '';
-      return `<div class="violation-card" data-impact="${esc(v.impact)}" data-layer="${esc(v.layer)}" data-category="${esc(v.category)}">
+      return `<div class="violation-card" data-impact="${esc(v.impact)}" data-layer="${esc(v.layer)}" data-category="${esc(v.category)}" data-owner="${ownerBadge(originOf(v)).key}">
         <div class="v-meta-row">
           ${impactBadge(v.impact)}
           ${v.wcagRef ? `<span class="wcag-tag">${esc(v.wcagRef)}</span>` : ''}
           ${v.fix?.deterministic ? '<span class="fix-auto">Auto-fix</span>' : '<span class="fix-ai">AI-fix</span>'}
+          ${enginesLabel(v) ? `<span class="wcag-tag">Engines agreeing: ${esc(enginesLabel(v))}</span>` : ''}
           ${countBadge}
         </div>
         <p class="v-hint">${esc(v.fix?.hint || '')}</p>
         ${selector ? `<div class="v-location"><code>${esc(selector)}</code></div>` : ''}
         ${outerHTML ? `<pre class="code-snippet">${esc(prettyHtml(outerHTML.slice(0, 500)))}</pre>` : ''}
+        <div class="v-owner">${ownerHtml(originOf(v))}</div>
         ${buildSourcePath(v)}
+        ${buildWhyFlagged(v)}
       </div>`;
     }).join('');
 
@@ -767,13 +967,11 @@ function buildGenericViolationSection(violations) {
 
 // ─── Tool section wrapper ────────────────────────────────────────────────────
 
-function buildToolSection(tool, allViolations, lighthouseData, accessScanMetadata = null) {
-  const toolViols = tool.layers
-    ? allViolations.filter((v) => tool.layers.includes(v.layer))
-    : allViolations.filter((v) => v.layer === tool.layer);
+function buildToolSection(tool, allViolations, lighthouseData, accessScanMetadata = null, incomplete = false) {
+  const toolViols = toolViolations(tool, allViolations);
   const count = countIssueOccurrences(toolViols);
   const toolLabel = tool.id === 'accessScan' && accessScanMetadata?.profile
-    ? `AccessScan — ${formatAccessScanProfileLabel(accessScanMetadata.profile)}`
+    ? `AccessScan - ${formatAccessScanProfileLabel(accessScanMetadata.profile)}`
     : tool.label;
 
   let content = '';
@@ -784,11 +982,11 @@ function buildToolSection(tool, allViolations, lighthouseData, accessScanMetadat
       content += buildGenericViolationSection(perfViols);
     }
   } else if (tool.id === 'axe') {
-    content = buildAxeSection(toolViols);
+    content = buildAxeSection(toolViols, incomplete);
   } else if (tool.id === 'accessScan') {
-    content = buildAccessScanSection(toolViols, accessScanMetadata || {});
+    content = buildAccessScanSection(toolViols, { ...accessScanMetadata, incomplete });
   } else {
-    content = buildGenericViolationSection(toolViols);
+    content = buildGenericViolationSection(toolViols, incomplete);
   }
 
   const isPerf = tool.id === 'performance';
@@ -809,820 +1007,7 @@ function buildToolSection(tool, allViolations, lighthouseData, accessScanMetadat
 
 // ─── Main HTML builder ───────────────────────────────────────────────────────
 
+/** The scan-visual.html document: a ScanReportV2 (report.v2, or the report itself) or the legacy projection. Layout and client code live in ./ui/. */
 export function buildHtml(report) {
-  const allViolations = (report.pages || []).flatMap((p) => p.violations || []);
-  const total = countIssueOccurrences(allViolations);
-  const ts = report.timestamp ? new Date(report.timestamp).toLocaleString() : new Date().toLocaleString();
-  const lighthouseData = report.lighthouse || {};
-  const accessScanMetadata = resolveAccessScanMetadata(report, report.pages || []);
-  const scannerRunEvidence = buildScannerRunEvidence(report.pages || []);
-
-  const toolCounts = TOOL_CONFIG.map((t) => {
-    const toolViols = t.layers
-      ? allViolations.filter((v) => t.layers.includes(v.layer))
-      : allViolations.filter((v) => v.layer === t.layer);
-    return {
-      ...t,
-      count: countIssueOccurrences(toolViols),
-      label: t.id === 'accessScan' && accessScanMetadata?.profile
-        ? `AccessScan — ${formatAccessScanProfileLabel(accessScanMetadata.profile)}`
-        : t.label,
-    };
-  });
-
-  const criticalCount = countIssueOccurrences(allViolations.filter((v) => v.impact === 'critical'));
-  const seriousCount = countIssueOccurrences(allViolations.filter((v) => v.impact === 'serious'));
-  const moderateCount = countIssueOccurrences(allViolations.filter((v) => v.impact === 'moderate'));
-  const healthScore = total === 0 ? 100 : Math.max(0, 100 - criticalCount * 15 - seriousCount * 5 - moderateCount * 2);
-  const healthColor = scoreColor(healthScore);
-
-  const sections = TOOL_CONFIG.map((t) =>
-    buildToolSection(t, allViolations, lighthouseData, accessScanMetadata)
-  ).join('\n');
-
-  const navItems = toolCounts.map((t) =>
-    `<button class="nav-pill" onclick="scrollToSection('section-${t.id}')">
-      ${esc(t.label)}
-      <span class="nav-count" style="background:${t.count > 0 ? t.color : '#008a05'}15;color:${t.count > 0 ? t.color : '#008a05'}">${t.count}</span>
-    </button>`
-  ).join('');
-
-  const impactOptions = ['all', 'critical', 'serious', 'moderate', 'minor'].map((f) => {
-    const colors = { all: '#222222', critical: '#c13515', serious: '#ff385c', moderate: '#6a6a6a', minor: '#929292' };
-    const count = f === 'all'
-      ? total
-      : countIssueOccurrences(allViolations.filter((v) => v.impact === f));
-    return `<button class="filter-pill${f === 'all' ? ' active' : ''}" data-filter="${f}" data-group="impact" onclick="setFilter('impact','${f}',this)" style="--fc:${colors[f]}">${f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)} <span class="pill-count">${count}</span></button>`;
-  }).join('');
-
-  const categoryFilters = [{ id: 'all', label: 'All', color: '#222222' }, ...TOOL_CONFIG.map((t) => ({ id: t.layer || t.id, label: t.label, color: t.color }))];
-  const categoryOptions = categoryFilters.map((f) => {
-    const filtered = f.id === 'all'
-      ? allViolations
-      : allViolations.filter((v) => v.layer === f.id || (f.id === 'behavioral' && ['keyboard', 'focusTrap', 'ariaLive', 'dynamicContent', 'screenReader'].includes(v.layer)));
-    const count = countIssueOccurrences(filtered);
-    return `<button class="filter-pill${f.id === 'all' ? ' active' : ''}" data-filter="${f.id}" data-group="category-tool" onclick="setFilter('category-tool','${f.id}',this)" style="--fc:${f.color}">${esc(f.label)} <span class="pill-count">${count}</span></button>`;
-  }).join('');
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Site Scan Report &mdash; ${esc(ts)}</title>
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
-
-:root {
-  /* Airbnb brand palette */
-  --rausch: #ff385c;
-  --rausch-dark: #e0173a;
-  --error: #c13515;
-  --luxe: #460479;
-  --ink: #222222;
-  --body: #3f3f3f;
-  --muted: #717171;
-  --muted-soft: #b0b0b0;
-  --hairline: #dddddd;
-  --hairline-soft: #ebebeb;
-  --canvas: #ffffff;
-  --surface-soft: #f7f7f7;
-  --surface-strong: #f0f0f0;
-  --green: #008a05;
-  --amber: #c47a00;
-  --font: 'Circular', 'Inter', -apple-system, system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-  --mono: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
-  /* Airbnb border radii */
-  --r-xs: 4px; --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 24px; --r-full: 9999px;
-  /* Airbnb elevation */
-  --shadow-xs: 0 1px 2px rgba(0,0,0,0.06);
-  --shadow-sm: 0 2px 4px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-  --shadow-md: 0 6px 16px rgba(0,0,0,0.12);
-  --shadow-lg: 0 8px 28px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08);
-  --shadow-focus: 0 0 0 2px var(--ink);
-}
-
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { scroll-behavior: smooth; }
-body { font-family: var(--font); font-size: 14px; color: var(--ink); background: var(--canvas); line-height: 1.43; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
-
-/* ─── Top Navigation — Airbnb style ─── */
-.top-nav {
-  position: sticky; top: 0; z-index: 100;
-  background: var(--canvas);
-  border-bottom: 1px solid var(--hairline);
-  box-shadow: var(--shadow-xs);
-}
-.top-nav-inner {
-  max-width: 1760px; margin: 0 auto; padding: 0 80px;
-  height: 80px; display: flex; align-items: center; gap: 20px;
-}
-.brand {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 15px; font-weight: 700; color: var(--ink);
-  text-decoration: none; flex-shrink: 0; letter-spacing: -0.2px;
-}
-.brand-mark svg { display: block; }
-.nav-pills {
-  display: flex; gap: 2px; flex: 1; overflow-x: auto;
-  scrollbar-width: none; -webkit-overflow-scrolling: touch;
-}
-.nav-pills::-webkit-scrollbar { display: none; }
-.nav-pill {
-  padding: 9px 16px; border-radius: var(--r-full);
-  font-size: 14px; font-weight: 500; color: var(--muted);
-  background: transparent; border: 1px solid transparent;
-  cursor: pointer; white-space: nowrap;
-  display: flex; align-items: center; gap: 6px;
-  transition: background .12s ease, color .12s ease, border-color .12s ease;
-  line-height: 1;
-}
-.nav-pill:hover { background: var(--surface-soft); color: var(--ink); border-color: var(--hairline); }
-.nav-pill:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
-.nav-count {
-  font-size: 11px; font-weight: 700; padding: 2px 7px;
-  border-radius: var(--r-full); line-height: 1.4;
-}
-
-/* Airbnb search bar — pill with shadow */
-.search-bar { position: relative; flex-shrink: 0; }
-.search-bar input {
-  width: 220px; height: 44px;
-  padding: 0 18px 0 40px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-full);
-  font-family: var(--font); font-size: 14px; color: var(--ink);
-  background: var(--canvas); outline: none;
-  box-shadow: var(--shadow-sm);
-  transition: box-shadow .2s, border-color .2s;
-}
-.search-bar input:focus {
-  border-color: var(--ink);
-  box-shadow: var(--shadow-md);
-}
-.search-bar input::placeholder { color: var(--muted-soft); }
-.search-bar svg {
-  position: absolute; left: 14px; top: 50%;
-  transform: translateY(-50%); color: var(--muted); pointer-events: none;
-}
-
-/* ─── Hero Header ─── */
-.hero { background: var(--canvas); padding: 48px 80px 40px; max-width: 1760px; margin: 0 auto; }
-.hero-top { display: flex; align-items: baseline; gap: 16px; margin-bottom: 32px; flex-wrap: wrap; }
-.hero-title {
-  font-size: 32px; font-weight: 700; color: var(--ink);
-  line-height: 1.1; letter-spacing: -0.75px;
-}
-.hero-meta { font-size: 14px; color: var(--muted); font-weight: 400; padding-bottom: 2px; }
-.summary-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 16px; }
-
-/* Airbnb-style stat card */
-.stat-card {
-  background: var(--canvas);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-lg);
-  padding: 20px 22px 18px;
-  display: flex; flex-direction: column; gap: 8px;
-  transition: box-shadow .2s ease, transform .2s ease;
-  cursor: default;
-}
-.stat-card:hover {
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
-}
-.stat-value { font-size: 32px; font-weight: 700; line-height: 1; letter-spacing: -1px; }
-.stat-label {
-  font-size: 11px; font-weight: 600; color: var(--muted);
-  text-transform: uppercase; letter-spacing: 0.6px;
-}
-
-/* ─── Filter Bar — Airbnb category chips ─── */
-.filter-bar {
-  display: flex; flex-direction: column; gap: 8px;
-  padding: 12px 80px; max-width: 1760px; margin: 0 auto;
-  border-bottom: 1px solid var(--hairline-soft);
-}
-.filter-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.filter-label { font-size: 13px; color: var(--muted); font-weight: 600; margin-right: 4px; min-width: 60px; }
-.filter-pill {
-  padding: 6px 14px; border-radius: var(--r-full);
-  font-size: 13px; font-weight: 500; color: var(--ink);
-  background: var(--canvas); border: 1px solid var(--hairline);
-  cursor: pointer; transition: all .15s ease;
-  display: flex; align-items: center; gap: 5px; white-space: nowrap;
-}
-.filter-pill:hover { border-color: var(--ink); background: var(--surface-soft); }
-.filter-pill.active { background: var(--ink); color: var(--canvas); border-color: var(--ink); }
-.pill-count { font-size: 11px; font-weight: 700; opacity: 0.75; }
-.filter-actions { justify-content: space-between; }
-.clear-filters-btn {
-  padding: 6px 14px; border-radius: var(--r-full);
-  font-size: 12px; font-weight: 600; color: var(--muted);
-  background: transparent; border: 1px solid var(--hairline);
-  cursor: pointer; display: flex; align-items: center; gap: 5px;
-  transition: all .15s;
-}
-.clear-filters-btn:hover { border-color: var(--rausch); color: var(--rausch); }
-.results-indicator { font-size: 13px; color: var(--muted); font-weight: 400; }
-.results-indicator strong { font-weight: 700; color: var(--ink); }
-
-/* ─── Main Content ─── */
-.main-content { max-width: 1760px; margin: 0 auto; padding: 28px 80px 80px; }
-
-/* ─── Tool Section — Airbnb card accordion ─── */
-.tool-section {
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-xl);
-  margin-bottom: 20px; overflow: hidden;
-  background: var(--canvas);
-  transition: box-shadow .2s ease;
-}
-.tool-section:hover { box-shadow: var(--shadow-sm); }
-.tool-header {
-  display: flex; align-items: center; gap: 14px;
-  padding: 22px 28px; cursor: pointer; list-style: none; user-select: none;
-}
-.tool-header::-webkit-details-marker { display: none; }
-.tool-icon {
-  width: 40px; height: 40px; border-radius: var(--r-md);
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-}
-.tool-header h2 { font-size: 16px; font-weight: 600; flex: 1; color: var(--ink); letter-spacing: -0.1px; }
-.tool-total { font-size: 13px; color: var(--muted); font-weight: 400; }
-.tool-total strong { font-weight: 700; color: var(--ink); }
-.section-badge {
-  font-size: 11px; font-weight: 700; color: var(--canvas);
-  padding: 4px 11px; border-radius: var(--r-full); min-width: 28px; text-align: center;
-}
-.chevron { transition: transform .25s cubic-bezier(.4,0,.2,1); color: var(--muted-soft); flex-shrink: 0; }
-.tool-section[open] > .tool-header .chevron { transform: rotate(180deg); }
-.tool-body { border-top: 1px solid var(--hairline-soft); }
-
-/* ─── Rule Accordion (Axe, W3C, Links, Behavioral child) ─── */
-.rule-accordion { border-bottom: 1px solid var(--hairline-soft); }
-.rule-accordion:last-child { border-bottom: none; }
-.rule-accordion > summary {
-  padding: 14px 28px; cursor: pointer;
-  display: flex; align-items: center; gap: 10px;
-  font-size: 14px; color: var(--body); list-style: none;
-  transition: background .1s;
-}
-.rule-accordion > summary::-webkit-details-marker { display: none; }
-.rule-accordion > summary::before {
-  content: ''; width: 0; height: 0;
-  border-left: 5px solid var(--muted-soft);
-  border-top: 4px solid transparent; border-bottom: 4px solid transparent;
-  transition: transform .15s; flex-shrink: 0;
-}
-.rule-accordion[open] > summary::before { transform: rotate(90deg); }
-.rule-accordion > summary:hover { background: var(--surface-soft); }
-.rule-summary-left { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
-.rule-title { font-weight: 500; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rule-count {
-  font-size: 12px; font-weight: 600; color: var(--muted);
-  background: var(--surface-soft); padding: 3px 10px;
-  border-radius: var(--r-full); white-space: nowrap; flex-shrink: 0;
-  border: 1px solid var(--hairline-soft);
-}
-.rule-body { padding: 8px 28px 24px; display: flex; flex-direction: column; gap: 12px; }
-.rule-description { font-size: 14px; color: var(--body); line-height: 1.55; }
-.rule-link { font-size: 13px; color: var(--luxe); text-decoration: none; font-weight: 500; }
-.rule-link:hover { text-decoration: underline; }
-
-/* ─── AccessScan Compliance Bar ─── */
-.as-compliance-bar {
-  padding: 18px 28px; display: flex; align-items: center; gap: 14px;
-  border-bottom: 1px solid var(--hairline-soft);
-}
-.as-compliance-badge { font-size: 13px; font-weight: 700; padding: 6px 16px; border-radius: var(--r-full); }
-.as-compliance-badge.compliant { background: rgba(0,138,5,0.08); color: var(--green); border: 1px solid rgba(0,138,5,0.2); }
-.as-compliance-badge.non-compliant { background: rgba(193,53,21,0.08); color: var(--error); border: 1px solid rgba(193,53,21,0.2); }
-.as-compliance-text { font-size: 13px; color: var(--body); line-height: 1.4; }
-
-/* ─── AccessScan Category Accordion ─── */
-.cat-accordion { border-bottom: 1px solid var(--hairline-soft); }
-.cat-accordion:last-child { border-bottom: none; }
-.cat-accordion > summary {
-  padding: 16px 28px; cursor: pointer;
-  display: flex; align-items: center; gap: 10px;
-  font-size: 14px; list-style: none; transition: background .1s;
-}
-.cat-accordion > summary::-webkit-details-marker { display: none; }
-.cat-accordion > summary::before {
-  content: ''; width: 0; height: 0;
-  border-left: 5px solid var(--muted-soft);
-  border-top: 4px solid transparent; border-bottom: 4px solid transparent;
-  transition: transform .15s; flex-shrink: 0;
-}
-.cat-accordion[open] > summary::before { transform: rotate(90deg); }
-.cat-accordion > summary:hover { background: var(--surface-soft); }
-.cat-label { font-weight: 600; color: var(--ink); flex: 1; }
-.cat-wcag { font-size: 12px; color: var(--muted-soft); }
-.cat-count {
-  font-size: 11px; font-weight: 700; padding: 3px 10px;
-  border-radius: var(--r-full); flex-shrink: 0;
-}
-.cat-count.has-count { background: rgba(255,56,92,0.08); color: var(--rausch); border: 1px solid rgba(255,56,92,0.2); }
-.cat-count.zero-count { background: rgba(0,138,5,0.07); color: var(--green); border: 1px solid rgba(0,138,5,0.2); }
-.cat-body { padding: 4px 20px 20px; display: flex; flex-direction: column; gap: 14px; }
-.as-cat-pass {
-  font-size: 13px; color: var(--green);
-  display: flex; align-items: center; gap: 8px; padding: 14px 0;
-}
-
-/* ─── AccessScan Rule Card — two-column ─── */
-.as-rule-card {
-  border: 1px solid var(--hairline); border-radius: var(--r-lg);
-  padding: 0; overflow: hidden;
-  transition: box-shadow .2s ease;
-}
-.as-rule-card:hover { box-shadow: var(--shadow-md); }
-.as-rule-layout { display: grid; grid-template-columns: 1fr 260px; min-height: 0; }
-.as-rule-left { padding: 24px 28px; border-right: 1px solid var(--hairline-soft); }
-.as-rule-right { padding: 20px; background: var(--surface-soft); }
-.as-rule-header { margin-bottom: 16px; }
-.as-wcag-version {
-  display: inline-block; font-size: 11px; font-weight: 600;
-  color: var(--luxe); background: rgba(70,4,121,0.06);
-  padding: 3px 10px; border-radius: var(--r-full);
-  margin-bottom: 10px; letter-spacing: 0.2px;
-  border: 1px solid rgba(70,4,121,0.15);
-}
-.as-rule-title { font-size: 15px; font-weight: 600; color: var(--ink); line-height: 1.4; }
-.as-requirement {
-  margin-bottom: 16px; padding: 14px 16px;
-  background: var(--surface-soft); border-radius: var(--r-md);
-  border-left: 3px solid var(--hairline);
-}
-.as-req-label {
-  font-size: 11px; font-weight: 700; color: var(--muted);
-  text-transform: uppercase; letter-spacing: 0.07em; display: block; margin-bottom: 6px;
-}
-.as-requirement p { font-size: 13px; color: var(--body); line-height: 1.6; }
-.as-snapshots { margin-top: 14px; }
-.as-snap-label { font-size: 13px; font-weight: 600; color: var(--ink); display: block; margin-bottom: 10px; }
-.snapshot-block { display: flex; gap: 10px; margin-bottom: 10px; }
-.snapshot-num {
-  font-size: 11px; font-weight: 700; color: var(--canvas); background: var(--ink);
-  width: 22px; height: 22px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0; margin-top: 10px;
-}
-.snapshot-block .code-snippet { flex: 1; margin-top: 0; }
-.snapshot-content { flex: 1; min-width: 0; }
-.snapshot-content .code-snippet { margin-top: 0; }
-.dedup-badge {
-  display: inline-block; font-size: 11px; font-weight: 700;
-  color: var(--canvas); background: var(--rausch);
-  padding: 2px 8px; border-radius: var(--r-full); margin-top: 6px;
-}
-.snap-hint {
-  font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.4;
-  padding: 7px 12px; background: rgba(255,56,92,0.04); border-radius: var(--r-sm);
-  border: 1px solid rgba(255,56,92,0.1);
-}
-.as-page-level { font-size: 13px; color: var(--muted); font-style: italic; padding: 18px 0; }
-
-/* ─── AccessScan Property Table ─── */
-.as-prop-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.as-prop-table th {
-  text-align: left; font-weight: 600; color: var(--muted);
-  padding: 8px 10px; border-bottom: 1px solid var(--hairline);
-  font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
-}
-.as-prop-table td { padding: 9px 10px; border-bottom: 1px solid var(--hairline-soft); color: var(--body); }
-.as-prop-table tr:last-child td { border-bottom: none; }
-.as-prop-table td:first-child { color: var(--muted); font-weight: 500; width: 100px; }
-.as-prop-table code {
-  font-family: var(--mono); font-size: 11.5px;
-  background: rgba(255,56,92,0.06); padding: 2px 6px;
-  border-radius: var(--r-xs); color: var(--rausch);
-}
-.fail-count { font-weight: 700; color: var(--error); }
-
-/* ─── Violation Cards — Airbnb listing card feel ─── */
-.violation-card {
-  background: var(--canvas); border: 1px solid var(--hairline);
-  border-radius: var(--r-lg); padding: 18px 22px;
-  transition: box-shadow .2s ease;
-  position: relative;
-}
-/* Impact-based left accent */
-.violation-card[data-impact="critical"] { border-left: 3px solid var(--error); }
-.violation-card[data-impact="serious"]  { border-left: 3px solid var(--rausch); }
-.violation-card[data-impact="moderate"] { border-left: 3px solid #c47a00; }
-.violation-card[data-impact="minor"]    { border-left: 3px solid var(--green); }
-.violation-card:hover { box-shadow: var(--shadow-md); }
-
-.v-meta-row { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 8px; }
-.v-location { margin-bottom: 8px; }
-.v-location .location-label { font-size: 12px; font-weight: 600; color: var(--muted); margin-right: 6px; }
-.v-location code { font-family: var(--mono); font-size: 12px; color: var(--body); }
-.v-fix-row { margin: 10px 0; }
-.fix-label { font-size: 12px; font-weight: 600; color: var(--muted); display: block; margin-bottom: 4px; letter-spacing: 0.02em; }
-.v-hint { font-size: 14px; color: var(--body); line-height: 1.55; }
-.v-source { display: flex; align-items: center; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
-.v-source code { font-family: var(--mono); font-size: 12px; color: var(--muted); }
-.v-source .source-page { color: var(--muted); opacity: 0.7; }
-.v-source .source-partial { color: var(--rausch); font-weight: 600; }
-.v-source .source-line { color: var(--muted); font-weight: 400; }
-
-/* Airbnb badge style */
-.badge {
-  font-size: 11px; font-weight: 600; padding: 3px 9px;
-  border-radius: var(--r-full); text-transform: capitalize;
-  letter-spacing: 0.2px; display: inline-block;
-}
-.wcag-tag {
-  font-size: 11px; font-weight: 500; color: var(--luxe);
-  background: rgba(70,4,121,0.06); padding: 3px 9px;
-  border-radius: var(--r-full); border: 1px solid rgba(70,4,121,0.12);
-}
-.fix-auto {
-  font-size: 11px; font-weight: 600; color: #007003;
-  background: rgba(0,138,5,0.07); padding: 3px 10px;
-  border-radius: var(--r-full); white-space: nowrap;
-  border: 1px solid rgba(0,138,5,0.2);
-}
-.fix-ai {
-  font-size: 11px; font-weight: 600; color: var(--rausch);
-  background: rgba(255,56,92,0.07); padding: 3px 10px;
-  border-radius: var(--r-full); white-space: nowrap;
-  border: 1px solid rgba(255,56,92,0.2);
-}
-.found-date { font-size: 11px; font-weight: 500; color: var(--muted-soft); margin-left: auto; white-space: nowrap; }
-
-/* ─── Code Snippets — dark code block ─── */
-.code-snippet, .source-snippet {
-  font-family: var(--mono); font-size: 12px;
-  background: #1a1a1a; color: #e8e8e8;
-  padding: 14px 18px; border-radius: var(--r-md);
-  overflow-x: auto; white-space: pre-wrap; word-break: break-all;
-  max-height: 200px; margin-top: 12px; line-height: 1.6; border: none;
-}
-.source-snippet { background: #2a2a2a; color: #c5c5c5; }
-
-/* ─── No Issues ─── */
-.no-issues {
-  padding: 56px 24px; display: flex; flex-direction: column;
-  align-items: center; gap: 14px; color: var(--green);
-  font-weight: 600; font-size: 16px; text-align: center;
-}
-
-/* ─── Performance Dashboard ─── */
-.perf-dashboard { padding: 0; }
-.perf-provenance {
-  display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 12px;
-  padding: 12px 24px; background: var(--surface-soft);
-  border-bottom: 1px solid var(--hairline); color: var(--body);
-  font-size: 13px; line-height: 1.5;
-}
-.perf-provenance strong { color: var(--ink); }
-.perf-provenance--fallback { border-left: 4px solid var(--error); }
-.perf-unavailable { margin: 0; padding: 24px; color: var(--body); font-size: 14px; }
-@media (forced-colors: active) {
-  .perf-provenance { border: 1px solid CanvasText; }
-}
-.device-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--hairline-soft); }
-.device-tab {
-  flex: 1; padding: 16px 24px; font-size: 14px; font-weight: 500; color: var(--muted);
-  background: var(--surface-soft); border: none; border-bottom: 2px solid transparent;
-  cursor: pointer; transition: all .15s;
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-}
-.device-tab.active { background: var(--canvas); color: var(--ink); border-bottom-color: var(--ink); }
-.device-tab:hover:not(.active) { background: var(--surface-strong); }
-.device-panel { padding: 36px 28px; }
-.gauges-row {
-  display: flex; justify-content: center; gap: 40px; flex-wrap: wrap;
-  padding-bottom: 36px; border-bottom: 1px solid var(--hairline-soft); margin-bottom: 28px;
-}
-.gauge-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.gauge-lbl { font-size: 13px; font-weight: 500; color: var(--muted); }
-.gauge-ring { transition: stroke-dashoffset .8s cubic-bezier(.4,0,.2,1); }
-.metrics-card { background: var(--surface-soft); border-radius: var(--r-lg); padding: 22px 26px; margin-bottom: 18px; }
-.metrics-title { font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 14px; }
-.metrics-table { width: 100%; border-collapse: collapse; }
-.metrics-table td { padding: 10px 8px; font-size: 14px; border-bottom: 1px solid var(--hairline-soft); }
-.metrics-table tr:last-child td { border-bottom: none; }
-.metric-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 10px; vertical-align: middle; }
-.metric-val { text-align: right; font-weight: 600; font-family: var(--mono); font-size: 14px; }
-.audit-groups { margin-top: 10px; }
-.audit-group { border: 1px solid var(--hairline-soft); border-radius: var(--r-md); margin-bottom: 10px; background: var(--canvas); }
-.audit-group > summary {
-  padding: 13px 18px; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--ink);
-  display: flex; align-items: center; gap: 8px; list-style: none;
-}
-.audit-group > summary::-webkit-details-marker { display: none; }
-.audit-group > summary::before {
-  content: ''; width: 0; height: 0;
-  border-left: 5px solid var(--muted-soft);
-  border-top: 3px solid transparent; border-bottom: 3px solid transparent; transition: transform .15s;
-}
-.audit-group[open] > summary::before { transform: rotate(90deg); }
-.audit-count {
-  font-size: 11px; font-weight: 600; color: var(--muted);
-  background: var(--surface-soft); padding: 2px 8px;
-  border-radius: var(--r-full); margin-left: auto;
-  border: 1px solid var(--hairline-soft);
-}
-.audit-item { padding: 9px 18px 9px 36px; border-top: 1px solid var(--hairline-soft); }
-.audit-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.audit-title { flex: 1; color: var(--body); }
-.audit-value { font-family: var(--mono); font-size: 12px; color: var(--muted); }
-.audit-details { margin: 5px 0 0 24px; list-style: none; }
-.audit-details li { font-size: 12px; color: var(--muted); padding: 2px 0; font-family: var(--mono); }
-.audit-details li::before {
-  content: ''; display: inline-block;
-  width: 4px; height: 4px; border-radius: 50%;
-  background: var(--hairline); margin-right: 8px; vertical-align: middle;
-}
-
-/* ─── Gap / Steps ─── */
-.gap-to-100 {
-  margin-top: 18px; padding: 18px;
-  border: 1px solid var(--hairline-soft); border-radius: var(--r-md); background: var(--canvas);
-}
-.gap-item { display: grid; grid-template-columns: 1fr 120px 60px; gap: 8px; align-items: center; padding: 7px 0; font-size: 13px; }
-.gap-label { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gap-bar-track { height: 8px; background: var(--hairline-soft); border-radius: 4px; overflow: hidden; }
-.gap-bar-fill { height: 100%; border-radius: 4px; transition: width .3s; }
-.gap-pts { text-align: right; font-weight: 600; font-size: 12px; color: var(--muted); }
-.steps-to-100 {
-  margin-top: 18px; padding: 18px;
-  border: 1px solid var(--hairline-soft); border-radius: var(--r-md); background: var(--canvas);
-}
-.steps-list { display: flex; flex-direction: column; gap: 10px; }
-.step-item { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; cursor: pointer; }
-.step-item input[type="checkbox"] { margin-top: 3px; flex-shrink: 0; accent-color: var(--rausch); }
-.step-item span { font-weight: 500; color: var(--ink); min-width: 200px; }
-.step-item em { font-style: normal; color: var(--muted); font-size: 12px; }
-
-/* ─── Passed Audits ─── */
-.passed-audits-section { margin-top: 16px; border: 1px solid var(--hairline-soft); border-radius: var(--r-sm); background: var(--canvas); }
-.passed-summary { padding: 12px 16px; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--green); display: flex; align-items: center; gap: 8px; list-style: none; }
-.passed-summary::-webkit-details-marker { display: none; }
-.passed-body { padding: 0 8px 8px; }
-.passed-group { border: none; margin-bottom: 4px; }
-.passed-group > summary { padding: 8px 12px; font-size: 13px; color: var(--muted); }
-.passed-item { border-top: none; padding: 4px 12px 4px 28px; }
-.passed-item .audit-title { color: var(--muted); font-weight: 400; }
-
-/* ─── Scanner Run Evidence ─── */
-.scanner-evidence { max-width: 1760px; margin: 0 auto; padding: 0 80px 32px; }
-.scanner-evidence > details { border: 1px solid var(--hairline); border-radius: var(--r-lg); background: var(--canvas); overflow: hidden; }
-.scanner-evidence summary {
-  min-height: 56px; padding: 0 20px; cursor: pointer; list-style: none;
-  display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  font-size: 14px; font-weight: 600;
-}
-.scanner-evidence summary::-webkit-details-marker { display: none; }
-.scanner-evidence summary:hover { background: var(--surface-soft); }
-.scanner-evidence summary:focus-visible { outline: 2px solid var(--ink); outline-offset: -3px; }
-.scanner-evidence-count {
-  color: var(--muted); background: var(--surface-soft); border: 1px solid var(--hairline-soft);
-  border-radius: var(--r-full); padding: 3px 9px; font-size: 12px;
-}
-.scanner-evidence-body { border-top: 1px solid var(--hairline-soft); padding: 20px; }
-.scanner-evidence-body > p { color: var(--muted); margin-bottom: 16px; }
-.scanner-run-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
-.scanner-run-card { border: 1px solid var(--hairline-soft); border-radius: var(--r-md); padding: 16px; min-width: 0; }
-.scanner-run-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
-.scanner-run-heading h3 { font-size: 14px; line-height: 1.3; }
-.scanner-run-heading p { color: var(--muted); font-size: 12px; margin-top: 3px; }
-.scanner-status { border-radius: var(--r-full); padding: 3px 8px; font-size: 11px; font-weight: 700; text-transform: capitalize; }
-.scanner-status--complete { color: #007003; background: #edf7ed; }
-.scanner-status--fallback { color: #6b4200; background: #fff4df; }
-.scanner-status--error { color: #a52e13; background: #fff0ec; }
-.scanner-status--skipped { color: #4a5568; background: #edf2f7; }
-.scanner-status--unknown { color: var(--body); background: var(--surface-strong); }
-.scanner-run-context { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; margin-bottom: 14px; }
-.scanner-run-context dt { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
-.scanner-run-context dd { color: var(--ink); font-size: 12px; margin-top: 2px; overflow-wrap: anywhere; }
-.scanner-run-metrics { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; }
-.scanner-run-metrics li {
-  color: var(--body); background: var(--surface-soft); border: 1px solid var(--hairline-soft);
-  border-radius: var(--r-full); padding: 4px 8px; font-size: 11px;
-}
-
-/* ─── Footer ─── */
-.site-footer {
-  max-width: 1760px; margin: 0 auto; padding: 28px 80px;
-  border-top: 1px solid var(--hairline);
-  display: flex; align-items: center; justify-content: space-between;
-  font-size: 13px; color: var(--muted);
-}
-
-/* ─── Responsive ─── */
-@media (max-width: 1128px) {
-  .top-nav-inner, .hero, .scanner-evidence, .filter-bar, .main-content, .site-footer { padding-left: 24px; padding-right: 24px; }
-  .as-rule-layout { grid-template-columns: 1fr; }
-  .as-rule-left { border-right: none; border-bottom: 1px solid var(--hairline-soft); }
-  .as-rule-right { border-top: 1px solid var(--hairline-soft); }
-  .rule-body, .tool-header, .rule-accordion > summary, .cat-accordion > summary { padding-left: 20px; padding-right: 20px; }
-}
-@media (max-width: 744px) {
-  .top-nav-inner { height: 64px; gap: 8px; padding-left: 16px; padding-right: 16px; }
-  .brand { font-size: 14px; }
-  .hero { padding: 28px 16px 24px; }
-  .hero-top { flex-direction: column; gap: 6px; align-items: flex-start; }
-  .hero-title { font-size: 26px; }
-  .scanner-evidence, .filter-bar, .main-content, .site-footer { padding-left: 16px; padding-right: 16px; }
-  .summary-row { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .stat-card { padding: 14px 16px; }
-  .stat-value { font-size: 26px; }
-  .gauges-row { gap: 20px; }
-  .gauge-wrap svg { width: 90px; height: 90px; }
-  .tool-header { padding: 16px 20px; }
-  .tool-header h2 { font-size: 14px; }
-  .rule-body, .cat-body { padding-left: 14px; padding-right: 14px; }
-  .as-rule-left { padding: 16px 18px; }
-  .as-rule-right { padding: 14px 16px; }
-  .search-bar { display: none; }
-  .filter-row { gap: 5px; overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
-  .filter-row::-webkit-scrollbar { display: none; }
-  .filter-pill { padding: 5px 11px; font-size: 12px; flex-shrink: 0; }
-  .as-rule-layout { grid-template-columns: 1fr; }
-  .site-footer { flex-direction: column; gap: 8px; text-align: center; }
-}
-
-.section-empty { opacity: 0.3; }
-.page-group-hidden { display: none; }
-</style>
-</head>
-<body>
-
-<nav class="top-nav">
-  <div class="top-nav-inner">
-    <a class="brand" href="#">
-      <span class="brand-mark">
-        <!-- Airbnb Bélo mark -->
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="#ff385c" xmlns="http://www.w3.org/2000/svg">
-          <path d="M12 2C8.5 2 6 5.5 6 8.5c0 1.4.4 2.7 1.1 3.8L12 22l4.9-9.7c.7-1.1 1.1-2.4 1.1-3.8C18 5.5 15.5 2 12 2zm0 8.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/>
-        </svg>
-      </span>
-      Site Scan
-    </a>
-    <div class="nav-pills">${navItems}</div>
-    <div class="search-bar">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input type="text" placeholder="Search rules..." oninput="onSearch(this)">
-    </div>
-  </div>
-</nav>
-
-<header class="hero">
-  <div class="hero-top">
-    <h1 class="hero-title">Scan Report</h1>
-    <span class="hero-meta">${esc(ts)} &middot; ${(report.pages || []).length} page${(report.pages || []).length === 1 ? '' : 's'} scanned</span>
-  </div>
-  <div class="summary-row">
-    <div class="stat-card">
-      <span class="stat-value" style="color:${healthColor}">${healthScore}<span style="font-size:16px;font-weight:500;color:var(--muted);margin-left:2px">/100</span></span>
-      <span class="stat-label">Health Score</span>
-    </div>
-    <div class="stat-card">
-      <span class="stat-value" style="color:${total > 0 ? 'var(--rausch)' : 'var(--green)'}">${total}</span>
-      <span class="stat-label">Total Issues</span>
-    </div>
-    <div class="stat-card">
-      <span class="stat-value" style="color:var(--error)">${criticalCount}</span>
-      <span class="stat-label">Critical</span>
-    </div>
-    <div class="stat-card">
-      <span class="stat-value" style="color:var(--rausch)">${seriousCount}</span>
-      <span class="stat-label">Serious</span>
-    </div>
-    ${toolCounts.map((t) => `<div class="stat-card"><span class="stat-value" style="color:${t.color}">${t.count}</span><span class="stat-label">${esc(t.label)}</span></div>`).join('')}
-  </div>
-</header>
-
-${scannerRunEvidence}
-
-<div class="filter-bar">
-  <div class="filter-row">
-    <span class="filter-label">Impact</span>
-    ${impactOptions}
-  </div>
-  <div class="filter-row">
-    <span class="filter-label">Category</span>
-    ${categoryOptions}
-  </div>
-  <div class="filter-row filter-actions">
-    <button class="clear-filters-btn" onclick="clearAllFilters()">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      Clear Filters
-    </button>
-    <span class="results-indicator" id="results-indicator">Showing <strong>${total}</strong> of ${total} issues</span>
-  </div>
-</div>
-
-<main class="main-content">
-  ${sections}
-</main>
-
-<footer class="site-footer">
-  <span style="display:flex;align-items:center;gap:8px">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="#ff385c"><path d="M12 2C8.5 2 6 5.5 6 8.5c0 1.4.4 2.7 1.1 3.8L12 22l4.9-9.7c.7-1.1 1.1-2.4 1.1-3.8C18 5.5 15.5 2 12 2zm0 8.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
-    &copy; ${new Date().getFullYear()} ADA &amp; Performance Automation
-  </span>
-  <span>local-career-site</span>
-</footer>
-
-<script>
-const TOTAL_ISSUES = ${total};
-let activeImpact = 'all';
-let activeCategoryTool = 'all';
-const BEHAVIORAL_LAYERS = ['keyboard', 'focusTrap', 'ariaLive', 'dynamicContent', 'screenReader'];
-let searchQuery = '';
-
-function scrollToSection(id) {
-  const el = document.getElementById(id);
-  if (el) { if (!el.open) el.open = true; el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-}
-
-function switchDevice(btn, showId, hideId) {
-  btn.parentElement.querySelectorAll('.device-tab').forEach(t => t.classList.remove('active'));
-  btn.classList.add('active');
-  const show = document.getElementById(showId);
-  const hide = document.getElementById(hideId);
-  if (show) show.style.display = '';
-  if (hide) hide.style.display = 'none';
-}
-
-function setFilter(group, value, btn) {
-  if (group === 'impact') activeImpact = value;
-  if (group === 'category-tool') activeCategoryTool = value;
-  document.querySelectorAll('.filter-pill[data-group="' + group + '"]').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  applyFilters();
-}
-
-function onSearch(input) {
-  searchQuery = input.value.toLowerCase().trim();
-  applyFilters();
-}
-
-function clearAllFilters() {
-  activeImpact = 'all';
-  activeCategoryTool = 'all';
-  searchQuery = '';
-  const si = document.querySelector('.search-bar input');
-  if (si) si.value = '';
-  document.querySelectorAll('.filter-pill').forEach(b => b.classList.toggle('active', b.dataset.filter === 'all'));
-  applyFilters();
-}
-
-function applyFilters() {
-  const cards = document.querySelectorAll('.violation-card');
-  let shown = 0;
-  cards.forEach(card => {
-    const matchImpact = activeImpact === 'all' || card.dataset.impact === activeImpact;
-    const layer = card.dataset.layer || '';
-    const matchCategory = activeCategoryTool === 'all' || layer === activeCategoryTool || (activeCategoryTool === 'behavioral' && BEHAVIORAL_LAYERS.includes(layer));
-    const matchSearch = !searchQuery || card.textContent.toLowerCase().includes(searchQuery);
-    const visible = matchImpact && matchCategory && matchSearch;
-    card.style.display = visible ? '' : 'none';
-    if (visible) shown++;
-  });
-  document.getElementById('results-indicator').innerHTML = 'Showing <strong>' + shown + '</strong> of ' + TOTAL_ISSUES + ' issues';
-
-  document.querySelectorAll('.tool-section').forEach(sec => {
-    let cnt = 0;
-    sec.querySelectorAll('.violation-card').forEach(c => { if (c.style.display !== 'none') cnt++; });
-    const badge = sec.querySelector('.section-badge');
-    if (badge) badge.textContent = cnt;
-    const total = sec.querySelector('.tool-total strong');
-    if (total) total.textContent = cnt;
-  });
-
-  document.querySelectorAll('.rule-accordion').forEach(ra => {
-    let cnt = 0;
-    ra.querySelectorAll('.violation-card').forEach(c => { if (c.style.display !== 'none') cnt++; });
-    const rc = ra.querySelector('.rule-count');
-    if (rc) rc.textContent = cnt + ' issue' + (cnt === 1 ? '' : 's');
-    ra.style.display = cnt === 0 ? 'none' : '';
-  });
-
-  document.querySelectorAll('.cat-accordion').forEach(ca => {
-    let cnt = 0;
-    ca.querySelectorAll('.violation-card').forEach(c => { if (c.style.display !== 'none') cnt++; });
-    const cc = ca.querySelector('.cat-count');
-    if (cc) { cc.textContent = cnt; cc.className = 'cat-count ' + (cnt > 0 ? 'has-count' : 'zero-count'); }
-  });
-
-  document.querySelectorAll('.nav-pill').forEach(pill => {
-    const sid = pill.getAttribute('onclick')?.match(/section-([^']+)/)?.[1];
-    if (!sid) return;
-    const sec = document.getElementById('section-' + sid);
-    if (!sec) return;
-    let cnt = 0;
-    sec.querySelectorAll('.violation-card').forEach(c => { if (c.style.display !== 'none') cnt++; });
-    const nc = pill.querySelector('.nav-count');
-    if (nc) nc.textContent = cnt;
-  });
-}
-</script>
-</body>
-</html>`;
+  return buildReportHtml(report);
 }

@@ -21,7 +21,7 @@ test('captureLiveStableDriftCandidate uses two atomic same-state passes without 
   let passCount = 0;
 
   const outcome = await captureLiveStableDriftCandidate({
-    sourceUrl: 'https://hitachi728.preview.sites.stg.paradox.ai/',
+    sourceUrl: 'https://site-728.preview.sites.stg.paradox.ai/',
     context,
     navigate: async () => {},
     atomicPass: async () => {

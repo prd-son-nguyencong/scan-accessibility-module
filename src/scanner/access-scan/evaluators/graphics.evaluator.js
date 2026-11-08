@@ -7,6 +7,7 @@ import {
   normalizeText,
   queryCandidates,
 } from './lib/runtime-context.js';
+import { withDeadline } from '../engine/deadline.js';
 
 const GENERIC_ALT = new Set([
   'image', 'photo', 'picture', 'img', 'icon', 'graphic', 'logo', 'banner',
@@ -25,17 +26,18 @@ export default {
     const findings = [];
 
     if (mode === 'image-discernible') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (element.attributes['aria-hidden'] === 'true') continue;
-        if (element.attributes.role === 'presentation') continue;
+        if (element.attributes.role === 'presentation' || element.attributes.role === 'none') continue;
         if ('alt' in element.attributes) continue;
+        if (element.attributes['aria-label']?.trim() || element.attributes['aria-labelledby']?.trim()) continue;
         findings.push(elementFinding(element));
       }
       return { status: 'complete', candidatesScanned: candidates.length, findings };
     }
 
     if (mode === 'image-discernible-correctly') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         const alt = (element.attributes.alt || '').trim().toLowerCase();
         if (!alt) continue;
         if (GENERIC_ALT.has(alt) || /^img[-_]?\d*$/.test(alt) || /^image[-_]?\d*$/.test(alt)) {
@@ -46,7 +48,7 @@ export default {
     }
 
     if (mode === 'image-misuse') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (element.attributes.role !== 'img') continue;
         if (element.tag === 'img' || element.tag === 'svg') continue;
         const bg = element.computedStyle.backgroundImage || '';
@@ -58,7 +60,7 @@ export default {
     }
 
     if (mode === 'icon-discernible') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (element.tag !== 'svg') continue;
         if (element.attributes.role !== 'img') continue;
         if (element.attributes['aria-hidden'] === 'true') continue;
@@ -75,7 +77,7 @@ export default {
     }
 
     if (mode === 'symbol-icon-discernible-parity') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (element.tag !== 'svg' || !element.rendered || element.hiddenFromAT) continue;
         if (element.rect.width <= 0 || element.rect.height <= 0) continue;
         if (element.attributes.role === 'presentation' || element.attributes['aria-hidden'] === 'true') {
@@ -125,7 +127,7 @@ export default {
     }
 
     if (mode === 'symbol-image-role-parity') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (element.tag !== 'svg' || !element.rendered || element.hiddenFromAT) continue;
         if (element.attributes.role !== 'img') continue;
         const named = (
@@ -145,7 +147,7 @@ export default {
     }
 
     if (mode === 'svg-image-discernible-parity') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (element.tag !== 'svg' || !element.rendered || element.hiddenFromAT) continue;
         if (element.attributes.role !== 'img') continue;
         if (element.attributes['aria-hidden'] === 'true') continue;
@@ -163,7 +165,7 @@ export default {
     }
 
     if (mode === 'decorative-graphic-exposed') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (element.attributes['aria-hidden'] === 'true') continue;
         if (element.attributes.role === 'presentation') continue;
         const parent = element.parentId != null ? indexes.byElementId.get(element.parentId) : null;
@@ -176,7 +178,7 @@ export default {
     }
 
     if (mode === 'background-image-discernible') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         const bg = element.computedStyle.backgroundImage || '';
         if (!bg || bg === 'none' || !bg.includes('url(')) continue;
         if (element.attributes.role === 'img') continue;

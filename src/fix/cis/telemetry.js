@@ -7,6 +7,8 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  renameSync,
+  statSync,
   writeSync,
 } from 'node:fs';
 import { join } from 'node:path';
@@ -75,6 +77,10 @@ export function appendCisTelemetryRecord(sessionDir, record) {
   const filePath = join(sessionDir, TELEMETRY_FILE);
   const sanitized = sanitizeCisTelemetryRecord(record);
   const line = `${JSON.stringify(sanitized)}\n`;
+  // Rotate (keep one previous generation) so the log never grows past MAX_FILE_BYTES.
+  if (existsSync(filePath) && statSync(filePath).size + Buffer.byteLength(line) > MAX_FILE_BYTES) {
+    renameSync(filePath, `${filePath}.1`);
+  }
   let fd;
   try {
     fd = openSync(filePath, constants.O_WRONLY | constants.O_CREAT | constants.O_APPEND, 0o600);
@@ -149,15 +155,16 @@ export function evaluateCisCallBudget(records = [], maxCalls = 2) {
 export function readCisTelemetryRecords(sessionDir) {
   if (!sessionDir) return [];
   const filePath = join(sessionDir, TELEMETRY_FILE);
-  if (!existsSync(filePath)) return [];
-  const raw = readFileSync(filePath, 'utf8');
   const records = [];
-  for (const line of raw.split('\n')) {
-    if (!line.trim()) continue;
-    try {
-      records.push(JSON.parse(line));
-    } catch {
-      throw new Error('CIS telemetry NDJSON contains invalid JSON.');
+  for (const file of [`${filePath}.1`, filePath]) {
+    if (!existsSync(file)) continue;
+    for (const line of readFileSync(file, 'utf8').split('\n')) {
+      if (!line.trim()) continue;
+      try {
+        records.push(JSON.parse(line));
+      } catch {
+        // Skip a corrupt/torn line rather than failing the whole gate.
+      }
     }
   }
   return records;

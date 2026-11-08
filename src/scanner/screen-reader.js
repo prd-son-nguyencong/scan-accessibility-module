@@ -1,8 +1,8 @@
-import { getBrowser, newPage, resilientGoto } from './browser.js';
+import { acquirePage } from './session.js';
 import { mapDescriptionToSource } from '../tracer/partial-map.js';
-import { resolveFromHref } from '../tracer/resolve-source.js';
+import { resolveFromHref, toSource } from '../tracer/resolve-source.js';
+import { checkReferencedDuplicateIds, checkRepeatedItemNames } from './structure.js';
 
-const PAGE_TIMEOUT_MS = 60000;
 
 /**
  * Layer 3: Screen Reader Accessibility Scanner
@@ -17,31 +17,24 @@ const PAGE_TIMEOUT_MS = 60000;
  * 6. Table structure — headers associated with cells
  * 7. Unique page title
  *
- * Uses Playwright's accessibility snapshot API (page.accessibility.snapshot()) which
- * reflects what assistive technology would receive via the platform Accessibility APIs
- * (AXTree on macOS/Linux, IAccessible2 on Windows). This gives higher fidelity than
- * raw DOM queries because it reflects computed accessible names, resolved ARIA, and
- * the flattened reading order as a screen reader would traverse it.
+ * Uses Chromium's accessibility tree (CDP Accessibility.getFullAXTree), which reflects
+ * what assistive technology receives: computed accessible names, resolved ARIA, and no
+ * nodes for hidden content. This is higher fidelity than raw DOM queries.
  *
  * Note: @guidepup/virtual-screen-reader targets JSDOM unit environments and cannot
  * attach to a live Playwright browser context — the AT tree API is the right tool here.
  */
-export async function scanScreenReaderAccessibility(pageUrl) {
-  const browser = await getBrowser();
-  const page = await newPage(browser);
+export async function scanScreenReaderAccessibility(pageUrl, opts = {}) {
+  const { page, close } = await acquirePage(pageUrl, opts);
   const violations = [];
   const passes = [];
 
   try {
-    await resilientGoto(page, pageUrl, { timeout: PAGE_TIMEOUT_MS });
-
     // Build the full accessibility tree snapshot once and pass it to checks
     // that need it — avoids multiple round-trips to the browser.
-    // page.accessibility was removed in Playwright >=1.40; use ariaSnapshot or DOM fallback.
-    let atSnapshot = null;
-    if (page.accessibility) {
-      atSnapshot = await page.accessibility.snapshot({ interestingOnly: false }).catch(() => null);
-    }
+    // page.accessibility was removed in Playwright >=1.40: read Chromium's own tree over CDP,
+    // and only fall back to the DOM when CDP is unavailable.
+    let atSnapshot = await buildCdpAtSnapshot(page).catch(() => null);
     if (!atSnapshot) {
       atSnapshot = await buildDomAtSnapshot(page);
     }
@@ -78,8 +71,12 @@ export async function scanScreenReaderAccessibility(pageUrl) {
 
     // 11. SVG sprites and off-screen elements exposed to AT (VisibilityMisuse)
     await checkSvgSpriteVisibility(page, violations, passes);
+
+    // 12. Names that ARIA references resolve through duplicate ids, and identical hard-coded names across loop items
+    await checkReferencedDuplicateIds(page, violations, passes);
+    await checkRepeatedItemNames(page, violations, passes);
   } finally {
-    await page.context().close().catch(() => {});
+    await close();
   }
 
   const fallbackSource = await mapDescriptionToSource(pageUrl);
@@ -87,7 +84,7 @@ export async function scanScreenReaderAccessibility(pageUrl) {
     violations.map(async (v) => {
       let source = fallbackSource;
       if (v._hrefSample) {
-        source = (await resolveFromHref(v._hrefSample, pageUrl)) || fallbackSource;
+        source = toSource(await resolveFromHref(v._hrefSample, pageUrl)) || fallbackSource;
       }
       const { _hrefSample, ...rest } = v;
       return { ...rest, layer: 'screenReader', source };
@@ -105,6 +102,7 @@ async function checkPageTitle(page, violations, passes) {
       impact: 'serious',
       wcagCriteria: '2.4.2',
       element: { selector: 'head > title' },
+      evidence: { proof: { type: 'measured-fact', fact: `document.title is "${title || ''}" (empty after trimming)` } },
     });
   } else {
     passes.push(`Page title: "${title.slice(0, 60)}"`);
@@ -127,8 +125,8 @@ async function checkHeadingStructure(page, violations, passes, atSnapshot) {
       }));
   }
 
-  // Fallback to DOM if AT snapshot returned nothing useful
-  if (!headings || headings.length === 0) {
+  // DOM fallback only when there is no real tree: the CDP tree already excludes hidden headings.
+  if (!headings || (headings.length === 0 && atSnapshot?.source !== 'cdp')) {
     headings = await page.evaluate(() =>
       Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6')).map((h) => ({
         level: parseInt(h.tagName.slice(1), 10),
@@ -173,13 +171,31 @@ async function checkHeadingStructure(page, violations, passes, atSnapshot) {
   // Check for empty headings
   const emptyHeadings = headings.filter((h) => h.isEmpty);
   if (emptyHeadings.length > 0) {
-    violations.push({
-      rule: 'empty-heading',
-      description: `${emptyHeadings.length} empty heading element(s) — screen readers announce empty headings which is confusing`,
-      impact: 'moderate',
-      wcagCriteria: '2.4.6',
-      element: null,
+    // Cross-check the same live DOM: the finding must name a node that is empty there (selector + markup), else it is dropped.
+    const nodes = await page.evaluate(() => {
+      const path = (el) => {
+        const parts = [];
+        for (let n = el; n && n.nodeType === 1 && n !== document.body; n = n.parentElement) {
+          const same = [...n.parentElement.children].filter((c) => c.localName === n.localName);
+          parts.unshift(`${n.localName}:nth-of-type(${same.indexOf(n) + 1})`);
+        }
+        return `body > ${parts.join(' > ')}`;
+      };
+      return [...document.querySelectorAll('h1,h2,h3,h4,h5,h6,[role="heading"]')]
+        .filter((h) => h.checkVisibility() && !(h.textContent || '').trim() && !h.querySelector('[aria-label],img[alt]:not([alt=""])')
+          && !h.getAttribute('aria-label') && !h.getAttribute('aria-labelledby'))
+        .map((h) => ({ selector: path(h), outerHTML: h.outerHTML.slice(0, 500) }));
     });
+    for (const element of nodes) {
+      violations.push({
+        rule: 'empty-heading',
+        description: 'Empty heading element — screen readers announce empty headings which is confusing',
+        impact: 'moderate',
+        wcagCriteria: '2.4.6',
+        element,
+        evidence: { proof: { type: 'measured-fact', fact: `visible heading ${element.selector} has no text, aria-label or aria-labelledby` } },
+      });
+    }
   }
 
   // Check for skipped heading levels
@@ -204,16 +220,19 @@ async function checkHeadingStructure(page, violations, passes, atSnapshot) {
 
 async function checkLandmarks(page, violations, passes) {
   const landmarks = await page.evaluate(() => {
+    // Hidden mains/navs (display:none, hidden, aria-hidden) are legal and not exposed to screen readers.
+    const visible = (sel) =>
+      Array.from(document.querySelectorAll(sel)).filter((el) => el.checkVisibility() && !el.closest('[aria-hidden="true"]'));
     const found = {
-      main: document.querySelectorAll('main, [role="main"]').length,
-      nav: document.querySelectorAll('nav, [role="navigation"]').length,
+      main: visible('main, [role="main"]').length,
+      nav: visible('nav, [role="navigation"]').length,
       header: document.querySelectorAll('header, [role="banner"]').length,
       footer: document.querySelectorAll('footer, [role="contentinfo"]').length,
     };
 
     // Check multiple navs have labels
-    const navElements = document.querySelectorAll('nav, [role="navigation"]');
-    const navsWithoutLabel = Array.from(navElements).filter(
+    const navElements = visible('nav, [role="navigation"]');
+    const navsWithoutLabel = navElements.filter(
       (nav) => !nav.getAttribute('aria-label') && !nav.getAttribute('aria-labelledby')
     ).length;
 
@@ -223,9 +242,9 @@ async function checkLandmarks(page, violations, passes) {
   if (landmarks.main === 0) {
     violations.push({
       rule: 'missing-main-landmark',
-      description: 'Page has no <main> landmark — screen reader users cannot jump to main content',
+      description: 'Page has no <main> landmark — screen reader users cannot jump to main content (best practice; headings or a skip link also bypass blocks)',
       impact: 'moderate',
-      wcagCriteria: '1.3.6',
+      wcagCriteria: null,
       element: null,
     });
   } else {
@@ -235,9 +254,9 @@ async function checkLandmarks(page, violations, passes) {
   if (landmarks.main > 1) {
     violations.push({
       rule: 'multiple-main-landmarks',
-      description: `Page has ${landmarks.main} <main> elements — only one is allowed`,
+      description: `Page has ${landmarks.main} <main> elements — only one is allowed (best practice, not an A/AA failure)`,
       impact: 'moderate',
-      wcagCriteria: '1.3.6',
+      wcagCriteria: null,
       element: null,
     });
   }
@@ -306,15 +325,16 @@ async function checkImageAltQuality(page, violations, passes) {
       const src = (img.getAttribute('src') || '').split('/').pop().split('?')[0];
 
       if (alt === null) {
+        // Not a 1.1.1 failure: hidden from assistive technology, marked decorative, or named another way (aria-label, aria-labelledby, title).
+        const role = (img.getAttribute('role') || '').trim().toLowerCase();
+        if (img.closest('[aria-hidden="true"]') || /^(presentation|none)$/.test(role) || !img.checkVisibility() || img.getAttribute('aria-label')?.trim()
+          || img.getAttribute('aria-labelledby')?.trim() || img.getAttribute('title')?.trim()) continue;
         issues.push({ type: 'missing', src: src.slice(0, 60) });
-      } else if (alt.trim() === '' && img.closest('a, button')) {
-        // Decorative inside actionable — needs label on parent, not alt=""
-        issues.push({ type: 'empty-in-link', src: src.slice(0, 60) });
-      } else if (meaningless.some((m) => alt.toLowerCase().trim() === m) || alt === src) {
+      } else if (alt.trim() !== '' && (meaningless.some((m) => alt.toLowerCase().trim() === m) || alt === src || /\.(jpe?g|png|gif|svg|webp|avif)$/i.test(alt.trim()))) {
         issues.push({ type: 'meaningless', alt: alt.slice(0, 60), src: src.slice(0, 60) });
       }
     }
-    return issues.slice(0, 10);
+    return issues;
   }, MEANINGLESS_ALT);
 
   if (imgIssues.length > 0) {
@@ -328,6 +348,7 @@ async function checkImageAltQuality(page, violations, passes) {
         impact: 'critical',
         wcagCriteria: '1.1.1',
         element: { examples: imgIssues.filter((i) => i.type === 'missing').slice(0, 3) },
+        evidence: { proof: { type: 'attribute-value', fact: `${missing} img element(s) rendered with no alt attribute, not aria-hidden, presentation or named by aria-label, aria-labelledby or title (first src: "${imgIssues.find((i) => i.type === 'missing').src}")` } },
       });
     }
     if (meaningless > 0) {
@@ -351,10 +372,11 @@ async function checkTableStructure(page, violations, passes) {
     const tables = document.querySelectorAll('table');
 
     for (const table of tables) {
+      // Layout tables carry no data relationships: nothing to announce.
+      if (['presentation', 'none'].includes(table.getAttribute('role'))) continue;
       const hasCaption = !!table.querySelector('caption');
       const hasThInThead = table.querySelector('thead th') !== null;
       const hasTh = table.querySelector('th') !== null;
-      const hasScope = Array.from(table.querySelectorAll('th')).every((th) => th.getAttribute('scope'));
       const ariaLabel = table.getAttribute('aria-label') || table.getAttribute('aria-labelledby');
 
       if (!hasCaption && !ariaLabel) {
@@ -362,9 +384,6 @@ async function checkTableStructure(page, violations, passes) {
       }
       if (!hasTh) {
         issues.push({ rule: 'table-no-headers', description: 'Data table has no <th> header cells — screen reader cannot associate data with headers' });
-      }
-      if (hasTh && !hasScope) {
-        issues.push({ rule: 'table-th-no-scope', description: 'Table <th> elements are missing scope attribute (col/row/colgroup/rowgroup)' });
       }
     }
     return issues;
@@ -381,7 +400,7 @@ async function checkTableStructure(page, violations, passes) {
   }
 
   if (tableIssues.length === 0) {
-    const tableCount = await page.evaluate(() => document.querySelectorAll('table').length);
+    const tableCount = await page.evaluate(() => document.querySelectorAll('table:not([role="presentation"]):not([role="none"])').length);
     if (tableCount > 0) passes.push(`${tableCount} table(s) have proper header structure`);
   }
 }
@@ -402,6 +421,7 @@ async function checkLanguageAttribute(page, violations, passes) {
       impact: 'serious',
       wcagCriteria: '3.1.1',
       element: { selector: 'html' },
+      evidence: { proof: { type: 'attribute-value', fact: `<html lang="${langData.lang || ''}" xml:lang="${langData.xmlLang || ''}">: no language value` } },
     });
   } else {
     passes.push(`Language attribute: lang="${langData.lang}"`);
@@ -585,6 +605,12 @@ async function checkSemanticEmphasis(page, violations, passes) {
       const styles = window.getComputedStyle(span);
       const fontWeight = parseInt(styles.fontWeight, 10);
       if (isNaN(fontWeight) || fontWeight < 700) continue;
+      // Weight alone is not emphasis: only bold inside running text (sibling text in the parent) qualifies;
+      // numeric badges and block-level labels get their weight from typography.
+      if (/^[\d\s.,:+%#/()-]+$/.test(text)) continue;
+      if (/^(?:block|flex|grid|list-item|table|inline-flex|inline-grid)/.test(styles.display)) continue;
+      const parentText = (span.parentElement?.textContent || '').replace(/\s+/g, ' ').trim();
+      if (parentText.replace(text.replace(/\s+/g, ' '), '').trim().length === 0) continue;
 
       // Only flag when the parent element has lighter weight — span is specifically emphasised
       const parentEl = span.parentElement || document.body;
@@ -632,15 +658,12 @@ async function checkSvgSpriteVisibility(page, violations, passes) {
     for (const svg of document.querySelectorAll('svg')) {
       const hasAriaHidden = svg.getAttribute('aria-hidden') === 'true';
       if (hasAriaHidden) continue;
+      // display:none / visibility:hidden SVGs are not in the accessibility tree at all.
+      if (!svg.checkVisibility({ checkVisibilityCSS: true })) continue;
 
       const hasSymbols = svg.querySelectorAll('symbol').length > 0;
       const rect = svg.getBoundingClientRect();
-      const styles = window.getComputedStyle(svg);
-      const isHiddenVisually =
-        styles.display === 'none' ||
-        styles.visibility === 'hidden' ||
-        (rect.width === 0 && rect.height === 0) ||
-        rect.left < -500;
+      const isHiddenVisually = (rect.width === 0 && rect.height === 0) || rect.left < -500;
 
       if (hasSymbols || isHiddenVisually) {
         svgIssues.push({
@@ -672,6 +695,10 @@ async function checkSvgSpriteVisibility(page, violations, passes) {
         styles.display !== 'none' &&
         styles.visibility !== 'hidden' &&
         !el.getAttribute('aria-hidden') &&
+        // Off-screen skip links and other focusable controls are meant to be reached by keyboard.
+        !el.matches('a[href], button, input, select, textarea, [tabindex]') &&
+        !el.querySelector('a[href], button, input, select, textarea, [tabindex]') &&
+        !el.closest('a[href], button, [tabindex]') &&
         (el.textContent || '').trim().length > 0 &&
         !el.closest('[aria-hidden="true"]')
       );
@@ -704,6 +731,29 @@ async function checkSvgSpriteVisibility(page, violations, passes) {
 
   if (result.svgIssues.length === 0 && result.offScreenExposed === 0) {
     passes.push('SVG sprites and off-screen elements are properly hidden from AT');
+  }
+}
+
+/**
+ * Flat AT snapshot from Chromium's accessibility tree (non-ignored nodes only).
+ * `description` is left empty: the CDP description is not the visible label.
+ */
+async function buildCdpAtSnapshot(page) {
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    const { nodes } = await cdp.send('Accessibility.getFullAXTree');
+    const children = nodes
+      .filter((n) => !n.ignored && n.role?.value)
+      .map((n) => ({
+        role: n.role.value,
+        name: String(n.name?.value ?? ''),
+        level: n.properties?.find((p) => p.name === 'level')?.value?.value,
+        description: '',
+        children: [],
+      }));
+    return { role: 'WebArea', name: '', source: 'cdp', children };
+  } finally {
+    await cdp.detach().catch(() => {});
   }
 }
 

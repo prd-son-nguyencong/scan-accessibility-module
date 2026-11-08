@@ -5,6 +5,7 @@ import {
   getSnapshot,
   queryCandidates,
 } from './lib/runtime-context.js';
+import { withDeadline } from '../engine/deadline.js';
 
 /** @type {import('../../engine/loader.js').EvaluatorModule} */
 export default {
@@ -16,8 +17,14 @@ export default {
     /** @type {import('../../engine/loader.js').EvaluatorResult['findings']} */
     const findings = [];
 
-    for (const element of candidates) {
-      const listItems = getDescendants(snapshot, indexes, element, (child) => child.tag === 'li');
+    for (const element of withDeadline(candidates)) {
+      if (['none', 'presentation'].includes(element.attributes.role)) continue;
+      const listItems = getDescendants(
+        snapshot,
+        indexes,
+        element,
+        (child) => child.tag === 'li' || child.attributes.role === 'listitem',
+      );
       if (listItems.length === 0 && element.attributes['aria-hidden'] !== 'true') {
         findings.push(elementFinding(element));
       }

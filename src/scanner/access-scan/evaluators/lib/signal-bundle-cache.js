@@ -16,13 +16,24 @@ export function getCachedSignalBundle(context) {
   const entry = /** @type {{
     snapshot?: import('../../runtime/types.js').Snapshot,
     bundle?: import('../../signals/types.js').SignalBundle,
+    timeoutError?: unknown,
   } | undefined} */ (cache[SIGNAL_BUNDLE_CACHE_KEY]);
 
   if (entry?.snapshot === snapshot && entry.bundle) {
     return entry.bundle;
   }
+  // Collection timed out already: fail fast instead of burning every later rule's budget on the same work.
+  if (entry?.snapshot === snapshot && entry.timeoutError) throw entry.timeoutError;
 
-  const bundle = collectSignalBundle(context);
+  let bundle;
+  try {
+    bundle = collectSignalBundle(context);
+  } catch (error) {
+    if (/** @type {{ errorCode?: string }} */ (error)?.errorCode === 'rule_timeout') {
+      cache[SIGNAL_BUNDLE_CACHE_KEY] = { snapshot, timeoutError: error };
+    }
+    throw error;
+  }
   cache[SIGNAL_BUNDLE_CACHE_KEY] = { snapshot, bundle };
   cache.signalBundleCollectCount = Number(cache.signalBundleCollectCount || 0) + 1;
   return bundle;

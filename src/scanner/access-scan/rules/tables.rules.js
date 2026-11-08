@@ -7,6 +7,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'serious', priority: 3 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'guesses which cells act as column headers',
     checks: [{
       id: 'tables:table-headers',
       profiles: ['standards'],
@@ -28,14 +30,16 @@ export default [
     category: 'tables',
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'serious', priority: 3 },
-    automation: 'deterministic',
+    automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'nested tables are discouraged markup, not a WCAG failure by themselves',
     checks: [{
       id: 'tables:table-nesting',
       profiles: ['standards'],
       evaluator: 'table-graph',
       target: { selector: 'table' },
       options: { mode: 'table-nesting' },
-      classification: 'confirmed',
+      classification: 'potential',
     }],
     reporting: {
       title: 'Tables should not be nested',
@@ -51,6 +55,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'moderate', priority: 4 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'ARIA table role hierarchy is checked against heuristics for partial markup',
     checks: [{
       id: 'tables:table-roles',
       profiles: ['standards'],
@@ -73,6 +79,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'moderate', priority: 4 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'whether a table is a data table that needs a caption is a judgement',
     checks: [{
       id: 'tables:table-caption',
       profiles: ['standards'],
@@ -95,6 +103,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'serious', priority: 3 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'a header cell has text or it does not',
     checks: [{
       id: 'tables:table-header-empty',
       profiles: ['standards'],
@@ -117,6 +127,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'moderate', priority: 4 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'guesses that a table element is used for layout',
     checks: [{
       id: 'tables:table-misuse',
       profiles: ['standards'],
@@ -139,6 +151,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'moderate', priority: 4 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'guesses which cells act as row headers',
     checks: [{
       id: 'tables:table-row-header-mismatch',
       profiles: ['standards'],

@@ -107,7 +107,8 @@ export function collectSignalBundle(context) {
     footerRegionsScanned,
     mainBoundariesScanned,
     wrappedFooterRegionsScanned,
-    topAnchoredHeadersScanned: geometryFacts.length,
+    topAnchoredHeadersScanned: geometryFacts.filter((fact) => fact.kind === 'geometry.top-anchored-header').length,
+    bottomAnchoredFootersScanned: geometryFacts.filter((fact) => fact.kind === 'geometry.bottom-anchored-footer').length,
     directLinkNavsScanned: snapshot.elements.filter(
       (element) => isNavLandmark(element) && isActiveContent(element),
     ).length,

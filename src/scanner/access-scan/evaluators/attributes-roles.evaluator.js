@@ -11,6 +11,7 @@ import {
   normalizeText,
   queryCandidates,
 } from './lib/runtime-context.js';
+import { withDeadline } from '../engine/deadline.js';
 
 /** @type {import('../../engine/loader.js').EvaluatorModule} */
 export default {
@@ -28,7 +29,7 @@ export default {
         /** @type {string[]} */ (check.options?.excludeTags || ['img', 'area']),
       );
       const excludeShadowRoots = check.options?.excludeShadowRoots === true;
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (excludeTags.has(element.tag)) continue;
         if (excludeShadowRoots && element.shadowPath.length > 0) continue;
         if (element.tag === 'input' && element.attributes.type === 'image') continue;
@@ -40,7 +41,7 @@ export default {
 
     if (mode === 'forbidden-role') {
       const role = /** @type {string} */ (check.options?.role || 'application');
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (element.attributes.role === role) {
           findings.push(elementFinding(element));
         }
@@ -49,7 +50,7 @@ export default {
     }
 
     if (mode === 'title-only-primary-label') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         const title = element.attributes.title?.trim();
         if (!title || !isInteractiveControl(element)) continue;
         const visibleLabel = deriveVisibleLabel(snapshot, indexes, element);
@@ -61,7 +62,7 @@ export default {
     }
 
     if (mode === 'title-duplicates-visible') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         const title = element.attributes.title?.trim();
         const visibleLabel = deriveVisibleLabel(snapshot, indexes, element);
         if (title && visibleLabel && normalizeText(title) === visibleLabel) {
@@ -72,7 +73,7 @@ export default {
     }
 
     if (mode === 'figure-missing-caption') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         const hasCaption = getDescendants(snapshot, indexes, element, (child) => child.tag === 'figcaption').length > 0;
         const hasAriaLabel = Boolean(element.attributes['aria-label']?.trim());
         const hasAriaLabelledby = Boolean(element.attributes['aria-labelledby']?.trim());
@@ -84,11 +85,12 @@ export default {
     }
 
     if (mode === 'iframe-missing-title') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (element.attributes['aria-hidden'] === 'true') continue;
         if (element.attributes.role === 'presentation') continue;
         if (!element.rendered) continue;
-        if (!element.attributes.title?.trim()) {
+        const named = ['title', 'aria-label', 'aria-labelledby'].some((name) => element.attributes[name]?.trim());
+        if (!named) {
           findings.push(elementFinding(element));
         }
       }
@@ -96,7 +98,7 @@ export default {
     }
 
     if (mode === 'menu-on-navigation') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         const hasNavLink = getDescendants(
           snapshot,
           indexes,
@@ -109,7 +111,7 @@ export default {
     }
 
     if (mode === 'menubar-on-navigation') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         const hasNavLink = getDescendants(
           snapshot,
           indexes,
@@ -122,7 +124,7 @@ export default {
     }
 
     if (mode === 'menuitem-on-navigation') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (element.tag === 'a' && element.attributes.href) {
           findings.push(elementFinding(element));
         }
@@ -131,13 +133,14 @@ export default {
     }
 
     if (mode === 'haspopup-not-interactive') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (element.tag === 'button' || element.tag === 'a') continue;
+        if ((element.attributes['aria-haspopup'] || '').trim().toLowerCase() === 'false') continue;
         const role = element.attributes.role;
         const tabindex = element.attributes.tabindex;
         const isInteractive = (
           tabindex !== undefined && tabindex !== '-1'
-        ) || role === 'button' || role === 'menuitem';
+        ) || role === 'button' || role === 'menuitem' || element.focusable;
         if (!isInteractive) {
           findings.push(elementFinding(element));
         }
@@ -146,7 +149,7 @@ export default {
     }
 
     if (mode === 'has-autofocus') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if ('autofocus' in element.attributes) {
           findings.push(elementFinding(element));
         }

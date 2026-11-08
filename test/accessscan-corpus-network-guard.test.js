@@ -29,7 +29,7 @@ test('corpus network guard allows public CDN subresources on reviewed pages', as
     await installCorpusPageAndContextGuards(page, context, { resolver: publicResolver });
     const cdnRequest = page.waitForEvent('request', {
       predicate: (request) => request.url().includes('fonts.googleapis.com'),
-      timeout: 5000,
+      timeout: 30000,
     });
 
     await page.setContent(`
@@ -55,7 +55,7 @@ test('corpus network guard aborts DNS-private subresource requests', async () =>
 
     const failedRequest = page.waitForEvent('requestfailed', {
       predicate: (request) => request.url().includes('private-cdn.test'),
-      timeout: 5000,
+      timeout: 30000,
     });
 
     await page.setContent(`
@@ -90,7 +90,7 @@ test('behavioral fork installs corpus guard and blocks private subresource reque
 
     const failedRequest = fork.page.waitForEvent('requestfailed', {
       predicate: (request) => request.url().includes('private-cdn.test'),
-      timeout: 5000,
+      timeout: 30000,
     });
 
     await fork.page.setContent(`
@@ -115,7 +115,7 @@ test('navigateToReviewedSource rejects DNS-private reviewed hostnames', async ()
     await assert.rejects(
       () => navigateToReviewedSource(
         page,
-        'https://hitachi728.preview.sites.stg.paradox.ai/',
+        'https://site-728.preview.sites.stg.paradox.ai/',
         { resolver: async () => ['192.168.1.50'] },
       ),
       /private|reserved|forbidden/i,

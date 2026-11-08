@@ -247,7 +247,7 @@ export async function extractPageAttestationFromPage(page, {
   const metaContents = await runEvaluate((metaNames) => {
     const result = {};
     for (const name of metaNames) {
-      result[name] = [...document.querySelectorAll(`meta[name="${name}"]`)]
+      result[name] = [...document.head.querySelectorAll(`meta[name="${name}"]`)]
         .map((element) => element.getAttribute('content') || '');
     }
     return result;
@@ -295,13 +295,27 @@ export function injectAttestationMetaTags(html, attestation = {}) {
   ];
 
   const source = String(html);
-  if (!/<\/head\s*>/i.test(source)) return source;
+  const headEnd = findHeadEnd(source);
+  if (headEnd < 0) return source;
 
   const metaPattern = new RegExp(
     `\\s*<meta\\s+name=["'](?:${ATTESTATION_META_NAMES.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})["'][^>]*>`,
     'gi',
   );
-  const withoutExisting = source.replace(metaPattern, '');
+  // Only the head is rewritten: a `</head>` inside a comment or script, or a meta in the body, is not ours.
+  const head = source.slice(0, headEnd).replace(metaPattern, '');
   const markers = `\n    ${tags.join('\n    ')}`;
-  return withoutExisting.replace(/<\/head\s*>/i, `${markers}\n  </head>`);
+  return `${head}${markers}\n  ${source.slice(headEnd)}`;
+}
+
+// Index of the `</head>` that closes the document head, skipping ones inside comments, scripts, styles, titles, textareas.
+function findHeadEnd(source) {
+  const opaque = /<!--[\s\S]*?-->|<(script|style|title|textarea)\b[\s\S]*?<\/\1\s*>/gi;
+  const skipped = [...source.matchAll(opaque)].map((m) => [m.index, m.index + m[0].length]);
+  const close = /<\/head\s*>/gi;
+  let m;
+  while ((m = close.exec(source)) !== null) {
+    if (!skipped.some(([start, end]) => m.index >= start && m.index < end)) return m.index;
+  }
+  return -1;
 }

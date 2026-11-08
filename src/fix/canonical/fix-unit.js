@@ -130,7 +130,7 @@ function finalizeUnit(findings) {
     String(a.findingId).localeCompare(String(b.findingId))
   );
   const primary = ordered[0];
-  const routes = [...new Set(ordered.map((finding) => finding.route || '/'))].sort();
+  const routes = [...new Set(ordered.flatMap((finding) => finding.pages || [finding.route || '/']))].sort();
   const evidence = [...new Map(
     ordered
       .flatMap(collectEvidence)

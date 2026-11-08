@@ -9,6 +9,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '3.1.1' },
     severity: { impact: 'serious', priority: 2 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'the lang attribute is present or absent',
     checks: [{
       id: 'metadata:html-lang',
       profiles: ['standards', 'commercial-parity'],
@@ -30,6 +32,8 @@ export default [
     standard: BP,
     severity: { impact: 'moderate', priority: 3 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'lang value is checked against the language tag registry',
     checks: [{
       id: 'metadata:html-lang-valid',
       profiles: ['standards', 'commercial-parity'],
@@ -51,6 +55,8 @@ export default [
     standard: BP,
     severity: { impact: 'minor', priority: 5 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'a missing meta description is an SEO recommendation, not a WCAG failure',
     checks: [{
       id: 'metadata:meta-description',
       profiles: ['standards'],
@@ -72,6 +78,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '2.2.1' },
     severity: { impact: 'critical', priority: 1 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'meta http-equiv="refresh" is present or absent',
     checks: [{
       id: 'metadata:meta-refresh',
       profiles: ['standards', 'commercial-parity'],
@@ -93,6 +101,8 @@ export default [
     standard: BP,
     severity: { impact: 'moderate', priority: 4 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'the meta viewport tag is present or absent',
     checks: [{
       id: 'metadata:meta-viewport-present',
       profiles: ['standards', 'commercial-parity'],
@@ -114,6 +124,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'AA', criterion: '1.4.4' },
     severity: { impact: 'critical', priority: 2 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'viewport content values are parsed and compared',
     checks: [{
       id: 'metadata:meta-viewport-scalable',
       profiles: ['standards', 'commercial-parity'],
@@ -135,6 +147,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '2.4.2' },
     severity: { impact: 'serious', priority: 2 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'the title element is present and non-empty or not',
     checks: [{
       id: 'metadata:page-title',
       profiles: ['standards', 'commercial-parity'],
@@ -156,6 +170,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '2.4.2' },
     severity: { impact: 'serious', priority: 3 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'whether a title is descriptive needs human reading',
     checks: [
       {
         id: 'metadata:page-title-descriptive',

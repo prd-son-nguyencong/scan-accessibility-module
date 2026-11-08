@@ -1,3 +1,4 @@
+import './helpers/hermetic-env.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createViolation } from '../src/schema.js';
@@ -211,7 +212,7 @@ test('Vite instrumentation emits matching sidecar and HTML attestation', async (
     process.env.SCAN_MODE = 'true';
     process.env.ADA_SCAN_BUILD_REVISION = 'git:abc123def4567890123456789012345678901234';
 
-    await scanInstrumentationPlugin().closeBundle();
+    await scanInstrumentationPlugin().closeBundle.handler();
 
     const manifest = JSON.parse(
       readFileSync(join(root, 'dist', 'scan-manifest.json'), 'utf8')
@@ -235,4 +236,12 @@ test('Vite instrumentation emits matching sidecar and HTML attestation', async (
     else process.env.ADA_SCAN_BUILD_REVISION = previousRevision;
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('resolveSourceViolation refuses a boundary when the markup is not exclusive to it', () => {
+  const tag = '<a href="/benefits">Benefits</a>';
+  const twoSnippets = `<div data-pdk-partial="header">${tag}</div><div data-pdk-partial="footer">${tag}</div>`;
+  const pageLevelCopy = `<main>${tag}</main><div data-pdk-partial="header">${tag}</div>`;
+  assert.equal(resolveSourceViolation({ html: tag }, twoSnippets), null);
+  assert.equal(resolveSourceViolation({ html: tag }, pageLevelCopy), null);
 });

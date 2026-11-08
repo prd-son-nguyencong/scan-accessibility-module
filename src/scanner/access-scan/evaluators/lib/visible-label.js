@@ -1,6 +1,6 @@
 import {
   getAncestors,
-  getScopedElements,
+  scopeKey,
   resolveIdRefs,
 } from '../../runtime/graph-relationships.js';
 import { normalizeText } from './runtime-context.js';
@@ -22,9 +22,7 @@ export function elementVisibleText(element) {
 export function explicitLabelText(snapshot, indexes, element) {
   const domId = element.attributes.id;
   if (domId) {
-    const label = getScopedElements(snapshot, element).find(
-      (candidate) => candidate.tag === 'label' && candidate.attributes.for === domId,
-    );
+    const label = indexes.labelByScopedFor.get(scopeKey(element))?.get(domId);
     if (label) return elementVisibleText(label);
   }
   const labelAncestor = getAncestors(snapshot, indexes, element)

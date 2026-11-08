@@ -1,8 +1,9 @@
-import { spawn } from 'child_process';
+import { spawnGroup, killGroup } from './process-group.js';
 import { getProjectRoot } from './paths.js';
 
 const CHECK_TIMEOUT_MS = 5000;
 const START_TIMEOUT_MS = 30000;
+const timeoutOf = (config) => config.devServerTimeoutMs ?? START_TIMEOUT_MS;
 const READY_DELAY_MS = 1000;
 const IS_WINDOWS = process.platform === 'win32';
 
@@ -36,7 +37,7 @@ export async function startDevServer(config = {}) {
 
   console.log(`Starting dev server (${devCommand})...`);
 
-  const proc = spawn(cmd, args, {
+  const proc = spawnGroup(cmd, args, {
     cwd: getProjectRoot(),
     stdio: ['ignore', 'pipe', 'pipe'],
     // Windows package-manager binaries are .cmd shims — require a shell.
@@ -45,9 +46,9 @@ export async function startDevServer(config = {}) {
 
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
-      proc.kill();
-      reject(new Error('Dev server failed to start within 30s'));
-    }, START_TIMEOUT_MS);
+      killGroup(proc, 'SIGKILL');
+      reject(new Error(`Dev server not ready within ${timeoutOf(config)}ms via "${devCommand}" (set devServerTimeoutMs to change)`));
+    }, timeoutOf(config));
 
     const onData = async (data) => {
       const text = data.toString();

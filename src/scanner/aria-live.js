@@ -1,7 +1,6 @@
-import { getBrowser, newPage, resilientGoto } from './browser.js';
+import { acquirePage } from './session.js';
 import { mapDescriptionToSource } from '../tracer/partial-map.js';
 
-const PAGE_TIMEOUT_MS = 60000;
 
 /**
  * Layer 2: ARIA Live Region Scanner
@@ -13,15 +12,12 @@ const PAGE_TIMEOUT_MS = 60000;
  * 4. Status regions use role="status" or aria-live="polite"
  * 5. Live regions are not empty on page load (where content is expected)
  */
-export async function scanAriaLiveRegions(pageUrl) {
-  const browser = await getBrowser();
-  const page = await newPage(browser);
+export async function scanAriaLiveRegions(pageUrl, opts = {}) {
+  const { page, close } = await acquirePage(pageUrl, opts);
   const violations = [];
   const passes = [];
 
   try {
-    await resilientGoto(page, pageUrl, { timeout: PAGE_TIMEOUT_MS });
-
     // 1. Detect existing live regions
     const liveRegions = await page.evaluate(() => {
       const regions = [];
@@ -51,6 +47,7 @@ export async function scanAriaLiveRegions(pageUrl) {
           impact: 'moderate',
           wcagCriteria: '4.1.3',
           element: { id: region.id, tag: region.tag },
+          evidence: { proof: { type: 'attribute-value', fact: `role="alert" with aria-live="${region.ariaLive}"` } },
         });
       }
 
@@ -66,6 +63,8 @@ export async function scanAriaLiveRegions(pageUrl) {
       }
     }
 
+    // Each block is isolated so one failure never drops the other results.
+    try {
     // 3. Check for dynamic content areas that NEED live regions but don't have them
     const dynamicAreasMissingLive = await page.evaluate(() => {
       const missing = [];
@@ -78,7 +77,7 @@ export async function scanAriaLiveRegions(pageUrl) {
         missing.push({
           selector: jobResults.getAttribute('id')
             ? `#${jobResults.getAttribute('id')}`
-            : jobResults.className.split(' ')[0],
+            : (jobResults.getAttribute('class') || '').split(' ')[0],
           reason: 'Job search results should announce updates to screen readers',
           suggested: 'aria-live="polite"',
         });
@@ -98,7 +97,7 @@ export async function scanAriaLiveRegions(pageUrl) {
           if (text.length === 0) {
             // Empty container — likely a dynamic error region
             missing.push({
-              selector: el.id ? `#${el.id}` : `.${el.className.split(' ')[0]}`,
+              selector: el.id ? `#${el.id}` : `.${(el.getAttribute('class') || '').split(' ')[0]}`,
               reason: 'Empty container with error-related name — likely dynamic, should have aria-live',
               suggested: 'role="alert" or aria-live="assertive"',
             });
@@ -119,10 +118,13 @@ export async function scanAriaLiveRegions(pageUrl) {
       });
     }
 
+    } catch { /* keep other results */ }
+
     if (liveRegions.length > 0) {
       passes.push(`${liveRegions.length} aria-live region(s) found`);
     }
 
+    try {
     // 4. Check for loading spinners without live region announcements
     const spinnersMissingLive = await page.evaluate(() => {
       const spinners = document.querySelectorAll('[class*="spinner"], [class*="loading"], [aria-busy="true"]');
@@ -140,8 +142,9 @@ export async function scanAriaLiveRegions(pageUrl) {
         element: null,
       });
     }
+    } catch { /* keep other results */ }
   } finally {
-    await page.context().close().catch(() => {});
+    await close();
   }
 
   const source = await mapDescriptionToSource(pageUrl);

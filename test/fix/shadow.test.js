@@ -105,6 +105,22 @@ test('shadow copy permits ordinary build assets above the candidate text limit',
   }
 });
 
+test('shadow copy excludes the default .ada-scan report dir', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-shadow-reports-'));
+  const shadowRoot = mkdtempSync(join(tmpdir(), 'ada-shadow-copy-'));
+  try {
+    mkdirSync(join(root, '.ada-scan', 'history'), { recursive: true });
+    writeFileSync(join(root, '.ada-scan', 'latest.json'), '{}\n');
+    writeFileSync(join(root, 'keep.txt'), 'x');
+    copyProjectTreeIntoShadow({ localRoot: root, shadowRoot });
+    assert.equal(existsSync(join(shadowRoot, '.ada-scan')), false);
+    assert.equal(existsSync(join(shadowRoot, 'keep.txt')), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(shadowRoot, { recursive: true, force: true });
+  }
+});
+
 test('shadow verification fails closed on build failure and regression', async () => {
   const root = mkdtempSync(join(tmpdir(), 'ada-shadow-'));
   const sessionDir = join(root, 'scan-reports', 'fix-sessions', 's2');

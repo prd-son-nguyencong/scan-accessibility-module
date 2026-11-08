@@ -105,10 +105,6 @@ export function materializeEffectiveUnits(state) {
   return applyMergeOverlays(mapped, state.mergeOverlays || []);
 }
 
-export function effectiveUnitById(state, fixUnitId) {
-  return materializeEffectiveUnits(state).find((unit) => unit.fixUnitId === fixUnitId) || null;
-}
-
 export function mergedAwayUnitIds(state) {
   return new Set((state.mergeOverlays || []).map((overlay) => overlay.sourceFixUnitId));
 }

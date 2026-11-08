@@ -849,9 +849,32 @@ test('runFreshSandboxScan uses exact argv, cwd, and ADA_SCAN_ROOT', async () => 
       '--no-psi',
       '--no-fail',
       '--force-build',
+      '--out-dir', 'scan-reports',
     ]);
     assert.equal(realpathSync(captured.cwd), realpathSync(root));
     assert.equal(realpathSync(captured.extraEnv.ADA_SCAN_ROOT), realpathSync(root));
+    assert.equal(scanned.report.reportId, report.reportId);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('runFreshSandboxScan reads the report from the --out-dir it passed to the scan', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ada-demo-scan-'));
+  try {
+    writeMinimalProject(root, { includeSecrets: false });
+    rmSync(join(root, 'scan-reports'), { recursive: true, force: true });
+    const report = buildDemoReport('src/partials/layout/header.liquid');
+    const scanned = await runFreshSandboxScan({
+      sandboxRoot: root,
+      route: '/',
+      runCommand: async (_cmd, args, cwd) => {
+        const dir = join(cwd, args[args.indexOf('--out-dir') + 1]);
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, 'latest.json'), `${JSON.stringify(report)}\n`);
+        return { code: 0, stdout: '', stderr: '' };
+      },
+    });
     assert.equal(scanned.report.reportId, report.reportId);
   } finally {
     rmSync(root, { recursive: true, force: true });

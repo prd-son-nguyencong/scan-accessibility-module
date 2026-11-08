@@ -1,7 +1,9 @@
-import { getBrowser, newPage, resilientGoto } from './browser.js';
+import { acquirePage } from './session.js';
 import { mapDescriptionToSource } from '../tracer/partial-map.js';
+import { blockedScriptsOf } from './blocked-scripts.js';
+import { scanDisclosures, scanNewTabNotices } from './disclosure.js';
+import { scanBehaviorChecks } from './behavior-checks.js';
 
-const PAGE_TIMEOUT_MS = 60000;
 
 /**
  * Layer 2: Dynamic Content Accessibility Scanner
@@ -13,37 +15,26 @@ const PAGE_TIMEOUT_MS = 60000;
  * 4. Form validation: submit empty required form → check aria-invalid + aria-describedby on errors
  * 5. Tab panels: aria-selected, aria-controls on tabs
  */
-export async function scanDynamicContent(pageUrl) {
-  const browser = await getBrowser();
-  const page = await newPage(browser);
+export async function scanDynamicContent(pageUrl, opts = {}) {
+  const { page, close } = await acquirePage(pageUrl, opts);
   const violations = [];
   const passes = [];
 
   try {
-    await resilientGoto(page, pageUrl, { timeout: PAGE_TIMEOUT_MS });
-
-    // --- Accordion ---
-    await testAccordions(page, violations, passes);
-
-    // --- Carousel (Embla) — static structure + live interaction ---
-    await testCarousels(page, violations, passes);
-    await testCarouselInteraction(page, violations, passes);
-
-    // --- Navigation menus ---
-    await testDropdownMenus(page, violations, passes);
-
-    // --- Tab panels ---
-    await testTabPanels(page, violations, passes);
-
-    // --- Form fields: label associations + live validation state ---
-    await testFormFields(page, violations, passes);
-    await testFormValidationState(page, violations, passes);
+    // Each test is isolated: one failure (e.g. a click timeout) never drops the other results.
+    for (const run of [testAccordions, testCarousels, testCarouselInteraction, testDropdownMenus, testBehaviorChecks, testTabPanels, testFormFields, testFormValidationState]) {
+      try {
+        await run(page, violations, passes);
+      } catch {
+        // skip this test, keep sibling results
+      }
+    }
   } finally {
-    await page.context().close().catch(() => {});
+    await close();
   }
 
   const source = await mapDescriptionToSource(pageUrl);
-  return { url: pageUrl, violations: violations.map((v) => ({ ...v, layer: 'dynamicContent', source })), passes, timestamp: new Date().toISOString() };
+  return { url: pageUrl, violations: violations.map((v) => ({ ...v, layer: 'dynamicContent', source })), passes, blockedScripts: blockedScriptsOf(page), timestamp: new Date().toISOString() };
 }
 
 async function testAccordions(page, violations, passes) {
@@ -88,7 +79,7 @@ async function testAccordions(page, violations, passes) {
   const firstAccordionBtn = page.locator('.accordion button, [data-accordion] button').first();
   if (await firstAccordionBtn.count() > 0) {
     const beforeExpanded = await firstAccordionBtn.getAttribute('aria-expanded');
-    await firstAccordionBtn.click();
+    await firstAccordionBtn.click({ timeout: 3000 });
     await page.waitForTimeout(300);
     const afterExpanded = await firstAccordionBtn.getAttribute('aria-expanded');
 
@@ -108,18 +99,24 @@ async function testAccordions(page, violations, passes) {
 
 async function testCarousels(page, violations, passes) {
   const carouselData = await page.evaluate(() => {
-    const carousels = document.querySelectorAll('.embla, [data-embla], [class*="carousel"]');
-    return Array.from(carousels).slice(0, 3).map((el) => {
+    const sel = '.embla, [data-embla], [class*="carousel"]';
+    // One widget is one carousel: its own "carousel-slides" / "carousel-slide" parts also match the selector, only the outermost match counts.
+    const carousels = Array.from(document.querySelectorAll(sel)).filter((el) => !el.parentElement?.closest(sel));
+    return carousels.slice(0, 3).map((el) => {
       const prevBtn = el.querySelector('[class*="prev"], [aria-label*="previous" i], [aria-label*="prev" i]');
       const nextBtn = el.querySelector('[class*="next"], [aria-label*="next" i]');
-      const slides = el.querySelectorAll('[class*="slide"], [role="group"]');
+      // A slide is an element whose class token IS "slide" (slide, swiper-slide, card__slide), not any class that contains the letters:
+      // "carousel-slides" is the wrapper and "slide-dots" a control. Only the outermost match counts, a label on a slide's inner wrapper is not its name.
+      const isSlide = (n) => [...n.classList].some((c) => /(^|[-_])slide$/i.test(c)) || (n.getAttribute('role') === 'group' && /^slide$/i.test(n.getAttribute('aria-roledescription') || ''));
+      const hasSlideAncestor = (n) => { for (let p = n.parentElement; p && p !== el; p = p.parentElement) if (isSlide(p)) return true; return false; };
+      const slides = Array.from(el.querySelectorAll('*')).filter((n) => isSlide(n) && !hasSlideAncestor(n));
 
       return {
         prevBtnHasLabel: prevBtn ? (prevBtn.getAttribute('aria-label') || '').length > 0 : null,
         nextBtnHasLabel: nextBtn ? (nextBtn.getAttribute('aria-label') || '').length > 0 : null,
         slidesCount: slides.length,
         slidesHaveRole: Array.from(slides).every((s) => s.getAttribute('role') === 'group'),
-        slidesHaveLabel: Array.from(slides).every((s) => s.getAttribute('aria-label') || s.getAttribute('aria-roledescription')),
+        slidesHaveLabel: Array.from(slides).every((s) => s.getAttribute('aria-label') || s.getAttribute('aria-labelledby')), // aria-roledescription says "slide", it does not name which one
         hasAriaLabel: el.getAttribute('aria-label') || el.getAttribute('aria-roledescription'),
       };
     });
@@ -168,30 +165,15 @@ async function testCarousels(page, violations, passes) {
   }
 }
 
-async function testDropdownMenus(page, violations, passes) {
-  const menus = await page.evaluate(() => {
-    return Array.from(document.querySelectorAll('[aria-haspopup="true"], [aria-haspopup="menu"]')).slice(0, 5).map((el) => ({
-      text: (el.textContent || '').trim().slice(0, 60),
-      hasAriaExpanded: el.hasAttribute('aria-expanded'),
-      hasAriaControls: el.hasAttribute('aria-controls'),
-      controlledId: el.getAttribute('aria-controls'),
-    }));
-  });
+// Controls that open and close content without aria-expanded, measured by activating them (src/scanner/disclosure.js).
+async function testDropdownMenus(page, violations) {
+  violations.push(...await scanDisclosures(page));
+  violations.push(...await scanNewTabNotices(page));
+}
 
-  for (const menu of menus) {
-    if (!menu.hasAriaExpanded) {
-      violations.push({
-        rule: 'menu-trigger-missing-aria-expanded',
-        description: `Menu trigger "${menu.text}" is missing aria-expanded attribute`,
-        impact: 'serious',
-        wcagCriteria: '4.1.2',
-        element: { text: menu.text },
-      });
-    }
-    if (menu.hasAriaExpanded) {
-      passes.push(`Menu trigger "${menu.text}" has aria-expanded`);
-    }
-  }
+// Measured on the live page: reflow at 320px, focus return after Escape, role=button operated by keyboard (src/scanner/behavior-checks.js).
+async function testBehaviorChecks(page, violations) {
+  violations.push(...await scanBehaviorChecks(page));
 }
 
 async function testTabPanels(page, violations, passes) {
@@ -201,7 +183,9 @@ async function testTabPanels(page, violations, passes) {
       const tabs = list.querySelectorAll('[role="tab"]');
       return {
         tabCount: tabs.length,
-        tabsHaveAriaSelected: Array.from(tabs).every((t) => t.hasAttribute('aria-selected')),
+        // 4.1.2 fails when the selected state is not exposed: no tab says aria-selected="true" although one is marked selected visually.
+        tabsHaveAriaSelected: Array.from(tabs).some((t) => t.getAttribute('aria-selected') === 'true'),
+        looksSelected: Array.from(tabs).some((t) => t.getAttribute('aria-selected') !== 'true' && (t.hasAttribute('aria-current') || (t.getAttribute('aria-pressed') === 'true') || /(^|[\s_-])(active|selected|current)($|[\s_-])/i.test(typeof t.className === 'string' ? t.className : ''))),
         tabsHaveAriaControls: Array.from(tabs).every((t) => t.hasAttribute('aria-controls')),
         hasAriaLabel: list.getAttribute('aria-label') || list.getAttribute('aria-labelledby'),
       };
@@ -212,10 +196,14 @@ async function testTabPanels(page, violations, passes) {
     if (!tabSet.tabsHaveAriaSelected) {
       violations.push({
         rule: 'tabs-missing-aria-selected',
-        description: 'Tab elements are missing aria-selected attribute',
+        description: `${tabSet.tabCount} tab(s) in a tablist and none has aria-selected="true"${tabSet.looksSelected ? ' although one is marked selected by class or aria-current' : ''}`,
         impact: 'serious',
         wcagCriteria: '4.1.2',
         element: null,
+        // Without a visually selected tab we cannot tell a missing state from a tablist with nothing selected: a question.
+        ...(tabSet.looksSelected
+          ? { evidence: { proof: { type: 'measured-fact', fact: `0 of ${tabSet.tabCount} tabs have aria-selected="true"; a tab carries an active/selected class or aria-current` } } }
+          : { verdict: 'needs-review', evidence: { reviewReason: 'no tab has aria-selected="true" and none is visibly marked selected' } }),
       });
     }
     if (!tabSet.tabsHaveAriaControls) {
@@ -238,13 +226,15 @@ async function testFormFields(page, violations, passes) {
     const issues = [];
 
     // Check required fields have aria-required or required
-    const inputs = document.querySelectorAll('input:not([type="hidden"]), textarea, select');
+    const inputs = document.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="image"]), textarea, select');
     for (const input of inputs) {
       const isRequired = input.hasAttribute('required') || input.getAttribute('aria-required') === 'true';
-      const label = input.labels?.[0] || document.querySelector(`[for="${input.id}"]`);
-      const ariaLabel = input.getAttribute('aria-label') || input.getAttribute('aria-labelledby');
+      const label = input.labels?.[0] || (input.id ? document.querySelector(`[for="${CSS.escape(input.id)}"]`) : null);
+      const ariaLabel = input.getAttribute('aria-label') || input.getAttribute('aria-labelledby') || input.getAttribute('title');
+      const placeholder = input.getAttribute('placeholder');
 
-      if (!label && !ariaLabel && input.id) {
+      // A field with a placeholder has an accessible name (accname), so it is placeholder-only (3.3.2 judgement), never "no label"; one with neither is no-label.
+      if (!label && !ariaLabel && input.id && !placeholder) {
         issues.push({
           rule: 'form-field-no-label',
           description: `Form field #${input.id} has no associated label or aria-label`,
@@ -255,13 +245,13 @@ async function testFormFields(page, violations, passes) {
       }
 
       // Check placeholder-only labels
-      if (!label && !ariaLabel && input.getAttribute('placeholder') && !input.id) {
+      if (!label && !ariaLabel && placeholder) {
         issues.push({
           rule: 'form-field-placeholder-only',
-          description: `Form field with placeholder "${input.getAttribute('placeholder')}" uses placeholder as only label — disappears when user types`,
+          description: `Form field${input.id ? ` #${input.id}` : ''} with placeholder "${placeholder}" uses placeholder as only label — disappears when user types`,
           impact: 'serious',
           wcagCriteria: '3.3.2',
-          element: { placeholder: input.getAttribute('placeholder') },
+          element: { ...(input.id ? { id: input.id } : {}), placeholder },
         });
       }
     }

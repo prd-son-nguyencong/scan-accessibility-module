@@ -13,6 +13,7 @@ const DEFAULT_THIRD_PARTY = {
 };
 
 let _cache;
+let _root; // undefined: the host root (cwd); set when a command works on another project (fix --source)
 
 export function resolveIncludeThirdParty({
   isRemoteUrl = false,
@@ -26,18 +27,21 @@ export function resolveIncludeThirdParty({
 
 export function getThirdPartyConfig() {
   if (_cache) return _cache;
-  try {
-    const cfg = loadConfig();
-    _cache = { ...DEFAULT_THIRD_PARTY, ...(cfg.thirdParty || {}) };
-  } catch {
-    _cache = DEFAULT_THIRD_PARTY;
-  }
+  // A broken config throws (fail closed); runCli has already loaded and validated it.
+  _cache = { ...DEFAULT_THIRD_PARTY, ...loadConfig(_root).thirdParty };
   return _cache;
+}
+
+/** Reads thirdParty settings from another project's .scan-config.json (undefined restores the host root). */
+export function setThirdPartyConfigRoot(root) {
+  _root = root;
+  _cache = undefined;
 }
 
 /** Testing hook. */
 export function resetThirdPartyCache() {
   _cache = undefined;
+  _root = undefined;
 }
 
 /**

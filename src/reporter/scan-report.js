@@ -1,277 +1,229 @@
-import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
+import { ownerBadge } from './origin-display.js';
+import { GATE_NOTE, totalsLabel } from './wording.js';
+import { writeFileSync, mkdirSync, existsSync, readFileSync, renameSync } from 'fs';
 import path from 'path';
-import { getProjectRoot } from '../utils/paths.js';
-import { buildScanReportV2, projectReportV1, extractAccessScanRunMetadata } from './report-v2.js';
+import { getReportsDir, resolveReportFile } from '../utils/paths.js';
+import { buildScanReportV2, projectReportV1, extractAccessScanRunMetadata, validateScanReportV2 } from './report-v2.js';
+import { buildSummary } from './legacy-summary.js';
+import { buildSarif } from './sarif.js';
+import { compareReports, formatComparison } from './compare.js';
+import { buildQaModel, renderQaHtml } from './qa-report.js';
+import { loadManualStore } from './manual-checks.js';
+import { loadLabels, pct, MIN_LABELS, MIN_PRECISION } from './labels.js';
 
-const ROOT = getProjectRoot();
-const REPORTS_DIR = path.join(ROOT, 'scan-reports');
-const HISTORY_DIR = path.join(REPORTS_DIR, 'history');
+export { buildSummary };
+
 
 function ensureDir(dir) {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 }
 
+// Write to a temp file then rename so readers never see a partial report.
+function writeFileAtomic(file, content) {
+  const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(tmp, content);
+  renameSync(tmp, file);
+}
+
+// Millisecond timestamp; a numeric suffix keeps concurrent or rapid runs from sharing a directory.
+function createHistoryDir(historyRoot) {
+  mkdirSync(historyRoot, { recursive: true });
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 23);
+  for (let n = 0; ; n += 1) {
+    const dir = path.join(historyRoot, n === 0 ? ts : `${ts}-${n}`);
+    try {
+      mkdirSync(dir);
+      return dir;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+    }
+  }
+}
+
 /**
- * Writes scan results to scan-reports/latest.json and a timestamped history entry.
+ * Writes scan results to latest.json (under the reports dir) and a timestamped history entry.
  */
 export function buildReportBundle(scanResults, context = {}) {
   const report = buildScanReportV2(scanResults, context);
   const legacyReport = projectReportV1(report);
-  legacyReport.summary = buildSummary(legacyReport.pages);
   return { report, legacyReport };
 }
 
 export function projectReportForLegacy(report) {
   if (report?.schemaVersion !== '2.0.0') return report;
   const legacyReport = projectReportV1(report);
-  legacyReport.summary = buildSummary(legacyReport.pages);
   return legacyReport;
 }
 
 export function writeReport(scanResults, context = {}) {
+  const REPORTS_DIR = getReportsDir();
   ensureDir(REPORTS_DIR);
   const { report, legacyReport } = buildReportBundle(scanResults, context);
 
   const latestPath = path.join(REPORTS_DIR, 'latest.json');
-  writeFileSync(latestPath, JSON.stringify(report, null, 2));
+  writeFileAtomic(latestPath, JSON.stringify(report, null, 2));
 
   // Write to history
-  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const histDir = path.join(HISTORY_DIR, ts);
-  ensureDir(histDir);
-  writeFileSync(path.join(histDir, 'scan.json'), JSON.stringify(report, null, 2));
+  const histDir = createHistoryDir(path.join(REPORTS_DIR, 'history'));
+  writeFileAtomic(path.join(histDir, 'scan.json'), JSON.stringify(report, null, 2));
 
   return { report, legacyReport, latestPath, histDir };
 }
 
+/** Writes the SARIF 2.1.0 export to `file` (empty = <reports dir>/scan.sarif) and returns the path. */
+export function writeSarif(report, file = '') {
+  const target = file ? path.resolve(file) : path.join(getReportsDir(), 'scan.sarif');
+  ensureDir(path.dirname(target));
+  writeFileAtomic(target, JSON.stringify(buildSarif(report), null, 2));
+  return target;
+}
+
+/** Writes qa-report.html and qa-report.json (T-E5.4) to the reports dir and returns the HTML path. */
+export function writeQaReport(report) {
+  const dir = getReportsDir();
+  ensureDir(dir);
+  let manual = null;
+  let manualError = null;
+  try {
+    manual = loadManualStore(path.join(dir, 'manual-checks.json'));
+  } catch (err) {
+    manualError = err.message;
+  }
+  let labels = [];
+  let labelsError = null;
+  try {
+    labels = loadLabels(path.join(dir, 'labels.json')).labels;
+  } catch (err) {
+    labelsError = err.message;
+  }
+  const model = buildQaModel(report, { manual, manualError, labels, labelsError });
+  writeFileAtomic(path.join(dir, 'qa-report.json'), JSON.stringify(model, null, 2));
+  const htmlPath = path.join(dir, 'qa-report.html');
+  writeFileAtomic(htmlPath, renderQaHtml(model));
+  return htmlPath;
+}
+
 /**
- * Saves current scan as the ROI baseline.
+ * Saves current scan as the baseline later scans are compared with.
  */
 export function writeBaseline(report) {
-  ensureDir(REPORTS_DIR);
-  const baselinePath = path.join(REPORTS_DIR, 'baseline.json');
-  writeFileSync(baselinePath, JSON.stringify(report, null, 2));
+  ensureDir(getReportsDir());
+  const baselinePath = path.join(getReportsDir(), 'baseline.json');
+  writeFileAtomic(baselinePath, JSON.stringify(report, null, 2));
   return baselinePath;
 }
 
 /**
- * Loads the baseline report if it exists.
+ * Reads a report file (latest, history entry, baseline) and validates it before anyone uses it.
+ * Returns { report } or { error } with a message naming the file; never throws.
+ * v2 reports get the full canonical check; the legacy v1 shape only needs a pages array.
  */
-export function loadBaseline() {
-  const baselinePath = path.join(REPORTS_DIR, 'baseline.json');
-  if (!existsSync(baselinePath)) return null;
+export function readReportFile(file) {
+  let report;
   try {
-    return JSON.parse(readFileSync(baselinePath, 'utf8'));
-  } catch {
-    return null;
+    report = JSON.parse(readFileSync(file, 'utf8'));
+  } catch (error) {
+    return { error: `${file} is not readable JSON (${error.message})` };
   }
+  if (report?.schemaVersion !== undefined && report.schemaVersion !== '2.0.0') {
+    return { error: `${file} has unsupported schemaVersion ${JSON.stringify(report.schemaVersion)}` };
+  }
+  if (report?.schemaVersion === '2.0.0') {
+    try {
+      validateScanReportV2(report);
+    } catch (error) {
+      return { error: `${file} failed validation: ${error.message}` };
+    }
+  } else if (!report || !Array.isArray(report.pages) || report.pages.some((page) => !page || typeof page !== 'object')) {
+    return { error: `${file} is not a scan report (no pages array)` };
+  }
+  return { report };
 }
 
-export function buildSummary(scanResults) {
-  let totalViolations = 0;
-  const violationsByRule = {};
-  const violationsByFile = {};
-  const axe = {
-    pages: 0,
-    totalIssueGroups: 0,
-    automaticIssues: 0,
-    guidedIssues: null,
-    manualIssues: null,
-    bestPractice: 0,
-    affectedNodes: 0,
-    incompleteResults: 0,
-    artifactNodeCount: 0,
-    artifactViolationGroupsSkipped: 0,
-    impact: { critical: 0, serious: 0, moderate: 0, minor: 0 },
-    viewportRuns: 0,
-    viewportMatrix: [],
-    unsupportedIssueTypes: [],
-    tags: [],
-    engines: [],
-  };
-  const layerCounts = {
-    axe: 0, lighthouse: 0, w3c: 0, accessScan: 0, links: 0,
-    keyboard: 0, ariaLive: 0, focusTrap: 0, dynamicContent: 0,
-    screenReader: 0,
-  };
-
-  for (const pageResult of scanResults) {
-    if (pageResult.axeSummary) {
-      const pageAxe = pageResult.axeSummary;
-      axe.pages++;
-      axe.totalIssueGroups += pageAxe.totalIssueGroups || 0;
-      axe.automaticIssues += pageAxe.automaticIssues || 0;
-      axe.bestPractice += pageAxe.bestPractice || 0;
-      axe.affectedNodes += pageAxe.affectedNodes || 0;
-      axe.incompleteResults += pageAxe.incompleteCount || 0;
-      axe.artifactNodeCount += pageAxe.artifactNodeCount || 0;
-      axe.artifactViolationGroupsSkipped += pageAxe.artifactViolationGroupsSkipped || 0;
-      axe.viewportRuns += pageAxe.viewports?.length || 0;
-      for (const viewport of pageAxe.viewports || []) {
-        const normalized = {
-          name: viewport.name,
-          width: viewport.width,
-          height: viewport.height,
-        };
-        if (!axe.viewportMatrix.some((item) => (
-          item.name === normalized.name &&
-          item.width === normalized.width &&
-          item.height === normalized.height
-        ))) {
-          axe.viewportMatrix.push(normalized);
-        }
-      }
-      for (const issueType of pageAxe.unsupportedIssueTypes || []) {
-        if (!axe.unsupportedIssueTypes.includes(issueType)) {
-          axe.unsupportedIssueTypes.push(issueType);
-        }
-      }
-      for (const tag of pageAxe.tags || []) {
-        if (!axe.tags.includes(tag)) axe.tags.push(tag);
-      }
-      if (
-        pageAxe.testEngine &&
-        !axe.engines.some((engine) => (
-          engine.name === pageAxe.testEngine.name &&
-          engine.version === pageAxe.testEngine.version
-        ))
-      ) {
-        axe.engines.push(pageAxe.testEngine);
-      }
-      for (const impact of Object.keys(axe.impact)) {
-        axe.impact[impact] += pageAxe.impact?.[impact] || 0;
-      }
-      if (typeof pageAxe.guidedIssues === 'number') {
-        axe.guidedIssues = (axe.guidedIssues || 0) + pageAxe.guidedIssues;
-      }
-      if (typeof pageAxe.manualIssues === 'number') {
-        axe.manualIssues = (axe.manualIssues || 0) + pageAxe.manualIssues;
-      }
-    }
-
-    // Unified violations format (from scanOnePage): flat array with .layer field
-    if (Array.isArray(pageResult.violations) && pageResult.violations.length > 0 && !pageResult.axe) {
-      for (const v of pageResult.violations) {
-        const occurrenceCount = Number.isInteger(v.count) && v.count > 0 ? v.count : 1;
-        totalViolations += occurrenceCount;
-        const layer = v.layer || 'axe';
-        layerCounts[layer] = (layerCounts[layer] || 0) + occurrenceCount;
-        const ruleId = v.ruleId || v.rule || v.id || '?';
-        violationsByRule[ruleId] = (violationsByRule[ruleId] || 0) + occurrenceCount;
-        const file = v.source?.file;
-        if (file && file !== 'unknown') {
-          if (!violationsByFile[file]) violationsByFile[file] = [];
-          violationsByFile[file].push({
-            ruleId,
-            description: v.fix?.hint || v.description || '',
-            impact: v.impact,
-            layer,
-            sourceConfidence: v.source?.confidence || 'unknown',
-            sourceLine: v.source?.line || null,
-            snippetId: v.source?.snippetId || v.element?.scanId || null,
-            count: occurrenceCount,
-          });
-        }
-      }
-      continue;
-    }
-
-    // Legacy per-layer format (from old runScan)
-    for (const violation of pageResult.axe?.violations || []) {
-      const realNodes = (violation.nodes || []).filter((n) => !n.devArtifact);
-      totalViolations += realNodes.length;
-      violationsByRule[violation.id] = (violationsByRule[violation.id] || 0) + realNodes.length;
-      layerCounts.axe += realNodes.length;
-
-      for (const node of realNodes) {
-        const file = node.source?.file || 'unknown';
-        if (!violationsByFile[file]) violationsByFile[file] = [];
-        violationsByFile[file].push({
-          ruleId: violation.id,
-          description: violation.description,
-          impact: violation.impact,
-          layer: 'axe',
-          target: Array.isArray(node.target) ? node.target.join(' ') : String(node.target),
-          sourceConfidence: node.source?.confidence || 'unknown',
-          sourceLine: node.source?.line || null,
-          snippetId: node.source?.snippetId || null,
-        });
-      }
-    }
-
-    for (const v of pageResult.lighthouse?.violations || []) {
-      if (v.impact === 'info') continue;
-      totalViolations++;
-      layerCounts.lighthouse++;
-      violationsByRule[v.rule] = (violationsByRule[v.rule] || 0) + 1;
-    }
-
-    for (const v of pageResult.w3c?.violations || []) {
-      totalViolations++;
-      layerCounts.w3c++;
-      const ruleId = v.rule || v.id;
-      if (ruleId) violationsByRule[ruleId] = (violationsByRule[ruleId] || 0) + 1;
-      const file = v.source?.file;
-      if (file && file !== 'unknown') {
-        if (!violationsByFile[file]) violationsByFile[file] = [];
-        violationsByFile[file].push({ ruleId: ruleId || '?', description: v.description || '', impact: v.impact, layer: 'w3c', sourceConfidence: v.source?.confidence || 'unknown', sourceLine: v.source?.line || null, snippetId: v.source?.snippetId || null });
-      }
-    }
-
-    for (const key of ['keyboard', 'ariaLive', 'focusTrap', 'dynamicContent']) {
-      for (const v of pageResult[key]?.violations || []) {
-        totalViolations++;
-        layerCounts[key]++;
-        const ruleId = v.rule || v.id;
-        if (ruleId) violationsByRule[ruleId] = (violationsByRule[ruleId] || 0) + 1;
-        const file = v.source?.file;
-        if (file && file !== 'unknown') {
-          if (!violationsByFile[file]) violationsByFile[file] = [];
-          violationsByFile[file].push({ ruleId: ruleId || '?', description: v.description || '', impact: v.impact, layer: v.layer || key, sourceConfidence: v.source?.confidence || 'unknown', sourceLine: v.source?.line || null, snippetId: v.source?.snippetId || null });
-        }
-      }
-    }
-
-    for (const v of pageResult.screenReader?.violations || []) {
-      totalViolations++;
-      layerCounts.screenReader++;
-      const ruleId = v.rule || v.id;
-      if (ruleId) violationsByRule[ruleId] = (violationsByRule[ruleId] || 0) + 1;
-      const file = v.source?.file;
-      if (file && file !== 'unknown') {
-        if (!violationsByFile[file]) violationsByFile[file] = [];
-        violationsByFile[file].push({ ruleId: ruleId || '?', description: v.description || '', impact: v.impact, layer: 'screenReader', sourceConfidence: v.source?.confidence || 'unknown', sourceLine: v.source?.line || null, snippetId: v.source?.snippetId || null });
-      }
-    }
+/**
+ * Loads the baseline report if it exists and is valid; an invalid one is ignored with a warning.
+ */
+export function loadBaseline() {
+  const baselinePath = resolveReportFile('baseline.json');
+  if (!existsSync(baselinePath)) return null;
+  const { report, error } = readReportFile(baselinePath);
+  if (error) {
+    console.warn(`Ignoring invalid baseline: ${error}. Re-run with --baseline to replace it.`);
+    return null;
   }
+  return report;
+}
 
-  return {
-    totalViolations,
-    pagesScanned: scanResults.length,
-    violationsByRule,
-    violationsByFile,
-    layerCounts,
-    axe: axe.pages > 0
-      ? {
-          ...axe,
-          unsupportedIssueTypes: axe.unsupportedIssueTypes.sort(),
-          tags: axe.tags.sort(),
-        }
-      : null,
-    topViolations: Object.entries(violationsByRule)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 10)
-      .map(([id, count]) => ({ id, count })),
-  };
+/**
+ * What to compare a new scan with: the saved baseline, else the previous latest.json.
+ * Call before writeReport overwrites latest.json. Returns { report, source } or { reason }.
+ */
+export function loadComparisonBase() {
+  const baseline = loadBaseline();
+  if (baseline) return { report: baseline, source: 'baseline' };
+  const latestPath = path.join(getReportsDir(), 'latest.json');
+  if (existsSync(latestPath)) {
+    const { report, error } = readReportFile(latestPath);
+    if (report) return { report, source: 'previous scan' };
+    console.warn(`Ignoring unusable previous scan: ${error}`);
+  }
+  return { reason: 'no baseline or previous scan; run with --baseline to save one' };
+}
+
+/** The comparison to attach to a new report, or null plus the console lines saying why not. */
+export function buildComparison(report, base) {
+  const comparison = base.report ? compareReports(report, base.report, { source: base.source }) : null;
+  if (comparison?.unusable) return { comparison: null, lines: formatComparison(null, comparison.unusable) };
+  return { comparison, lines: formatComparison(comparison, base.reason) };
+}
+
+/** One line per owner with findings (occurrences), only when something is not plain site code; third-party names its vendors. */
+export function ownerLines(report) {
+  const counts = new Map();
+  for (const f of (report.pages || []).flatMap((p) => p.findings || [])) {
+    if (f.impact === 'info') continue;
+    const b = ownerBadge(f.origin);
+    const c = counts.get(b.key) || { n: 0, names: new Map() };
+    c.n += f.count ?? 1;
+    c.names.set(b.text, (c.names.get(b.text) || 0) + (f.count ?? 1));
+    counts.set(b.key, c);
+  }
+  if (![...counts.keys()].some((k) => k !== 'site')) return [];
+  return ['site', 'platform', 'third-party', 'injected', 'iframe'].filter((k) => counts.has(k)).map((k) => {
+    const c = counts.get(k);
+    const detail = k === 'third-party' ? ` (${[...c.names].map(([name, n]) => `${name.replace('Third-party: ', '')} ${n}`).join(', ')})` : '';
+    return `Owner ${k}:`.padEnd(20) + `${c.n}${detail}`;
+  });
 }
 
 export function printConsoleSummary(report) {
-  const { summary } = projectReportForLegacy(report);
+  const legacy = projectReportForLegacy(report);
+  const { summary } = legacy;
 
   console.log('\nScan Summary');
   console.log('============');
-  console.log(`Pages scanned:    ${summary.pagesScanned}`);
-  console.log(`Total violations: ${summary.totalViolations}`);
+  console.log(`Pages scanned:    ${summary.pagesScanned}${summary.pagesSkipped ? ` (${summary.pagesSkipped} skipped: empty or unrenderable locally)` : ''}`);
+  console.log(`Total violations: ${summary.totalViolations} (${totalsLabel(summary.totalViolations, legacy.pages.reduce((n, p) => n + (p.violations || []).filter((v) => v.impact !== 'info').length, 0))})`);
+  console.log(GATE_NOTE);
+  const vc = report.summary?.verdictCounts;
+  const dem = report.runMetadata?.ruleDemotions;
+  if (dem) console.log(`!! Rule demotions: ${dem.demotedFindings} finding(s) moved to needs-review because their rule has precision below ${pct(MIN_PRECISION)} over at least ${MIN_LABELS} QA labels (${dem.rules.map((r) => `${r.ruleId} ${pct(r.precision)}, n=${r.n}`).join('; ')}).`);
+  if (vc) console.log(`By confidence:    ${vc.confirmed} confirmed, ${vc.likely} likely, ${vc.needsReview} need review (only confirmed fail the gate)`);
+  for (const line of ownerLines(report)) console.log(line);
+  if (summary.pagesFailed || summary.pagesPartial || summary.scannerErrors) {
+    console.log(`\n!! INCOMPLETE SCAN: ${summary.pagesFailed || 0} page(s) failed, ${summary.pagesPartial || 0} partial, ${summary.scannerErrors || 0} scanner error(s).`);
+    console.log('!! The violation total above is not a pass.');
+    if (report.summary?.pagesPartialGating === 0 && !summary.pagesFailed) console.log('!! Only supplementary layers (lighthouse, w3c) are incomplete: exit code stays 0 unless scan.strict is true.');
+    for (const page of legacy.pages) {
+      if (page.status === 'failed') console.log(`!!   ${page.url}: not scanned (${page.failure?.message || page.failure?.reason})`);
+      else if (page.status === 'partial') {
+        const reasons = report.pages.find((p) => p.url === page.url)?.partialReasons
+          ?? (page.scannerRuns || []).filter((run) => ['error', 'timeout', 'skipped'].includes(run.status)).map((run) => ({ layer: run.layer, reason: run.status, gating: true }));
+        console.log(`!!   ${page.url}: partial (${reasons.map((r) => `${r.layer} ${r.reason}${r.gating ? '' : ' [supplementary, not gating]'}`).join('; ')})`);
+      }
+    }
+    if (report.runMetadata?.allowIncomplete) console.log('!! --allow-incomplete: exit code 2 suppressed.');
+  }
 
   const accessScan = report.runMetadata?.accessScan
     || (report.schemaVersion === '2.0.0' && Array.isArray(report.scanners)
@@ -300,7 +252,9 @@ export function printConsoleSummary(report) {
   if (filesWithViolations.length > 0) {
     console.log('\nAffected source files:');
     for (const [file, violations] of filesWithViolations) {
-      const conf = violations[0]?.sourceConfidence || '';
+      // The label must hold for every violation in the file, so use the weakest confidence.
+      const rank = { high: 3, medium: 2, low: 1 };
+      const conf = violations.reduce((min, v) => ((rank[v.sourceConfidence] || 0) < (rank[min] || 0) ? v.sourceConfidence : min), violations[0]?.sourceConfidence || '');
       const confNote = conf === 'high' ? '' : conf === 'medium' ? ' (partial match)' : ' (page-level trace)';
       const occurrenceCount = violations.reduce((total, violation) => total + (violation.count || 1), 0);
       console.log(`  ${file}${confNote}  (${occurrenceCount} violation${occurrenceCount === 1 ? '' : 's'})`);
@@ -310,6 +264,10 @@ export function printConsoleSummary(report) {
       }
       if (violations.length > 5) console.log(`    ... and ${violations.length - 5} more`);
     }
+  }
+
+  if (summary.sourceUnavailable > 0) {
+    console.log(`\nSource: unavailable (no source project) for ${summary.sourceUnavailable} violation${summary.sourceUnavailable === 1 ? '' : 's'}`);
   }
 
   console.log('');

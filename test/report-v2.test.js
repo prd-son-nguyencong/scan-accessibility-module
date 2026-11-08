@@ -284,3 +284,9 @@ test('source preimages are discarded when no source line is attested', () => {
   assert.equal(finding.source.preimageSha256, null);
   assert.equal(finding.source.preimageRange, null);
 });
+
+test('ScanReportV2 records why source tracing was unavailable', () => {
+  const sourceTracing = { status: 'unavailable', reason: 'no build' };
+  const report = buildScanReportV2(fixture.scanResults, { ...fixture.context, sourceTracing });
+  assert.deepEqual(report.runMetadata.sourceTracing, sourceTracing);
+});

@@ -11,6 +11,7 @@ import {
   isCorpusToolingError,
   printDeterministicJson,
 } from './index.js';
+import { classifyHost } from '../../src/utils/host-classify.js';
 import { normalizeCliArgs } from './lib/cli-args.js';
 
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
@@ -103,6 +104,7 @@ export async function runCorpusCaptureCli(argv = normalizeCliArgs(process.argv.s
       'report-json': { type: 'string' },
       snapshot: { type: 'string' },
       url: { type: 'string' },
+      'allow-private-url': { type: 'boolean', default: false },
       'page-html': { type: 'string' },
       overwrite: { type: 'boolean', default: false },
       'viewport-width': { type: 'string' },
@@ -117,7 +119,7 @@ export async function runCorpusCaptureCli(argv = normalizeCliArgs(process.argv.s
       command: 'corpus:capture',
       usage: [
         'node scripts/accessscan-corpus/capture.js --draft <dir> --id <case-id> --report <report.json> --snapshot <snapshot.json>',
-        'node scripts/accessscan-corpus/capture.js --draft <dir> --id <case-id> --report <report.json> --url <url>',
+        'node scripts/accessscan-corpus/capture.js --draft <dir> --id <case-id> --report <report.json> --url <url> [--allow-private-url]',
       ],
       limitations: [
         `Live --url capture supports only pageState "${DEFAULT_PAGE_STATE}" from the report. Non-initial states require programmatic capture with stateAdapter.`,
@@ -157,6 +159,19 @@ export async function runCorpusCaptureCli(argv = normalizeCliArgs(process.argv.s
       details: { pageState: report.pageState },
     });
     return 1;
+  }
+
+  if (typeof values.url === 'string' && !values['allow-private-url']) {
+    const { kind, reason } = classifyHost(values.url);
+    if (kind !== 'public') {
+      printDeterministicJson({
+        ok: false,
+        errorCode: 'forbidden_source_url',
+        message: `--url host is ${kind} (${reason}); pass --allow-private-url to capture it anyway`,
+        details: { kind },
+      });
+      return 1;
+    }
   }
 
   const adapterBundle = await createCaptureAdapter(values);

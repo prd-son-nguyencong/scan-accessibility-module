@@ -1,4 +1,5 @@
 import { canonicalSha256 } from '../../../src/reporter/fingerprint.js';
+import { classifyHost } from '../../../src/utils/host-classify.js';
 
 /** @type {ReadonlySet<string>} */
 export const FRAMEWORK_NEUTRAL_LITERALS = new Set([
@@ -36,7 +37,6 @@ const DOCUMENT_SHELL_PATTERN = /^<!doctype\s+html>$/i;
 const HTML_MARKUP_ONLY_PATTERN = /^<\/?[a-z][^>]*>$/i;
 
 const PARTIAL_REDACTION_PATTERN = /\[redacted\]/i;
-const LOOPBACK_HOST_PATTERN = /^(?:127\.0\.0\.1|localhost|\[::1\]|::1)$/i;
 
 /**
  * @param {string} value
@@ -265,7 +265,8 @@ export function pseudonymizeHumanText(source = '', kind = 'text', registry = new
   const trimmed = raw.trim();
   if (!trimmed) return '';
 
-  if (isFrameworkNeutralLiteral(trimmed)) {
+  // Idempotent: an already-pseudonymized value must not be hashed again (re-seeding churn).
+  if (isFrameworkNeutralLiteral(trimmed) || isNeutralPlaceholderText(trimmed)) {
     return trimmed;
   }
 
@@ -325,13 +326,12 @@ export function neutralizeEvidenceUrl(url = '') {
   if (!output) return output;
 
   output = output
-    .replace(/^https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\]|::1)(?::\d+)?/i, '')
     .replace(/^https?:\/\/(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?/i, '')
     .replace(/^https?:\/\/[^/]+/i, '')
     .replace(/^\/\/[^/]+/i, '');
 
   if (!output || output === '/') return '/';
-  if (LOOPBACK_HOST_PATTERN.test(output)) return '/neutral-asset.png';
+  if (!/[/?#@]/.test(output) && classifyHost(output).kind === 'loopback') return '/neutral-asset.png';
   if (!output.startsWith('/')) output = `/${output}`;
   return output;
 }

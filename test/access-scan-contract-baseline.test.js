@@ -10,7 +10,8 @@ import {
   buildScanReportV2,
   projectReportV1,
 } from '../src/reporter/report-v2.js';
-import { getBrowser, closeBrowser } from '../src/scanner/browser.js';
+import { closeBrowser } from '../src/scanner/browser.js';
+import { requireBrowser } from './helpers/require-browser.js';
 import {
   ACTIVE_RULE_COUNT,
   CATALOG_RULE_COUNT,
@@ -71,7 +72,7 @@ function buildAccessScanViolation(overrides = {}) {
   });
 }
 
-test('frozen golden catalog locks 83 native rule IDs (82 active + one legacy alias)', async () => {
+test('frozen golden catalog locks 85 native rule IDs (84 active + one legacy alias)', async () => {
   const goldenCatalog = loadGoldenCatalog();
   const golden = loadGoldenCatalogRuleIds();
   const goldenActive = loadGoldenActiveCatalogRuleIds();
@@ -96,7 +97,7 @@ test('frozen golden catalog locks 83 native rule IDs (82 active + one legacy ali
   assert.equal(goldenActive.includes(LEGACY_NON_EMITTING_RULE_ID), false);
 });
 
-test('registry-backed reporter metadata stays bidirectionally aligned with the 83-ID catalog', () => {
+test('registry-backed reporter metadata stays bidirectionally aligned with the 85-ID catalog', () => {
   const golden = loadGoldenCatalogRuleIds();
   const requirementKeys = golden.map((ruleId) => ruleId).filter((ruleId) => getAccessScanRuleRequirement(ruleId));
   const missingFromReporter = compareRuleIdSets(
@@ -305,13 +306,8 @@ test('ScanReportV2 and V1 projections preserve current accessScan finding contra
 });
 
 test('neutral accessScan fixtures retain current native rule IDs and classifications', async (t) => {
-  let browser;
-  try {
-    browser = await getBrowser();
-  } catch (error) {
-    t.skip(`Playwright browser unavailable: ${error.message}`);
-    return;
-  }
+  const browser = await requireBrowser(t);
+  if (!browser) return;
 
   try {
     await t.test('deterministic scanners keep standards findings', async () => {
@@ -363,7 +359,7 @@ test('neutral accessScan fixtures retain current native rule IDs and classificat
     await t.test('heuristic scanners keep advisory StrongMismatch findings', async () => {
       const page = await createFixturePage(browser, `
         <style>#bold-copy { font-weight: 700; }</style>
-        <p><span id="bold-copy">Important</span></p>
+        <p>Please <span id="bold-copy">read this notice</span> first</p>
       `);
       try {
         const violations = await scanFixtureWithAccessScan(page, 'fixture://contract-heuristic', {
@@ -397,8 +393,9 @@ test('neutral accessScan fixtures retain current native rule IDs and classificat
             background: white;
             z-index: 2;
           }
+          body { min-height: 3000px; } /* scrollable: a fixed control is never measured, an in-flow one is */
           #covered {
-            position: fixed;
+            position: absolute;
             top: 10px;
             left: 10px;
             width: 40px;

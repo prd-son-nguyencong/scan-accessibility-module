@@ -198,8 +198,8 @@ test('comprehensive migrated rules fixture reports exact rule ids and classifica
   const expectations = {
     AltMisuse: 'confirmed',
     IframeDiscernible: 'confirmed',
-    NoRoleApplication: 'confirmed',
-    NoExtraInformationInTitle: ['confirmed', 'potential'],
+    NoRoleApplication: 'potential', // convention rule: heuristic since round 6
+    NoExtraInformationInTitle: 'potential', // convention rule: heuristic since round 6
     FigureDiscernible: 'potential',
     AriaDescribedByHasReference: 'confirmed',
     AriaLabelledByHasReference: 'confirmed',
@@ -207,7 +207,7 @@ test('comprehensive migrated rules fixture reports exact rule ids and classifica
     LinkAnchorDiscernible: 'confirmed',
     LinkNavigationDiscernible: 'confirmed',
     LinkOpensNewWindow: 'potential',
-    NoAutofocus: 'confirmed',
+    NoAutofocus: 'potential', // convention rule: heuristic since round 6
     MenuTriggerClickable: 'confirmed',
     MenuAvoid: 'potential',
     MenuBarAvoid: 'potential',
@@ -348,7 +348,7 @@ test('title-only control and checkbox-with-title-only behaviors', async () => {
       ]);
       const titleRule = result.findings.filter((f) => f.ruleId === 'NoExtraInformationInTitle');
       const checkboxRule = result.findings.filter((f) => f.ruleId === 'CheckboxDiscernible');
-      assert.ok(titleRule.some((f) => f.violationType === 'confirmed'));
+      assert.ok(titleRule.some((f) => ['confirmed', 'potential'].includes(f.violationType))); // convention rule: potential since round 6
       assert.equal(checkboxRule.length, 1);
       assert.match(checkboxRule[0].element.selector, /checkbox-title-only/);
     },
@@ -448,9 +448,9 @@ test('frozen dual-run evidence matches production engine counts on neutral fixtu
   );
 });
 
-test('loadBuiltInRuleRegistry loads 83 active rules with graph-supported selectors', async () => {
+test('loadBuiltInRuleRegistry loads 84 active rules with graph-supported selectors', async () => {
   const registry = await loadBuiltInRuleRegistry({ enforceCatalogContract: false });
-  assert.equal(registry.getActiveRuleIds().length, 83);
+  assert.equal(registry.getActiveRuleIds().length, 84);
   for (const ruleId of registry.getActiveRuleIds()) {
     const rule = registry.getRule(ruleId);
     for (const check of rule.checks) {

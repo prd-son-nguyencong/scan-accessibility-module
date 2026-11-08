@@ -28,14 +28,14 @@ export function resolveTrustedDeploymentUrl(localRoot) {
   }
 
   if (!localRoot || typeof localRoot !== 'string' || !existsSync(localRoot)) {
-    return { ok: false, reason: 'DEPLOYMENT_URL_MISSING' };
+    return { ok: false, reason: 'MISSING_DEPLOYMENT_URL' };
   }
 
   let resolvedRoot;
   try {
     resolvedRoot = realpathSync(localRoot);
   } catch {
-    return { ok: false, reason: 'DEPLOYMENT_URL_MISSING' };
+    return { ok: false, reason: 'MISSING_DEPLOYMENT_URL' };
   }
 
   const configPath = resolve(resolvedRoot, '.scan-config.json');
@@ -43,34 +43,34 @@ export function resolveTrustedDeploymentUrl(localRoot) {
   try {
     resolvedConfigPath = realpathSync(configPath);
   } catch {
-    return { ok: false, reason: 'DEPLOYMENT_URL_MISSING' };
+    return { ok: false, reason: 'MISSING_DEPLOYMENT_URL' };
   }
 
   const rel = relative(resolvedRoot, resolvedConfigPath);
   if (rel.startsWith('..') || isAbsolute(rel)) {
-    return { ok: false, reason: 'DEPLOYMENT_URL_MISSING' };
+    return { ok: false, reason: 'MISSING_DEPLOYMENT_URL' };
   }
 
   let rawConfig;
   try {
     rawConfig = readBoundedFile(resolvedConfigPath, MAX_CONFIG_BYTES);
   } catch {
-    return { ok: false, reason: 'DEPLOYMENT_URL_MISSING' };
+    return { ok: false, reason: 'MISSING_DEPLOYMENT_URL' };
   }
   if (rawConfig == null) {
-    return { ok: false, reason: 'DEPLOYMENT_URL_MISSING' };
+    return { ok: false, reason: 'MISSING_DEPLOYMENT_URL' };
   }
 
   let config;
   try {
     config = JSON.parse(rawConfig);
   } catch {
-    return { ok: false, reason: 'DEPLOYMENT_URL_MISSING' };
+    return { ok: false, reason: 'MISSING_DEPLOYMENT_URL' };
   }
 
   const fromConfig = resolveDeploymentUrlFromConfigObject(config);
   if (!fromConfig) {
-    return { ok: false, reason: 'DEPLOYMENT_URL_MISSING' };
+    return { ok: false, reason: 'MISSING_DEPLOYMENT_URL' };
   }
 
   return { ok: true, deploymentUrl: fromConfig, source: 'config' };

@@ -71,3 +71,10 @@ test('resolvePublicHostAddresses accepts ordinary public DNS answers', async () 
   const addresses = await resolvePublicHostAddresses('public-cdn.test');
   assert.deepEqual(addresses, ['8.8.8.8', '2001:4860:4860::8888']);
 });
+
+test('setDnsResolverForTests drops cached answers from the previous resolver', async () => {
+  setDnsResolverForTests(async () => ['8.8.8.8']);
+  assert.deepEqual(await resolvePublicHostAddresses('cache-swap.test'), ['8.8.8.8']);
+  setDnsResolverForTests(async () => ['10.0.0.1']);
+  await assert.rejects(() => resolvePublicHostAddresses('cache-swap.test'));
+});

@@ -49,9 +49,37 @@ export function getProjectRoot() {
   return _rootCache;
 }
 
+let _reportsDirOverride;
+
+/** Sets the report output dir (--out-dir / config.reportsDir); relative paths resolve from the project root. */
+export function setReportsDir(dir) {
+  _reportsDirOverride = dir ? path.resolve(getProjectRoot(), dir) : undefined;
+}
+
+/** The single resolver for every report writer: reports, history, baseline, ROI and visual HTML. */
+export function getReportsDir() {
+  return _reportsDirOverride || path.join(getProjectRoot(), '.ada-scan');
+}
+
+/**
+ * Path to read a report file from. Falls back to the legacy tracked
+ * `scan-reports/` when the file only exists there (one-line notice).
+ */
+export function resolveReportFile(name) {
+  const p = path.join(getReportsDir(), name);
+  if (existsSync(p)) return p;
+  const legacy = path.join(getProjectRoot(), 'scan-reports', name);
+  if (existsSync(legacy)) {
+    console.log(`Using legacy ${path.join('scan-reports', name)} (not found in ${getReportsDir()}); new reports are written to ${getReportsDir()}.`);
+    return legacy;
+  }
+  return p;
+}
+
 /** Testing hook — clears the memoized root so fixtures resolve independently. */
 export function resetProjectRootCache() {
   _rootCache = undefined;
+  _reportsDirOverride = undefined;
 }
 
 const DEFAULT_DIST_MAP = [
@@ -84,6 +112,21 @@ export function distToSrcLiquid(distRelativePath, distMap = DEFAULT_DIST_MAP) {
 export function urlToPageFile(urlPathname, opts = {}) {
   const pagesRoot = (opts.pagesRoot || 'src/pages').replace(/\/$/, '');
   const extension = opts.extension || '.liquid';
-  const normalized = urlPathname === '/' ? 'index' : urlPathname.replace(/^\//, '');
-  return `${pagesRoot}/${normalized}${extension}`;
+  const normalized = urlPathname.replace(/^\/+|\/+$/g, '').replace(/(^|\/)index(?:\.html)?$/, '') || 'index';
+  const flat = `${pagesRoot}/${normalized}${extension}`;
+  if (normalized === 'index') return flat;
+  // A nested dir route (/it) is its dir's index template (src/pages/it/index.liquid) when that is what the project has.
+  const nested = `${pagesRoot}/${normalized}/index${extension}`;
+  const root = opts.root || getProjectRoot();
+  return !existsSync(path.join(root, flat)) && existsSync(path.join(root, nested)) ? nested : flat;
+}
+
+/**
+ * Resolves `rel` under `root`; returns null when it escapes the root (e.g. `..` or absolute).
+ * Backslashes are normalised first so `..\\` cannot slip past the check.
+ */
+export function containedPath(root, rel) {
+  const full = path.resolve(root, String(rel).replace(/\\/g, '/'));
+  const within = path.relative(root, full);
+  return within && !within.startsWith('..') && !path.isAbsolute(within) ? full : null;
 }

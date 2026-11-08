@@ -178,3 +178,8 @@ test('workbench rollback disables confirm and main button while aria-busy', () =
   assert.match(html, /els\.rollbackBtn\.disabled = !state\.snapshot\?\.sandbox\?\.rollbackAvailable/);
   assert.match(html, /els\.rollbackDialog\.getAttribute\('aria-busy'\) === 'true'/);
 });
+
+test('every editor link goes through safeEditorHref', () => {
+  assert.doesNotMatch(html, /\.href\s*=\s*(?!href\b|editorHref\b|ownerHref\b)[a-z.]*editorLink/);
+  assert.match(html, /safeEditorHref\(unit\.editorLink\)/);
+});

@@ -1,14 +1,13 @@
-import { getBrowser, newPage, resilientGoto } from './browser.js';
+import { acquirePage } from './session.js';
 import { mapDescriptionToSource } from '../tracer/partial-map.js';
 import { getThirdPartyConfig } from '../utils/third-party.js';
+import { externalGate, DEFAULT_W3C_ENDPOINT } from '../utils/external.js';
 import { readFileSync } from 'fs';
 
 const PACKAGE_VERSION = JSON.parse(
   readFileSync(new URL('../../package.json', import.meta.url), 'utf8')
 ).version;
 
-const PAGE_TIMEOUT_MS = 60000;
-const W3C_VALIDATOR_API = 'https://validator.w3.org/nu/?out=json&showsource=yes';
 const W3C_TIMEOUT_MS = 15000;
 
 export function canonicalizeW3cDescription(description = '') {
@@ -86,6 +85,7 @@ export function buildW3cRunMetadata({
   engineName = 'Nu Html Checker',
   engineVersion = 'unknown',
   status = 'complete',
+  errorCode = null,
   supplemental = {
     candidateCount: 0,
     addedCount: 0,
@@ -120,6 +120,7 @@ export function buildW3cRunMetadata({
     engine: { name: engineName, version: engineVersion },
     pageState: 'initial',
     status,
+    ...(errorCode ? { evidence: { errorCode } } : {}),
     raw,
     supplemental,
     emitted: {
@@ -139,28 +140,43 @@ export function buildW3cRunMetadata({
  * The validator accepts HTML via POST with Content-Type: text/html.
  * API docs: https://github.com/validator/validator/wiki/Service:-Input:-POST-body
  */
-export async function scanW3cValidation(pageUrl) {
-  const browser = await getBrowser();
-  const page = await newPage(browser);
+export async function scanW3cValidation(pageUrl, config = {}, opts = {}) {
+  const endpoint = config.external?.w3cEndpoint || DEFAULT_W3C_ENDPOINT;
+  const gate = externalGate('w3c', pageUrl, config, { sends: 'the rendered page HTML', endpoint });
+  if (!gate.allowed) {
+    return {
+      url: pageUrl,
+      violations: [],
+      passes: [],
+      timestamp: new Date().toISOString(),
+      scannerRun: buildW3cRunMetadata({
+        engineName: 'none (external validator not run)',
+        status: 'skipped',
+        errorCode: gate.reason,
+      }),
+    };
+  }
+  const { page, close } = await acquirePage(pageUrl, opts);
   const violations = [];
   const passes = [];
   let metadataInput = null;
 
   try {
-    await resilientGoto(page, pageUrl, { timeout: PAGE_TIMEOUT_MS });
-
     // Get the DOM-serialized HTML for Nu Checker
     const html = await page.content();
 
     // Fetch raw source HTML (preserves trailing slashes, original formatting)
     let rawSourceHtml = '';
     try {
-      const resp = await fetch(pageUrl, { signal: AbortSignal.timeout(10000) });
-      if (resp.ok) rawSourceHtml = await resp.text();
+      if (opts.rawSourceHtml !== undefined) rawSourceHtml = opts.rawSourceHtml;
+      else {
+        const resp = await fetch(pageUrl, { signal: AbortSignal.timeout(10000) });
+        if (resp.ok) rawSourceHtml = await resp.text();
+      }
     } catch { /* fallback: rawSourceHtml stays empty */ }
 
     // Submit to Nu HTML Checker
-    const validationResult = await validateWithNuChecker(html);
+    const validationResult = await (opts.validator || validateWithNuChecker)(html, endpoint);
 
     if (validationResult === null) {
       // API unreachable — run basic local checks instead
@@ -192,6 +208,8 @@ export async function scanW3cValidation(pageUrl) {
     }
 
     const { messages } = validationResult;
+    // The validator answered but could not validate the document: not a pass.
+    const nonDocumentError = messages.find((m) => m.type === 'non-document-error');
 
     // Only skip messages where the error message itself is about template tokens
     // (e.g. Liquid/Paradox {{…}} / {%…%}). Open delimiters come from config.thirdParty.
@@ -268,11 +286,15 @@ export async function scanW3cValidation(pageUrl) {
       supplemental: supplemental.stats,
     };
 
-    if (errors.length === 0) {
+    if (nonDocumentError) {
+      metadataInput.status = 'error';
+      metadataInput.errorCode = 'non-document-error';
+      console.log(`  [w3c] validator could not validate the document: ${nonDocumentError.message || 'non-document-error'}`);
+    } else if (errors.length === 0) {
       passes.push(`W3C HTML validation passed (${warnings.length} warning${warnings.length === 1 ? '' : 's'}, ${infos.length} info)`);
     }
   } finally {
-    await page.close().catch(() => {});
+    await close();
   }
 
   const dedupedViolations = deduplicateW3cViolations(violations);
@@ -291,9 +313,12 @@ export async function scanW3cValidation(pageUrl) {
   };
 }
 
-async function validateWithNuChecker(html) {
+async function validateWithNuChecker(html, endpoint) {
   try {
-    const response = await fetch(W3C_VALIDATOR_API, {
+    const url = new URL(endpoint);
+    url.searchParams.set('out', 'json');
+    url.searchParams.set('showsource', 'yes');
+    const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'text/html; charset=utf-8', 'User-Agent': 'ADA-Scanner/1.0' },
       body: html,
@@ -301,7 +326,11 @@ async function validateWithNuChecker(html) {
     });
 
     if (!response.ok) return null;
-    return response.json();
+    const json = await response.json();
+    // An answer without a messages array cannot be read as "no errors".
+    return Array.isArray(json?.messages)
+      ? json
+      : { messages: [{ type: 'non-document-error', message: 'unparsable validator response' }] };
   } catch {
     return null;
   }

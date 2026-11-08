@@ -27,6 +27,7 @@ export function sameScope(a, b) {
  *   byScopedDomId: Map<string, Map<string, SnapshotElement>>,
  *   ambiguousDomIds: Map<string, Set<string>>,
  *   childrenByParentId: Map<number, SnapshotElement[]>,
+ *   labelByScopedFor: Map<string, Map<string, SnapshotElement>>,
  * }}
  */
 export function buildSnapshotIndexes(snapshot) {
@@ -38,9 +39,18 @@ export function buildSnapshotIndexes(snapshot) {
   const ambiguousDomIds = new Map();
   /** @type {Map<number, SnapshotElement[]>} */
   const childrenByParentId = new Map();
+  /** @type {Map<string, Map<string, SnapshotElement>>} first <label for> per scope and id */
+  const labelByScopedFor = new Map();
 
   for (const element of snapshot.elements) {
     byElementId.set(element.id, element);
+
+    if (element.tag === 'label' && element.attributes.for) {
+      const sk = scopeKey(element);
+      if (!labelByScopedFor.has(sk)) labelByScopedFor.set(sk, new Map());
+      const labels = labelByScopedFor.get(sk);
+      if (!labels.has(element.attributes.for)) labels.set(element.attributes.for, element);
+    }
 
     const domId = element.attributes.id;
     if (domId) {
@@ -66,7 +76,7 @@ export function buildSnapshotIndexes(snapshot) {
     }
   }
 
-  return { byElementId, byScopedDomId, ambiguousDomIds, childrenByParentId };
+  return { byElementId, byScopedDomId, ambiguousDomIds, childrenByParentId, labelByScopedFor };
 }
 
 /**
@@ -113,8 +123,8 @@ export function getDescendants(snapshot, indexes, element, predicate) {
   const queue = [element.id];
   const seen = new Set(queue);
 
-  while (queue.length > 0) {
-    const parentId = queue.shift();
+  for (let head = 0; head < queue.length; head += 1) {
+    const parentId = queue[head];
     const children = indexes.childrenByParentId.get(parentId) || [];
     for (const child of children) {
       if (!sameScope(child, element) || seen.has(child.id)) continue;

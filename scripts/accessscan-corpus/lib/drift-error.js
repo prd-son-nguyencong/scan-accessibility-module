@@ -71,7 +71,7 @@ export function assertNeutralDriftArtifact(payload = {}) {
       'Drift artifact leaked sensitive capture details',
     );
   }
-  if (/paradox\.ai|mchire\.com|https?:\/\//i.test(serialized)) {
+  if (/paradox\.ai|https?:\/\//i.test(serialized)) {
     throw new CorpusToolingError(
       CORPUS_TOOLING_ERROR_CODES.REDACTION_LEAK,
       'Drift artifact leaked source host or URL details',

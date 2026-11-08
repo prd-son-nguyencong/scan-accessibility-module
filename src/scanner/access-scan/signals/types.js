@@ -38,6 +38,7 @@ export const SIGNAL_FAMILIES = Object.freeze({
  * @property {number} mainBoundariesScanned
  * @property {number} wrappedFooterRegionsScanned
  * @property {number} topAnchoredHeadersScanned
+ * @property {number} bottomAnchoredFootersScanned
  * @property {number} directLinkNavsScanned
  * @property {number} currentDestinationLinksScanned
  * @property {number} submenuRowsScanned

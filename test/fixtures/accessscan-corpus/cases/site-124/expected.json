@@ -5,9 +5,9 @@
     {
       "ruleId": "AltMisuse",
       "canonicalRuleId": "AltMisuse",
-      "violationType": "confirmed",
+      "violationType": "commercial-parity",
       "evidence": {
-        "checkId": "general:alt-misuse"
+        "checkId": "parity:alt-misuse"
       },
       "element": {
         "semantic": {
@@ -30,9 +30,9 @@
     {
       "ruleId": "AltMisuse",
       "canonicalRuleId": "AltMisuse",
-      "violationType": "confirmed",
+      "violationType": "commercial-parity",
       "evidence": {
-        "checkId": "general:alt-misuse"
+        "checkId": "parity:alt-misuse"
       },
       "element": {
         "semantic": {

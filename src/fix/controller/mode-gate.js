@@ -1,12 +1,11 @@
+import { isLoopbackUrl } from '../../utils/host-classify.js';
 import { isUrlWithinDeploymentScope } from '../../tracer/deployment-url.js';
 import { isBuildRevisionDirty } from '../../tracer/page-attestation.js';
 import { sanitizeAttestationReason } from '../../tracer/attestation-reasons.js';
 
-const LOCALHOST_PATTERN = /^https?:\/\/(localhost|127\.0\.0\.1)(?::|\/|$)/i;
-
 function isRemoteUrl(url) {
   if (!url) return false;
-  return !LOCALHOST_PATTERN.test(url);
+  return !isLoopbackUrl(url);
 }
 
 function attestationPresent(value) {
@@ -80,7 +79,7 @@ export function resolveFixCapability({
     return {
       mode: 'hybrid',
       canFix: false,
-      reason: 'BUILD_REVISION_MISSING',
+      reason: 'MISSING_BUILD_REVISION',
     };
   }
   if (remoteRevision !== localRevision) {
@@ -97,7 +96,7 @@ export function resolveFixCapability({
     return {
       mode: 'hybrid',
       canFix: false,
-      reason: 'INSTRUMENTATION_DIGEST_MISSING',
+      reason: 'MISSING_INSTRUMENTATION_DIGEST',
     };
   }
   if (remoteInstrumentationDigest !== localInstrumentationDigest) {
@@ -112,7 +111,7 @@ export function resolveFixCapability({
     return {
       mode: 'hybrid',
       canFix: false,
-      reason: 'DEPLOYMENT_URL_MISSING',
+      reason: 'MISSING_DEPLOYMENT_URL',
     };
   }
   if (remoteDeploymentUrl !== localDeploymentUrl) {

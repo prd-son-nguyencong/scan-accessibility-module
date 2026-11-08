@@ -1,0 +1,876 @@
+{
+  "version": 1,
+  "note": "Seeded-fault corpus. Edits are exact { path, find, replace } (each find occurs once). line = 1-based source line of the defect (anchor). Tested by test/fix/fix-corpus.test.js.",
+  "sites": [
+    {
+      "id": "orchard-nav",
+      "dir": "sites/orchard-nav",
+      "routes": [
+        "/"
+      ],
+      "defects": [
+        {
+          "id": "orchard-button-name",
+          "rule": "button-name",
+          "class": "fixable",
+          "file": "src/partials/header.liquid",
+          "line": 3,
+          "anchor": "<button class=\"menu-btn\"",
+          "scope": {
+            "file": "src/partials/header.liquid",
+            "startLine": 2,
+            "endLine": 4
+          },
+          "designLock": true,
+          "element": {
+            "selector": "#menu-btn",
+            "html": "<button class=\"menu-btn\" id=\"menu-btn\" type=\"button\" aria-controls=\"primary-nav\" aria-expanded=\"false\">"
+          },
+          "evidence": [
+            "Element has no accessible name: its only text is inside aria-hidden"
+          ],
+          "expectedFix": {
+            "edits": [
+              {
+                "path": "src/partials/header.liquid",
+                "find": "aria-expanded=\"false\"><span aria-hidden",
+                "replace": "aria-expanded=\"false\" aria-label=\"Menu\"><span aria-hidden"
+              }
+            ]
+          },
+          "recipe": true
+        },
+        {
+          "id": "orchard-nav-main",
+          "rule": "landmark-unique",
+          "class": "not_scannable",
+          "file": "src/partials/header.liquid",
+          "line": 4,
+          "anchor": "<nav id=\"primary-nav\"",
+          "scope": {
+            "file": "src/partials/header.liquid",
+            "startLine": 3,
+            "endLine": 5
+          },
+          "designLock": true,
+          "element": {
+            "selector": "#primary-nav",
+            "html": "<nav id=\"primary-nav\" class=\"site-nav\" hidden>"
+          },
+          "evidence": [
+            "Landmarks must have a unique role or role/label/title combination: two unlabelled navigation landmarks"
+          ],
+          "expectedFix": {
+            "edits": [
+              {
+                "path": "src/partials/header.liquid",
+                "find": "<nav id=\"primary-nav\" class=\"site-nav\" hidden>",
+                "replace": "<nav id=\"primary-nav\" class=\"site-nav\" hidden aria-label=\"Main\">"
+              }
+            ]
+          },
+          "recipe": true,
+          "note": "the nav is `hidden` in the initial DOM, so no engine sees two unlabeled navigation landmarks"
+        },
+        {
+          "id": "orchard-nav-footer",
+          "rule": "landmark-unique",
+          "class": "not_scannable",
+          "file": "src/partials/footer.liquid",
+          "line": 2,
+          "anchor": "<nav id=\"footer-nav\"",
+          "scope": {
+            "file": "src/partials/footer.liquid",
+            "startLine": 1,
+            "endLine": 3
+          },
+          "designLock": true,
+          "element": {
+            "selector": "#footer-nav",
+            "html": "<nav id=\"footer-nav\" class=\"footer-nav\">"
+          },
+          "evidence": [
+            "Landmarks must have a unique role or role/label/title combination: two unlabelled navigation landmarks"
+          ],
+          "expectedFix": {
+            "edits": [
+              {
+                "path": "src/partials/footer.liquid",
+                "find": "<nav id=\"footer-nav\" class=\"footer-nav\">",
+                "replace": "<nav id=\"footer-nav\" class=\"footer-nav\" aria-label=\"Footer\">"
+              }
+            ]
+          },
+          "recipe": true,
+          "note": "the primary nav is `hidden` in the initial DOM, so no engine sees two unlabeled navigation landmarks"
+        },
+        {
+          "id": "orchard-disclosure",
+          "rule": "disclosure-missing-aria-expanded",
+          "class": "not_scannable",
+          "file": "src/partials/header.liquid",
+          "line": 6,
+          "anchor": "<button class=\"disc-btn\"",
+          "scope": {
+            "file": "src/partials/header.liquid",
+            "startLine": 5,
+            "endLine": 7
+          },
+          "designLock": true,
+          "element": {
+            "selector": ".disc-btn",
+            "html": "<button class=\"disc-btn\" type=\"button\" aria-controls=\"products-panel\">"
+          },
+          "evidence": [
+            "Control opens a panel but does not expose aria-expanded; the toggle script already updates it"
+          ],
+          "expectedFix": {
+            "edits": [
+              {
+                "path": "src/partials/header.liquid",
+                "find": "aria-controls=\"products-panel\">Products",
+                "replace": "aria-controls=\"products-panel\" aria-expanded=\"false\">Products"
+              }
+            ]
+          },
+          "recipe": true,
+          "note": "the disclosure button sits inside the nav that is `hidden` in the initial DOM, so the scanner never sees it"
+        }
+      ],
+      "wrongFixes": [
+        {
+          "id": "orchard-remove-button",
+          "defect": "orchard-button-name",
+          "kind": "remove-element",
+          "why": "button-name \"fixed\" by deleting the menu button",
+          "expect": [
+            "G3"
+          ],
+          "edits": [
+            {
+              "path": "src/partials/header.liquid",
+              "find": "  <button class=\"menu-btn\" id=\"menu-btn\" type=\"button\" aria-controls=\"primary-nav\" aria-expanded=\"false\"><span aria-hidden=\"true\">Menu</span><span class=\"menu-icon\"></span></button>\n",
+              "replace": ""
+            }
+          ]
+        },
+        {
+          "id": "orchard-aria-hidden-button",
+          "defect": "orchard-button-name",
+          "kind": "aria-hidden-focusable",
+          "why": "the focusable menu button is hidden from assistive technology instead of named",
+          "expect": [
+            "G1"
+          ],
+          "needsScanner": true,
+          "edits": [
+            {
+              "path": "src/partials/header.liquid",
+              "find": "aria-expanded=\"false\"><span aria-hidden",
+              "replace": "aria-expanded=\"false\" aria-hidden=\"true\"><span aria-hidden"
+            }
+          ]
+        },
+        {
+          "id": "orchard-rename-id",
+          "defect": "orchard-button-name",
+          "kind": "rename-script-id",
+          "why": "label added but the id the toggle script looks up is renamed (script throws on load)",
+          "expect": [
+            "G6"
+          ],
+          "edits": [
+            {
+              "path": "src/partials/header.liquid",
+              "find": "id=\"menu-btn\" type=\"button\" aria-controls=\"primary-nav\" aria-expanded=\"false\"><span aria-hidden",
+              "replace": "id=\"menu-button\" type=\"button\" aria-controls=\"primary-nav\" aria-expanded=\"false\" aria-label=\"Menu\"><span aria-hidden"
+            }
+          ]
+        },
+        {
+          "id": "orchard-heavy-script",
+          "defect": "orchard-button-name",
+          "kind": "heavy-script",
+          "why": "correct aria-label plus an inline script that blocks the main thread for 800 ms",
+          "expect": [
+            "G7"
+          ],
+          "needsPerf": true,
+          "edits": [
+            {
+              "path": "src/partials/header.liquid",
+              "find": "aria-expanded=\"false\"><span aria-hidden",
+              "replace": "aria-expanded=\"false\" aria-label=\"Menu\"><script>for (var t = Date.now(); Date.now() - t < 800;) {}</script><span aria-hidden"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "harbor-doc",
+      "dir": "sites/harbor-doc",
+      "routes": [
+        "/"
+      ],
+      "siteLang": "en",
+      "defects": [
+        {
+          "id": "harbor-viewport",
+          "rule": "meta-viewport",
+          "class": "fixable",
+          "file": "src/pages/index.liquid",
+          "line": 5,
+          "anchor": "name=\"viewport\"",
+          "scope": {
+            "file": "src/pages/index.liquid",
+            "startLine": 4,
+            "endLine": 6
+          },
+          "designLock": true,
+          "element": {
+            "selector": "meta[name=viewport]",
+            "html": "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no\">"
+          },
+          "evidence": [
+            "Zooming and scaling must not be disabled"
+          ],
+          "expectedFix": {
+            "edits": [
+              {
+                "path": "src/pages/index.liquid",
+                "find": "initial-scale=1, maximum-scale=1, user-scalable=no\"",
+                "replace": "initial-scale=1\""
+              }
+            ]
+          },
+          "recipe": true
+        },
+        {
+          "id": "harbor-lang",
+          "rule": "html-has-lang",
+          "class": "fixable",
+          "file": "src/pages/index.liquid",
+          "line": 2,
+          "anchor": "<html>",
+          "scope": {
+            "file": "src/pages/index.liquid"
+          },
+          "designLock": true,
+          "element": {
+            "selector": "html",
+            "html": "<html>"
+          },
+          "evidence": [
+            "<html> element must have a lang attribute"
+          ],
+          "expectedFix": {
+            "edits": [
+              {
+                "path": "src/pages/index.liquid",
+                "find": "<html>",
+                "replace": "<html lang=\"en\">"
+              }
+            ]
+          },
+          "recipe": true
+        },
+        {
+          "id": "harbor-title",
+          "rule": "document-title",
+          "class": "fixable",
+          "file": "src/pages/index.liquid",
+          "line": 3,
+          "anchor": "<head>",
+          "scope": {
+            "file": "src/pages/index.liquid"
+          },
+          "designLock": true,
+          "element": {
+            "selector": "head",
+            "html": "<head>"
+          },
+          "evidence": [
+            "Documents must have a <title> element"
+          ],
+          "expectedFix": {
+            "edits": [
+              {
+                "path": "src/pages/index.liquid",
+                "find": "  <link rel=\"stylesheet\" href=\"/site.css\">\n</head>",
+                "replace": "  <link rel=\"stylesheet\" href=\"/site.css\">\n  <title>Harbor news</title>\n</head>"
+              }
+            ]
+          },
+          "recipe": true
+        },
+        {
+          "id": "harbor-skip-link",
+          "rule": "skip-link-missing",
+          "class": "fixable",
+          "file": "src/pages/index.liquid",
+          "line": 8,
+          "anchor": "<body>",
+          "scope": {
+            "file": "src/pages/index.liquid"
+          },
+          "designLock": true,
+          "element": {
+            "selector": "body",
+            "html": "<body>"
+          },
+          "evidence": [
+            "Page has no skip link to the main content"
+          ],
+          "documented": [
+            "a[href=\"#main\"]"
+          ],
+          "expectedFix": {
+            "edits": [
+              {
+                "path": "src/pages/index.liquid",
+                "find": "<body>\n",
+                "replace": "<body>\n<a href=\"#main\" class=\"sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:underline\">Skip to main content</a>\n"
+              }
+            ]
+          },
+          "recipe": true
+        },
+        {
+          "id": "harbor-image-alt",
+          "rule": "image-alt",
+          "class": "fixable",
+          "file": "src/pages/index.liquid",
+          "line": 13,
+          "anchor": "<img src=\"/pic.svg\"",
+          "scope": {
+            "file": "src/pages/index.liquid",
+            "startLine": 12,
+            "endLine": 14
+          },
+          "designLock": true,
+          "element": {
+            "selector": ".photo img",
+            "html": "<img src=\"/pic.svg\" width=\"320\" height=\"120\">"
+          },
+          "evidence": [
+            "Images must have alternate text"
+          ],
+          "expectedFix": {
+            "edits": [
+              {
+                "path": "src/pages/index.liquid",
+                "find": "<img src=\"/pic.svg\" width=\"320\" height=\"120\">",
+                "replace": "<img src=\"/pic.svg\" width=\"320\" height=\"120\" alt=\"Boats waiting at the harbor wall\">"
+              }
+            ]
+          },
+          "recipe": true
+        },
+        {
+          "id": "harbor-noopener",
+          "rule": "link-target-blank-rel",
+          "class": "not_scannable",
+          "file": "src/pages/index.liquid",
+          "line": 16,
+          "anchor": "target=\"_blank\"",
+          "scope": {
+            "file": "src/pages/index.liquid",
+            "startLine": 15,
+            "endLine": 17
+          },
+          "designLock": true,
+          "element": {
+            "selector": "p a",
+            "html": "<a href=\"https://example.org/tides\" target=\"_blank\">"
+          },
+          "evidence": [
+            "Link opens a new tab without rel=\"noopener\""
+          ],
+          "expectedFix": {
+            "edits": [
+              {
+                "path": "src/pages/index.liquid",
+                "find": "target=\"_blank\">Tide",
+                "replace": "target=\"_blank\" rel=\"noopener\">Tide"
+              }
+            ]
+          },
+          "recipe": true,
+          "note": "rel noopener is a security practice; no accessibility rule of the scanner covers it"
+        }
+      ],
+      "wrongFixes": [
+        {
+          "id": "harbor-skip-link-visible",
+          "defect": "harbor-skip-link",
+          "kind": "skip-link-visible-at-rest",
+          "why": "skip link added as a plain visible link, pushing the page down",
+          "expect": [
+            "G3",
+            "G4"
+          ],
+          "edits": [
+            {
+              "path": "src/pages/index.liquid",
+              "find": "<body>\n",
+              "replace": "<body>\n<a href=\"#main\">Skip to main content</a>\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "meadow-loops",
+      "dir": "sites/meadow-loops",
+      "routes": [
+        "/"
+      ],
+      "defects": [
+        {
+          "id": "meadow-duplicate-id",
+          "rule": "duplicate-id-referenced",
+          "class": "fixable",
+          "file": "src/pages/index.liquid",
+          "line": 17,
+          "anchor": "<div id=\"faq-panel\"",
+          "scope": {
+            "file": "src/pages/index.liquid",
+            "startLine": 16,
+            "endLine": 18
+          },
+          "loop": true,
+          "designLock": true,
+          "element": {
+            "selector": "#faq-panel",
+            "html": "<div id=\"faq-panel\" class=\"faq-panel\" hidden>"
+          },
+          "evidence": [
+            "id \"faq-panel\" is used by 3 elements and referenced by aria-controls"
+          ],
+          "documented": [
+            ".faq-panel"
+          ],
+          "expectedFix": {
+            "edits": [
+              {
+                "path": "src/pages/index.liquid",
+                "find": "aria-controls=\"faq-panel\">{{ faq.q }}",
+                "replace": "aria-controls=\"faq-panel-{{ forloop.index }}\">{{ faq.q }}"
+              },
+              {
+                "path": "src/pages/index.liquid",
+                "find": "<div id=\"faq-panel\" class",
+                "replace": "<div id=\"faq-panel-{{ forloop.index }}\" class"
+              }
+            ]
+          },
+          "recipe": true
+        }
+      ],
+      "wrongFixes": [
+        {
+          "id": "meadow-hardcoded-ids",
+          "defect": "meadow-duplicate-id",
+          "kind": "hard-code-id-in-loop",
+          "why": "ids hard-coded to \"-1\": still duplicated in every iteration",
+          "expect": [
+            "G1"
+          ],
+          "needsScanner": true,
+          "edits": [
+            {
+              "path": "src/pages/index.liquid",
+              "find": "aria-controls=\"faq-panel\">{{ faq.q }}",
+              "replace": "aria-controls=\"faq-panel-1\">{{ faq.q }}"
+            },
+            {
+              "path": "src/pages/index.liquid",
+              "find": "<div id=\"faq-panel\" class",
+              "replace": "<div id=\"faq-panel-1\" class"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lantern-forms",
+      "dir": "sites/lantern-forms",
+      "routes": [
+        "/"
+      ],
+      "defects": [
+        {
+          "id": "lantern-label",
+          "rule": "label",
+          "class": "fixable",
+          "file": "src/pages/index.liquid",
+          "line": 15,
+          "anchor": "name=\"first_name\"",
+          "scope": {
+            "file": "src/pages/index.liquid",
+            "startLine": 14,
+            "endLine": 16
+          },
+          "designLock": true,
+          "element": {
+            "selector": "#first",
+            "html": "<input type=\"text\" id=\"first\" name=\"first_name\" placeholder=\"First name\" data-pdk-field=\"first\">"
+          },
+          "evidence": [
+            "Form element has no label; placeholder is not a label"
+          ],
+          "expectedFix": {
+            "edits": [
+              {
+                "path": "src/pages/index.liquid",
+                "find": "      <input type=\"text\" id=\"first\"",
+                "replace": "      <label class=\"sr-only\" for=\"first\">First name</label>\n      <input type=\"text\" id=\"first\""
+              }
+            ]
+          },
+          "recipe": false
+        },
+        {
+          "id": "lantern-autocomplete",
+          "rule": "autocomplete-valid",
+          "class": "not_scannable",
+          "file": "src/pages/index.liquid",
+          "line": 18,
+          "anchor": "name=\"phone\"",
+          "scope": {
+            "file": "src/pages/index.liquid",
+            "startLine": 17,
+            "endLine": 19
+          },
+          "designLock": true,
+          "element": {
+            "selector": "#phone",
+            "html": "<input type=\"tel\" id=\"phone\" name=\"phone\" aria-label=\"Phone\">"
+          },
+          "evidence": [
+            "Input collects a telephone number without an autocomplete attribute"
+          ],
+          "expectedFix": {
+            "edits": [
+              {
+                "path": "src/pages/index.liquid",
+                "find": "aria-label=\"Phone\">",
+                "replace": "aria-label=\"Phone\" autocomplete=\"tel\">"
+              }
+            ]
+          },
+          "recipe": true,
+          "note": "a missing autocomplete attribute is not a WCAG failure; autocomplete-valid only judges present values"
+        },
+        {
+          "id": "lantern-label-in-name",
+          "rule": "label-content-name-mismatch",
+          "class": "fixable",
+          "file": "src/pages/index.liquid",
+          "line": 20,
+          "anchor": "class=\"send\"",
+          "scope": {
+            "file": "src/pages/index.liquid",
+            "startLine": 19,
+            "endLine": 21
+          },
+          "designLock": true,
+          "element": {
+            "selector": ".send",
+            "html": "<button type=\"submit\" class=\"send\" aria-label=\"Send\">"
+          },
+          "visibleText": "Submit application",
+          "accessibleName": "Send",
+          "evidence": [
+            "Visible label \"Submit application\" is not part of the accessible name \"Send\""
+          ],
+          "expectedFix": {
+            "edits": [
+              {
+                "path": "src/pages/index.liquid",
+                "find": "<button type=\"submit\" class=\"send\" aria-label=\"Send\">",
+                "replace": "<button type=\"submit\" class=\"send\">"
+              }
+            ]
+          },
+          "recipe": false
+        }
+      ],
+      "wrongFixes": [
+        {
+          "id": "lantern-strip-pdk",
+          "defect": "lantern-label",
+          "kind": "strip-data-pdk",
+          "why": "label supplied, but the data-pdk-field attribute is stripped",
+          "expect": [
+            "G2"
+          ],
+          "edits": [
+            {
+              "path": "src/pages/index.liquid",
+              "find": "placeholder=\"First name\" data-pdk-field=\"first\">",
+              "replace": "placeholder=\"First name\" aria-label=\"First name\">"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "quarry-content",
+      "dir": "sites/quarry-content",
+      "routes": [
+        "/"
+      ],
+      "defects": [
+        {
+          "id": "quarry-heading-order",
+          "rule": "heading-order",
+          "class": "fixable",
+          "file": "src/pages/index.liquid",
+          "line": 16,
+          "anchor": "<h3 class=\"card-title\">",
+          "scope": {
+            "file": "src/pages/index.liquid",
+            "startLine": 15,
+            "endLine": 17
+          },
+          "designLock": true,
+          "element": {
+            "selector": ".card-title",
+            "html": "<h3 class=\"card-title\">"
+          },
+          "evidence": [
+            "Heading levels should only increase by one: h1 is followed by h3"
+          ],
+          "documented": [
+            ".card-title"
+          ],
+          "expectedFix": {
+            "edits": [
+              {
+                "path": "src/pages/index.liquid",
+                "find": "<h3 class=\"card-title\">Granite</h3>",
+                "replace": "<h2 class=\"card-title\">Granite</h2>"
+              }
+            ]
+          },
+          "recipe": false
+        },
+        {
+          "id": "quarry-decorative-alt",
+          "rule": "image-alt",
+          "class": "not_scannable",
+          "file": "src/pages/index.liquid",
+          "line": 15,
+          "anchor": "class=\"card-img\"",
+          "scope": {
+            "file": "src/pages/index.liquid",
+            "startLine": 14,
+            "endLine": 16
+          },
+          "designLock": true,
+          "element": {
+            "selector": ".card-img",
+            "html": "<img class=\"card-img\" src=\"/pic.svg\" width=\"64\" height=\"64\" aria-hidden=\"true\">"
+          },
+          "evidence": [
+            "Decorative image (aria-hidden) has no alt attribute"
+          ],
+          "expectedFix": {
+            "edits": [
+              {
+                "path": "src/pages/index.liquid",
+                "find": "height=\"64\" aria-hidden=\"true\">",
+                "replace": "height=\"64\" aria-hidden=\"true\" alt=\"\">"
+              }
+            ]
+          },
+          "recipe": true,
+          "note": "an aria-hidden image without alt is not reported by any engine"
+        },
+        {
+          "id": "quarry-target-size",
+          "rule": "target-size",
+          "class": "fixable",
+          "file": "src/styles/site.css",
+          "line": 6,
+          "anchor": ".social { display: flex;",
+          "scope": {
+            "file": "src/styles/site.css",
+            "startLine": 5,
+            "endLine": 7
+          },
+          "designLock": true,
+          "element": {
+            "selector": ".social-link",
+            "html": "<a class=\"social-link\" href=\"/s/one\" aria-label=\"First profile\">"
+          },
+          "evidence": [
+            "Target is 16 x 16 CSS px and closer than 24px to its neighbours"
+          ],
+          "targets": [
+            ".social"
+          ],
+          "expectedFix": {
+            "edits": [
+              {
+                "path": "src/styles/site.css",
+                "find": ".social { display: flex; gap: 4px;",
+                "replace": ".social { display: flex; gap: 8px;"
+              }
+            ]
+          },
+          "recipe": false
+        }
+      ],
+      "wrongFixes": [
+        {
+          "id": "quarry-widen-padding",
+          "defect": "quarry-target-size",
+          "kind": "padding-layout-shift",
+          "why": "targets enlarged with padding: the paragraph below moves",
+          "expect": [
+            "G3"
+          ],
+          "edits": [
+            {
+              "path": "src/styles/site.css",
+              "find": ".social-link { display: block; width: 16px; height: 16px;",
+              "replace": ".social-link { display: block; width: 16px; height: 16px; padding: 12px;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "willow-focus",
+      "dir": "sites/willow-focus",
+      "routes": [
+        "/"
+      ],
+      "defects": [
+        {
+          "id": "willow-focus-visible",
+          "rule": "focus-indicator-removed",
+          "class": "fixable",
+          "file": "src/styles/site.css",
+          "line": 3,
+          "anchor": "a:focus, button:focus",
+          "scope": {
+            "file": "src/styles/site.css",
+            "startLine": 2,
+            "endLine": 4
+          },
+          "designLock": false,
+          "element": {
+            "selector": ".cta",
+            "html": "<button type=\"button\" class=\"cta\">"
+          },
+          "evidence": [
+            "Keyboard focus indicator is removed by outline: none and not replaced"
+          ],
+          "expectedFix": {
+            "edits": [
+              {
+                "path": "src/styles/site.css",
+                "find": "a:focus, button:focus { outline: none; }",
+                "replace": "a:focus-visible, button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }"
+              }
+            ]
+          },
+          "recipe": false
+        },
+        {
+          "id": "willow-skip-focus",
+          "rule": "focus-invisible-stop",
+          "class": "fixable",
+          "file": "src/styles/site.css",
+          "line": 2,
+          "anchor": ".skip-link {",
+          "scope": {
+            "file": "src/styles/site.css",
+            "startLine": 1,
+            "endLine": 3
+          },
+          "designLock": true,
+          "element": {
+            "selector": ".skip-link",
+            "html": "<a class=\"skip-link\" href=\"#main\">"
+          },
+          "evidence": [
+            "Skip link takes focus but is never shown"
+          ],
+          "expectedFix": {
+            "edits": [
+              {
+                "path": "src/styles/site.css",
+                "find": ".skip-link { position: absolute; left: -9999px; top: 0; }",
+                "replace": ".skip-link { position: absolute; left: -9999px; top: 0; }\n.skip-link:focus { left: 8px; top: 8px; }"
+              }
+            ]
+          },
+          "recipe": false
+        },
+        {
+          "id": "willow-contrast",
+          "rule": "color-contrast",
+          "class": "needs_design_decision",
+          "file": "src/styles/site.css",
+          "line": 7,
+          "anchor": ".muted {",
+          "scope": {
+            "file": "src/styles/site.css",
+            "startLine": 6,
+            "endLine": 7
+          },
+          "designLock": true,
+          "element": {
+            "selector": ".muted",
+            "html": "<p class=\"muted\">"
+          },
+          "evidence": [
+            "Element has insufficient colour contrast of 2.32:1, foreground color: #aaaaaa, background color: #ffffff, expected contrast ratio of 4.5:1"
+          ],
+          "expectedFix": null,
+          "recipe": false,
+          "remaining": "needs_design_decision"
+        }
+      ],
+      "wrongFixes": [
+        {
+          "id": "willow-colour-change",
+          "defect": "willow-contrast",
+          "kind": "change-colour",
+          "why": "contrast \"fixed\" by darkening the design colour",
+          "expect": [
+            "G2",
+            "G5"
+          ],
+          "edits": [
+            {
+              "path": "src/styles/site.css",
+              "find": "color: #aaa;",
+              "replace": "color: #555;"
+            }
+          ]
+        },
+        {
+          "id": "willow-skip-display-none",
+          "defect": "willow-skip-focus",
+          "kind": "skip-link-display-none",
+          "why": "skip link removed from the tab order with display none",
+          "expect": [
+            "G6"
+          ],
+          "edits": [
+            {
+              "path": "src/styles/site.css",
+              "find": ".skip-link { position: absolute; left: -9999px; top: 0; }",
+              "replace": ".skip-link { position: absolute; left: -9999px; top: 0; display: none; }"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

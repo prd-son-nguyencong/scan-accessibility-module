@@ -84,7 +84,7 @@ async function runScanOnlyFixRoute(root, name, target) {
   });
   const reportPath = join(root, `${name}.json`);
   writeFileSync(reportPath, JSON.stringify(report), 'utf8');
-  return runFixSubcommand(['--report', reportPath, '--source', root]);
+  return runFixSubcommand(['--report', reportPath, '--source', root, '--fix-mode', 'cis']);
 }
 
 test('safety gate integration: real FS snapshots and rejection matrix', async () => {

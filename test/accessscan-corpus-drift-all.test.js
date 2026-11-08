@@ -303,13 +303,13 @@ test('drift artifact payload and summary stay neutral without source URLs or raw
   });
 
   const serialized = JSON.stringify(payload);
-  assert.doesNotMatch(serialized, /sourceUrl|paradox\.ai|mchire\.com|outerHTML/i);
+  assert.doesNotMatch(serialized, /sourceUrl|paradox\.ai|outerHTML/i);
   assert.equal(payload.mode, 'manifest-all');
   assert.equal(payload.observedExitCode, 1);
 
   const summary = buildDriftHumanSummary(payload);
   assert.match(summary, /site-728/);
-  assert.doesNotMatch(summary, /sourceUrl|paradox\.ai|mchire\.com/i);
+  assert.doesNotMatch(summary, /sourceUrl|paradox\.ai/i);
 
   const sanitizedCase = serializeDriftCaseResult({
     caseId: 'site-728',

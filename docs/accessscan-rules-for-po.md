@@ -1,7 +1,7 @@
 # accessScan — Complete Rule Reference
 
 **For:** Product Owners & Developers
-**Total Rules:** 83
+**Total Rules:** 84 active + 1 legacy
 **Categories:** 11
 **Standard:** WCAG 2.0 / 2.1 / 2.2 (Levels A, AA, AAA + Best Practices)
 
@@ -45,7 +45,7 @@ WCAG versions: 2.1 + 2.0
 **Passing example:**
 
 ```html
-<img src="...hardees-logo.webp" alt="Hardee's" class="h-[5.6rem] md:h-[6.7rem] w-auto">
+<img src="...brand-logo.webp" alt="Example Restaurants" class="h-[5.6rem] md:h-[6.7rem] w-auto">
 ```
 
 ---
@@ -251,8 +251,8 @@ provides structural semantics. This avoids reporting status badges such as
 
 ```html
 <header id="header" class="top-0 left-0 fixed w-full z-100">
-  <a href="/" aria-label="Hardee's Careers Home">
-    <img src="...hardees-logo.webp" alt="Hardee's">
+  <a href="/" aria-label="Example Restaurants Careers Home">
+    <img src="...brand-logo.webp" alt="Example Restaurants">
   </a>
 </header>
 ```
@@ -280,7 +280,7 @@ provides structural semantics. This avoids reporting status badges such as
 
 ```html
 <div class="shrink-0 rounded-[1.6rem] overflow-hidden" style="width: 33.2rem; height: 31.2rem">
-  <img src="...marquee-1.webp" alt="Hardee's team member handing a bag to a customer" class="size-full object-cover">
+  <img src="...marquee-1.webp" alt="Example Restaurants team member handing a bag to a customer" class="size-full object-cover">
 </div>
 ```
 
@@ -364,7 +364,7 @@ provides structural semantics. This avoids reporting status badges such as
 ```html
 <figure>
   <img src="photo.jpg" alt="Team photo">
-  <figcaption>The Hardee's crew at the annual team meeting</figcaption>
+  <figcaption>The Example Restaurants crew at the annual team meeting</figcaption>
 </figure>
 ```
 
@@ -553,8 +553,8 @@ WCAG versions: 2.2 + 2.0 + Best Practices
 **Passing example:**
 
 ```html
-<a href="/" aria-label="Hardee's Careers Home" class="current">
-  <img src="...hardees-logo.webp" alt="Hardee's">
+<a href="/" aria-label="Example Restaurants Careers Home" class="current">
+  <img src="...brand-logo.webp" alt="Example Restaurants">
 </a>
 ```
 
@@ -928,8 +928,8 @@ WCAG version: 2.0
 **Passing example:**
 
 ```html
-<input id="filter-option" type="checkbox" aria-labelledby="filter-label filter-count" value="Hardees Test WD">
-<span id="filter-label">Hardees Test WD</span>
+<input id="filter-option" type="checkbox" aria-labelledby="filter-label filter-count" value="Example Test WD">
+<span id="filter-label">Example Test WD</span>
 <span id="filter-count">12</span>
 ```
 
@@ -1339,7 +1339,7 @@ controls and an action; no site selector or fixed element count is used.
 ```html
 <footer id="footer" class="bg-black overflow-hidden">
   <div class="px-[2.4rem] py-[4.8rem]">
-    <p>&copy; 2026 Boddie-Noell Enterprises</p>
+    <p>&copy; 2026 Example Enterprises</p>
   </div>
 </footer>
 ```
@@ -1367,7 +1367,7 @@ controls and an action; no site selector or fixed element count is used.
 
 ```html
 <footer id="footer" class="bg-black overflow-hidden">
-  <p>&copy; 2026 Boddie-Noell Enterprises</p>
+  <p>&copy; 2026 Example Enterprises</p>
   <nav aria-label="Footer navigation">...</nav>
 </footer>
 ```
@@ -1395,7 +1395,7 @@ controls and an action; no site selector or fixed element count is used.
 
 ```html
 <footer id="footer" aria-label="Site footer">
-  <p>&copy; 2026 Boddie-Noell Enterprises</p>
+  <p>&copy; 2026 Example Enterprises</p>
 </footer>
 ```
 
@@ -1504,7 +1504,7 @@ WCAG version: 2.0
 **Passing example:**
 
 ```html
-<img src="...hero-header.webp" alt="Hardee's team member proudly serving at the restaurant">
+<img src="...hero-header.webp" alt="Example Restaurants team member proudly serving at the restaurant">
 ```
 
 ---
@@ -1527,7 +1527,7 @@ WCAG version: 2.0
 **Passing example:**
 
 ```html
-<img src="...hero-header.webp" alt="Hardee's team member proudly serving at the restaurant">
+<img src="...hero-header.webp" alt="Example Restaurants team member proudly serving at the restaurant">
 ```
 
 ---
@@ -1550,7 +1550,7 @@ WCAG version: 2.0
 **Passing example:**
 
 ```html
-<img src="...hardees-logo.webp" alt="Hardee's">
+<img src="...brand-logo.webp" alt="Example Restaurants">
 ```
 
 ---
@@ -1744,8 +1744,8 @@ WCAG versions: 2.0 + Best Practices
 
 ```html
 <head>
-  <title>Careers at Hardee's</title>
-  <meta name="description" content="Explore crew member, management, and service technician positions at Hardee's restaurants.">
+  <title>Careers at Example Restaurants</title>
+  <meta name="description" content="Explore crew member, management, and service technician positions at Example Restaurants restaurants.">
 </head>
 ```
 
@@ -1843,7 +1843,7 @@ WCAG versions: 2.0 + Best Practices
 **Passing example:**
 
 ```html
-<title>Careers at Hardee's | Boddie-Noell Enterprises</title>
+<title>Careers at Example Restaurants | Example Enterprises</title>
 ```
 
 ---
@@ -1871,7 +1871,7 @@ WCAG versions: 2.0 + Best Practices
 **Passing example:**
 
 ```html
-<title>Careers at Hardee's — Crew, Management & Technician Jobs</title>
+<title>Careers at Example Restaurants — Crew, Management & Technician Jobs</title>
 ```
 
 ---
@@ -2376,7 +2376,7 @@ WCAG version: 2.0
 |---|----------|-------|---------------|
 | 1 | General | 14 | 2.1, 2.0, Best Practices |
 | 2 | Interactive Content | 18 | 2.2, 2.0, Best Practices |
-| 3 | Forms | 6 | 2.0 |
+| 3 | Forms | 7 | 2.0 |
 | 4 | Landmarks | 10 | 2.0, Best Practices |
 | 5 | Graphics | 6 | 2.0 |
 | 6 | Dragging Alternative | 1 | 2.2 |
@@ -2385,7 +2385,7 @@ WCAG version: 2.0
 | 9 | Metadata | 8 | 2.0, Best Practices |
 | 10 | Tabs | 9 | 2.0 |
 | 11 | Tables | 7 | 2.0 |
-| | **Total** | **82 active + 1 legacy** | |
+| | **Total** | **84 active + 1 legacy** | |
 
 ---
 

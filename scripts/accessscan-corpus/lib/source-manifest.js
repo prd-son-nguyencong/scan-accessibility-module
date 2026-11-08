@@ -144,6 +144,7 @@ export function loadSourceManifest(manifestPath = SOURCE_MANIFEST_PATH, options 
   }
 
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  applyLocalOverrides(manifest, manifestPath);
   const validation = validateSourceManifest(manifest, options);
   if (!validation.ok) {
     throw new CorpusToolingError(
@@ -154,6 +155,23 @@ export function loadSourceManifest(manifestPath = SOURCE_MANIFEST_PATH, options 
   }
 
   return validation.manifest;
+}
+
+/**
+ * Real label/sourceUrl per entry id come from the gitignored local manifest, when present.
+ * @param {unknown} manifest
+ * @param {string} manifestPath
+ */
+function applyLocalOverrides(manifest, manifestPath) {
+  const localPath = manifestPath.replace(/\.json$/, '.local.json');
+  if (!isObject(manifest) || !Array.isArray(manifest.entries) || !existsSync(localPath)) return;
+  const { entries: overrides } = JSON.parse(readFileSync(localPath, 'utf8'));
+  if (!isObject(overrides)) return;
+  for (const entry of manifest.entries) {
+    const { label, sourceUrl } = isObject(entry) && isObject(overrides[entry.id]) ? overrides[entry.id] : {};
+    if (label) entry.label = label;
+    if (sourceUrl) entry.sourceUrl = sourceUrl;
+  }
 }
 
 /**

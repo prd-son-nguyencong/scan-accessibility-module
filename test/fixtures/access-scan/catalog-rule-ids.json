@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0.0",
-  "activeRuleCount": 83,
+  "activeRuleCount": 84,
   "legacyNonEmittingRuleIds": ["AriaLabelledbyContentMismatch"],
   "ruleIds": [
     "AltMisuse",
@@ -21,6 +21,7 @@
     "FigureDiscernible",
     "FocusNotObscuredFooter",
     "FormContextChangeWarning",
+    "FormFieldDiscernible",
     "FormSubmitButtonMismatch",
     "HtmlLang",
     "HtmlLangValid",

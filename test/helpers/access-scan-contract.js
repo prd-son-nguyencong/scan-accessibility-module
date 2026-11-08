@@ -22,7 +22,7 @@ export const GOLDEN_CATALOG_SCHEMA_VERSION = '1.0.0';
 /** Readable in legacy reports and reporter copy; not emitted by current scanners. */
 export const LEGACY_NON_EMITTING_RULE_ID = 'AriaLabelledbyContentMismatch';
 
-export const ACTIVE_RULE_COUNT = 83;
+export const ACTIVE_RULE_COUNT = 84;
 export const CATALOG_RULE_COUNT = ACTIVE_RULE_COUNT + 1;
 
 export const STICKY_HEADER_DUAL_CATEGORY_CONTRACT = Object.freeze({
@@ -72,7 +72,7 @@ export const VIOLATION_FIELD_CONTRACT = Object.freeze({
  * V1 projection intentionally keeps the base 3 element keys only.
  */
 export const ENGINE_VIOLATION_FIELD_CONTRACT = Object.freeze({
-  topLevel: [...VIOLATION_FIELD_CONTRACT.topLevel, 'evidence'],
+  topLevel: [...VIOLATION_FIELD_CONTRACT.topLevel, 'evidence', 'kind', 'verdict'],
   element: [...VIOLATION_FIELD_CONTRACT.element, 'framePath', 'shadowPath'],
   source: [...VIOLATION_FIELD_CONTRACT.source],
   fix: [...VIOLATION_FIELD_CONTRACT.fix],
@@ -98,6 +98,12 @@ export const V1_VIOLATION_FIELD_CONTRACT = Object.freeze({
     'fix',
     'evidence',
     'manualChecks',
+    'origin',
+    'ownership',
+    'kind',
+    'verdict',
+    'enginesAgreeing',
+    'agreement',
   ],
   element: ['outerHTML', 'selector', 'scanId'],
   source: [
@@ -111,6 +117,7 @@ export const V1_VIOLATION_FIELD_CONTRACT = Object.freeze({
     'preimageRange',
     'routeDependencies',
     'url',
+    'traceReason',
   ],
   fix: ['deterministic', 'hint', 'patch'],
   evidence: ['message', 'observations'],

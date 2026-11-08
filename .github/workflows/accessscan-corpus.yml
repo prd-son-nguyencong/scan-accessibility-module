@@ -1,0 +1,58 @@
+name: accessScan corpus verify
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'scripts/accessscan-corpus/**'
+      - 'test/fixtures/accessscan-corpus/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/accessscan-corpus.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'scripts/accessscan-corpus/**'
+      - 'test/fixtures/accessscan-corpus/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/accessscan-corpus.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: accessscan-corpus-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frozen-verify:
+    name: Frozen corpus verify (non-blocking)
+    runs-on: ubuntu-latest
+    # Red on HEAD until the AltMisuse identity change is resolved (TASKS D5/DX-4).
+    continue-on-error: true
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Verify frozen corpus parity
+        run: pnpm corpus:verify

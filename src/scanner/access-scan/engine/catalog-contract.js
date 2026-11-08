@@ -1,4 +1,4 @@
-export const ACTIVE_RULE_COUNT = 83;
+export const ACTIVE_RULE_COUNT = 84;
 export const LEGACY_READABLE_RULE_ID = 'AriaLabelledbyContentMismatch';
 export const CATALOG_RULE_COUNT = ACTIVE_RULE_COUNT + 1;
 

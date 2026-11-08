@@ -43,6 +43,12 @@ export async function activateDynamicContent(page, options = {}) {
         const sleep = (milliseconds) => new Promise((resolve) => {
           setTimeout(resolve, milliseconds);
         });
+        // IntersectionObservers and scroll listeners run on rendered frames; on a loaded machine a fixed sleep can
+        // elapse without one. Wait for two frames (capped: hidden pages never paint) before the dwell time.
+        const frames = () => Promise.race([
+          new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+          sleep(1000),
+        ]);
         const scrollInstantly = (top) => {
           try {
             window.scrollTo({ left: originalX, top, behavior: 'instant' });
@@ -70,13 +76,16 @@ export async function activateDynamicContent(page, options = {}) {
           position = Math.min(maxScroll, position + stepSize);
           scrollInstantly(position);
           steps += 1;
+          await frames();
           await sleep(activation.stepDelayMs);
         }
 
         const finalHeight = Math.max(root.scrollHeight, document.body?.scrollHeight || 0);
         scrollInstantly(Math.max(0, finalHeight - viewportHeight));
+        await frames();
         await sleep(activation.settleMs);
         scrollInstantly(originalY);
+        await frames();
         await sleep(activation.settleMs);
 
         return { activated: true, scrollCount: steps + 2 };

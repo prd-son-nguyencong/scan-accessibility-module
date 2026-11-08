@@ -1,11 +1,84 @@
 import { AxeBuilder } from '@axe-core/playwright';
-import { getBrowser, newPage, resilientGoto } from './browser.js';
+import { acquirePage } from './session.js';
 import { mapViolationToSource } from '../tracer/partial-map.js';
 import { isTemplateDevArtifact } from '../utils/third-party.js';
 import { DEFAULT_AXE_VIEWPORTS } from '../utils/config.js';
+import { PLATFORM_ANCESTOR_SELECTOR } from '../tracer/ownership.js';
+import { FREEZE_MOTION_CSS, resolveIncompleteContrast, settleMotion } from './pixel-contrast.js';
+
+/**
+ * Marks nodes the page owner cannot fix in source: inside a platform widget (`node.ownership = 'platform'`) or inside
+ * a cross-origin iframe (`'third-party'`). Best effort: a node it cannot resolve stays unmarked, i.e. `source`.
+ */
+export async function markNodeOwnership(page, results) {
+  const nodes = [...(results.violations || []), ...(results.incomplete || [])].flatMap((v) => v.nodes || []);
+  const targets = nodes.map((n) => (Array.isArray(n.target) ? n.target : []).filter((t) => typeof t === 'string'));
+  try {
+    const owners = await page.evaluate(({ targets, ancestors }) => targets.map(([first, ...rest]) => {
+      try {
+        const el = first && document.querySelector(first);
+        if (!el) return null;
+        if (rest.length) {
+          const src = el.getAttribute('src');
+          return src && new URL(src, location.href).origin !== location.origin ? 'third-party' : null;
+        }
+        return el.closest(ancestors) ? 'platform' : null;
+      } catch { return null; }
+    }), { targets, ancestors: PLATFORM_ANCESTOR_SELECTOR });
+    owners.forEach((owner, i) => { if (owner) nodes[i].ownership = owner; });
+  } catch { /* page gone or closed: leave unmarked */ }
+}
+
+const MAX_OPENED_PANELS = 4;
+
+/** Runs in the page: collapsed disclosure triggers (aria-expanded=false + aria-controls) whose controlled panel is not rendered now. */
+function collapsedPanelTriggers({ max }) {
+  const out = [];
+  for (const el of document.querySelectorAll('[aria-expanded="false"][aria-controls]')) {
+    if (out.length >= max) break;
+    const panel = document.getElementById((el.getAttribute('aria-controls') || '').split(/\s+/)[0]);
+    if (!panel || panel.contains(el) || el.disabled || !el.checkVisibility({ checkVisibilityCSS: true }) || panel.checkVisibility({ checkVisibilityCSS: true })) continue;
+    el.setAttribute('data-ada-panel-trigger', String(out.length));
+    out.push({ attr: String(out.length), panelId: panel.id });
+  }
+  return out;
+}
+
+/**
+ * A menu drawer is not rendered while closed, so axe never measures its text. Open each collapsed disclosure (max 4), run color-contrast
+ * inside the opened panel, merge the nodes into `results`, and close it again. Stops at the first panel it cannot restore.
+ * shortcut: color-contrast only, click-activated panels only (hover menus are not opened), upgrade to all rules if other rules show the same gap.
+ */
+export async function analyzeOpenedPanels(page, results) {
+  const triggers = await page.evaluate(collapsedPanelTriggers, { max: MAX_OPENED_PANELS }).catch(() => []);
+  for (const t of triggers) {
+    const sel = `[data-ada-panel-trigger="${t.attr}"]`;
+    const state = () => page.evaluate(({ sel, id }) => { const e = document.querySelector(sel); const p = document.getElementById(id); return { expanded: e?.getAttribute('aria-expanded'), shown: Boolean(p?.checkVisibility({ checkVisibilityCSS: true })) }; }, { sel, id: t.panelId });
+    try {
+      await page.locator(sel).first().click({ timeout: 1500 });
+      await page.waitForTimeout(400);
+      if (!(await state()).shown) { await page.locator(sel).first().click({ timeout: 1500 }).catch(() => {}); continue; }
+      const open = await new AxeBuilder({ page }).withRules(['color-contrast']).include(`#${t.panelId.replace(/([^\w-])/g, '\\$1')}`).analyze();
+      await markNodeOwnership(page, open);
+      await resolveIncompleteContrast(page, open).catch(() => {});
+      for (const kind of ['violations', 'incomplete']) {
+        for (const v of open[kind] || []) {
+          const into = (results[kind] ||= []).find((x) => x.id === v.id);
+          const known = new Set((into?.nodes || []).map((n) => JSON.stringify(n.target)));
+          const fresh = v.nodes.filter((n) => !known.has(JSON.stringify(n.target)));
+          if (!fresh.length) continue;
+          if (into) into.nodes.push(...fresh); else results[kind].push({ ...v, nodes: fresh });
+        }
+      }
+      await page.locator(sel).first().click({ timeout: 1500 }).catch(() => {});
+      await page.waitForTimeout(300);
+      if ((await state()).shown) break; // could not restore: later panels would be measured on a changed page
+    } catch { break; }
+    finally { await page.evaluate((a) => document.querySelector(`[data-ada-panel-trigger="${a}"]`)?.removeAttribute('data-ada-panel-trigger'), t.attr).catch(() => {}); }
+  }
+}
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'];
-const PAGE_TIMEOUT_MS = 60000;
 
 function axeNodeKey(node) {
   const target = node.target || [];
@@ -213,11 +286,12 @@ export function buildAxeEvidence(violation, node) {
     tags: [...(violation.tags || [])],
     impact: node.impact || violation.impact || null,
     help: violation.help || '',
-    helpUrl: violation.helpUrl || '',
+    helpUrl: String(violation.helpUrl || '').replace(/\?application=[^&#]*(?=#|$)/, ''), // axe appends a constant tracking query
     failureSummary: node.failureSummary || '',
     ruleGroupNodeCount: (violation.nodes || []).filter((item) => !item.devArtifact).length,
     viewports: [...(node.viewports || [])],
     ...(node.htmlSnapshots ? { htmlSnapshots: [...node.htmlSnapshots] } : {}),
+    ...(node.pixelContrast ? { pixelContrast: { ...node.pixelContrast } } : {}),
   };
 }
 
@@ -245,32 +319,62 @@ export function buildAxePageMetadata(axeResult) {
  *     tokens are the node's sole content
  */
 export async function scanPageWithAxe(pageUrl, config = {}, options = {}) {
-  const browser = await getBrowser();
   const configuredViewports = config.axe?.viewports;
   const viewports = Array.isArray(configuredViewports) && configuredViewports.length > 0
     ? configuredViewports
     : DEFAULT_AXE_VIEWPORTS;
-  const viewportResults = [];
-
-  for (const viewport of viewports) {
-    const page = await newPage(browser, {
+  const scanViewport = async (viewport) => {
+    // The shared page only serves its own viewport; others need a fresh context (resizing would disturb sibling layers).
+    const shared = options.page?.viewportSize();
+    const useShared = shared && shared.width === viewport.width && shared.height === viewport.height;
+    // options.warmPages: contexts already opened (per "WxH") by a caller that knew it would need them; each is used once.
+    const warmKey = `${viewport.width}x${viewport.height}`;
+    let warmed = useShared ? null : await options.warmPages?.get(warmKey);
+    options.warmPages?.delete(warmKey);
+    if (warmed?.failure) { await warmed.close(); warmed = null; }
+    const { page, close } = warmed || await acquirePage(pageUrl, {
+      ...options,
+      page: useShared ? options.page : undefined,
       viewport: { width: viewport.width, height: viewport.height },
     });
 
     try {
-      await resilientGoto(page, pageUrl, { timeout: PAGE_TIMEOUT_MS });
       await page.waitForTimeout(500);
 
       const skipRules = config.skipRules || [];
-      let builder = new AxeBuilder({ page }).withTags(WCAG_TAGS);
+      // A re-verify run (options.onlyRules) checks just the rules of the findings it confirms, not the whole rule set.
+      const onlyRules = options.onlyRules?.size ? [...options.onlyRules] : null;
+      let builder = new AxeBuilder({ page });
+      builder = onlyRules ? builder.withRules(onlyRules) : builder.withTags(WCAG_TAGS);
       if (skipRules.length > 0) builder = builder.disableRules(skipRules);
 
-      const results = await builder.analyze();
-      viewportResults.push({ viewport, results });
+      const timeoutMs = config.axe?.timeoutMs ?? 60000;
+      let timer;
+      // axe's colour-contrast check flakes on elements caught mid-transition: measure the resting state. Removed afterwards
+      // because the page may be shared with other layers.
+      const freeze = await page.addStyleTag({ content: FREEZE_MOTION_CSS }).catch(() => null);
+      await settleMotion(page); // CSS is frozen above; running Web Animations are finished too
+      const results = await Promise.race([
+        builder.analyze(),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(Object.assign(new Error(`axe timed out after ${timeoutMs}ms (${viewport.name})`), { name: 'TimeoutError' })), timeoutMs);
+        }),
+      ]).finally(() => clearTimeout(timer));
+      await markNodeOwnership(page, results);
+      await resolveIncompleteContrast(page, results).catch(() => {});
+      // Only a context of its own is opened and clicked: the shared page keeps its state for the sibling layers.
+      if (!useShared && !skipRules.includes('color-contrast') && (!onlyRules || onlyRules.includes('color-contrast'))) await analyzeOpenedPanels(page, results).catch(() => {});
+      await freeze?.evaluate((n) => n.remove()).catch(() => {});
+      return { viewport, results };
     } finally {
-      await page.context().close().catch(() => {});
+      await close();
     }
-  }
+  };
+  // Viewports are independent (own context, or the shared page for its own size), so they run together; the order is kept.
+  const settled = await Promise.allSettled(viewports.map(scanViewport));
+  const failed = settled.find((r) => r.status === 'rejected');
+  if (failed) throw failed.reason;
+  const viewportResults = settled.map((r) => r.value);
 
   const merged = mergeAxeViewportResults(viewportResults);
   const filtered = filterAxeDevArtifacts(merged.violations, {
@@ -283,7 +387,10 @@ export async function scanPageWithAxe(pageUrl, config = {}, options = {}) {
       nodes: await Promise.all(
         violation.nodes.map(async (node) => ({
           ...node,
-          source: await mapViolationToSource(node, pageUrl),
+          // A cross-origin frame's internals are not the project's markup: never guess a source file for them.
+          source: node.ownership === 'third-party'
+            ? { file: null, line: null, method: 'third-party', confidence: 'none', traceReason: 'third-party' }
+            : await mapViolationToSource(node, pageUrl),
         }))
       ),
     }))

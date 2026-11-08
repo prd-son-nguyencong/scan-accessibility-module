@@ -3,7 +3,7 @@
 **Date:** 2026-05-02
 **Last updated:** 2026-05-11
 **Status:** Approved
-**Project:** local-career-site (Paradox CEM production)
+**Project:** host career-site repo (Paradox CEM production)
 **Scope:** On-demand developer tooling — no CI/CD integration
 
 ---
@@ -17,26 +17,15 @@ A fully automated scanning and interactive auto-fix tool for Liquid source files
 ## Architecture: Layered Modules + Shared Violation Schema
 
 ```
-scripts/scan/
-├── index.js                  CLI entry, arg parsing, orchestration
+src/
+├── index.js                  Orchestration (CLI entry is bin/ada-scan.js)
 ├── schema.js                 Shared Violation type + normalizers (all layers produce this shape)
 │
 ├── scanner/
 │   ├── browser.js            Playwright browser lifecycle (getBrowser, newPage, resilientGoto)
 │   ├── axe.js                axe-core via @axe-core/playwright
-│   ├── access-scan/
-│   │   ├── index.js          Runs all 11 category files, returns Violation[]
-│   │   ├── 01-general.js     14 rules
-│   │   ├── 02-interactive.js 18 rules
-│   │   ├── 03-forms.js       6 rules
-│   │   ├── 04-landmarks.js   10 rules
-│   │   ├── 05-graphics.js    6 rules
-│   │   ├── 06-dragging.js    1 rule
-│   │   ├── 07-aria.js        2 rules
-│   │   ├── 08-lists.js       2 rules
-│   │   ├── 09-metadata.js    8 rules
-│   │   ├── 10-tabs.js        9 rules
-│   │   └── 11-tables.js      7 rules
+│   ├── access-scan/          Registry-driven rule engine (rules/*.rules.js descriptors,
+│   │                         evaluators/, engine/); rule list: accessscan-rule-coverage.md (generated)
 │   ├── w3c.js                W3C Nu HTML Checker
 │   ├── links.js              Dead link crawler
 │   ├── lighthouse.js         Lighthouse + PageSpeed Insights API (Core Web Vitals)
@@ -222,65 +211,14 @@ scanWithLighthouse(url, config)
 
 ---
 
-## Section 2 — 82 Active Rules + 1 Legacy ID (accessScan)
+## Section 2 — Active Rules + Legacy ID (accessScan)
 
-Coverage strategy: axe-core handles the WCAG overlap, custom Playwright DOM checks fill every remaining gap. Rules are organized across 11 category files.
+Coverage strategy: axe-core handles the WCAG overlap, custom Playwright DOM checks fill every remaining gap. Rules are registry descriptors in `src/scanner/access-scan/rules/*.rules.js` (11 categories); counts live in the generated rule reference.
 
 > **Detailed rule reference:** See [accessScan Rule Coverage](./accessscan-rule-coverage.md) for every rule's WCAG criterion, level, impact, and description.
 > **PO-facing checklist:** See [accessScan Rules for PO](./accessscan-rules-for-po.md) for all active rules, the deprecated legacy ID, requirements, and code examples.
 
-**Rule distribution by category file:**
-
-| File | Rule Count | WCAG Versions |
-|------|-----------|---------------|
-| `01-general.js` | 14 | WCAG 2.1, WCAG 2.0 |
-| `02-interactive.js` | 18 | WCAG 2.2, WCAG 2.0 |
-| `03-forms.js` | 6 | WCAG 2.0 |
-| `04-landmarks.js` | 10 | WCAG 2.0 |
-| `05-graphics.js` | 6 | WCAG 2.0 |
-| `06-dragging.js` | 1 | WCAG 2.2 |
-| `07-aria.js` | 1 active + 1 legacy | WCAG 2.1 |
-| `08-lists.js` | 2 | WCAG 2.2, WCAG 2.0 |
-| `09-metadata.js` | 8 | WCAG 2.0 |
-| `10-tabs.js` | 9 | WCAG 2.0 |
-| `11-tables.js` | 7 | WCAG 2.0 |
-| **Total** | **82 active + 1 legacy** | |
-
-### Complete Rule Registry (from `schema.js` ACCESSSCAN_CATEGORIES)
-
-#### 01-general.js (14 rules)
-`AltMisuse`, `AriaDescribedByHasReference`, `AriaLabelledByHasReference`, `BreadcrumbsNav`, `EmphasisMismatch`, `IframeDiscernible`, `LinkAnchorAmbiguous`, `NoExtraInformationInTitle`, `NoRoleApplication`, `SalePriceDiscernible`, `StrongMismatch`, `VisibilityMismatch`, `VisibilityMisuse`, `FigureDiscernible`
-
-#### 02-interactive.js (18 rules)
-`AriaControlsHasReference`, `ButtonDiscernible`, `ButtonMismatch`, `FocusNotObscuredFooter`, `LinkAnchorDiscernible`, `LinkCurrentPage`, `LinkImageWarning`, `LinkMailtoWarning`, `LinkNavigationAmbiguous`, `LinkNavigationDiscernible`, `LinkOpensNewWindow`, `LinkPDFWarning`, `MenuAvoid`, `MenuBarAvoid`, `MenuItemAvoid`, `MenuTriggerClickable`, `NoAutofocus`, `TargetSize`
-
-#### 03-forms.js (6 rules)
-`CheckboxDiscernible`, `FormContextChangeWarning`, `FormSubmitButtonMismatch`, `MainNavigationMismatch`, `RadioDiscernible`, `RequiredFormFieldAriaRequired`
-
-#### 04-landmarks.js (10 rules)
-`ArticleMisuse`, `BreadcrumbsMismatch`, `NavigationMisuse`, `RegionMainContentMismatch`, `RegionMainContentMisuse`, `RegionMainContentSingle`, `RegionFooterMismatch`, `RegionFooterMisuse`, `RegionFooterSingle`, `SearchFormMismatch`
-
-#### 05-graphics.js (6 rules)
-`BackgroundImageDiscernibleImage`, `DecorativeGraphicExposed`, `IconDiscernible`, `ImageDiscernible`, `ImageDiscernibleCorrectly`, `ImageMisuse`
-
-#### 06-dragging.js (1 rule)
-`DraggingAlternative`
-
-#### 07-aria.js (1 active rule + 1 legacy ID)
-Active: `VisibleTextPartOfAccessibleName`. Deprecated and no longer emitted:
-`AriaLabelledbyContentMismatch`.
-
-#### 08-lists.js (2 rules)
-`StickyHeaderObscuresFocus`, `ListEmpty`
-
-#### 09-metadata.js (8 rules)
-`HtmlLang`, `HtmlLangValid`, `MetaDescription`, `MetaRefresh`, `MetaViewportPresent`, `MetaViewportScalable`, `PageTitle`, `PageTitleDescriptive`
-
-#### 10-tabs.js (9 rules)
-`TablistRole`, `TabAriaControls`, `TabAriaSelected`, `TabListMisuse`, `TabMismatch`, `TabMisuse`, `TabPanelMismatch`, `TabPanelMisuse`, `TabpanelLabelledBy`
-
-#### 11-tables.js (7 rules)
-`TableCaption`, `TableHeaderEmpty`, `TableHeaders`, `TableMisuse`, `TableNesting`, `TableRoles`, `TableRowHeaderMismatch`
+**Rule list and counts:** generated from the registry by `npm run docs:rules` into [accessScan Rule Coverage](./accessscan-rule-coverage.md); not duplicated here.
 
 ---
 
@@ -432,7 +370,7 @@ Output: `scan-reports/scan-visual.html` (self-contained, no server required)
 Airbnb-inspired design with responsive layout. 5 grouped sections:
 
 **Accessibility**
-- Sources: axe-core + 82 active accessScan rules + behavioral scanners
+- Sources: axe-core + 84 active accessScan rules + behavioral scanners
 - Per issue: rule ID, WCAG version/level, accessScan category, impact, source file + line, ±5-line Liquid context, fix hint, auto-fixable badge
 - Grouped by: page → priority → rule
 

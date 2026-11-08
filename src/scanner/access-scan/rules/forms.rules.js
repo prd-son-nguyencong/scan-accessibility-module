@@ -7,6 +7,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'serious', priority: 2 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'a label association exists or it does not',
     checks: [{
       id: 'forms:checkbox-discernible',
       profiles: ['standards', 'commercial-parity'],
@@ -29,6 +31,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'serious', priority: 2 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'a label association exists or it does not',
     checks: [{
       id: 'forms:radio-discernible',
       profiles: ['standards', 'commercial-parity'],
@@ -45,12 +49,38 @@ export default [
     fix: { deterministic: true, policy: 'mechanically_safe' },
   },
   {
+    id: 'FormFieldDiscernible',
+    status: 'active',
+    category: 'forms',
+    standard: { version: 'WCAG 2.0', level: 'A', criterion: '4.1.2' },
+    severity: { impact: 'serious', priority: 2 },
+    automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'accessible name computed from the DOM is empty or not',
+    checks: [{
+      id: 'forms:form-field-discernible',
+      profiles: ['standards'],
+      evaluator: 'form-label',
+      target: { selector: 'input, select, textarea' },
+      options: { mode: 'field-missing-name' },
+      classification: 'confirmed',
+    }],
+    reporting: {
+      title: 'Form fields should have a label',
+      requirement: 'Text inputs, selects and textareas need an accessible name (1.3.1, 3.3.2, 4.1.2). A placeholder or a value is not a label: it disappears on input and is not reliably announced.',
+      recommendation: 'Add a <label for>, wrap the field in a <label>, or use aria-label / aria-labelledby.',
+    },
+    fix: { deterministic: false, policy: 'manual_only' },
+  },
+  {
     id: 'RequiredFormFieldAriaRequired',
     status: 'active',
     category: 'forms',
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '3.3.2' },
     severity: { impact: 'serious', priority: 6 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'guesses that a field is mandatory from visual cues',
     checks: [
       {
         id: 'forms:required-visual-indication',
@@ -82,6 +112,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '3.2.2' },
     severity: { impact: 'moderate', priority: 4 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'a form control with a submit role either has type="submit" or does not',
     checks: [{
       id: 'forms:form-submit-button-mismatch',
       profiles: ['standards'],
@@ -104,6 +136,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '3.2.2' },
     severity: { impact: 'serious', priority: 3 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'predicts whether a control change causes an unannounced context change',
     checks: [{
       id: 'forms:form-context-change-warning',
       profiles: ['standards'],
@@ -126,6 +160,8 @@ export default [
     standard: { version: 'Best Practice', level: 'n/a', criterion: 'n/a' },
     severity: { impact: 'moderate', priority: 4 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'guesses which element is the main navigation',
     checks: [
       {
         id: 'forms:main-navigation-mismatch',

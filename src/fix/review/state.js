@@ -64,6 +64,19 @@ const MAX_SEARCH_LENGTH = 200;
 const MAX_NOTE_LENGTH = 500;
 const MAX_MANUAL_CHECKS = 8;
 const MAX_RATIONALE_LENGTH = 2048;
+const MAX_HARNESS_EVIDENCE_BYTES = 48 * 1024;
+
+// Harness evidence (gate table, screenshot paths, diff, scan delta) rides along with a candidate for display only; it never feeds a decision.
+function sanitizeHarnessEvidence(value) {
+  if (value == null) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new ReviewStateError('INVALID_CANDIDATE', 'Harness evidence must be an object.');
+  }
+  if (Buffer.byteLength(JSON.stringify(value), 'utf8') > MAX_HARNESS_EVIDENCE_BYTES) {
+    throw new ReviewStateError('INVALID_CANDIDATE', 'Harness evidence is too large.');
+  }
+  return JSON.parse(JSON.stringify(value));
+}
 const MAX_CANDIDATE_DIFF_BYTES = 64 * 1024;
 const MAX_AUDIT_EVENTS = 5000;
 const MAX_SOURCE_FILTER_LENGTH = 260;
@@ -415,16 +428,6 @@ function loadTrustedAuditMappings(sessionDir, reportId, knownFindingIds) {
     }
     throw error;
   }
-}
-
-function findingOwnerMap(baseFixUnits = []) {
-  const owners = new Map();
-  for (const unit of baseFixUnits) {
-    for (const findingId of unit.findingIds || []) {
-      owners.set(findingId, unit.fixUnitId);
-    }
-  }
-  return owners;
 }
 
 function baseFindingById(baseFixUnits, findingId) {
@@ -987,6 +990,7 @@ function revalidateCandidateRecord(raw, payload, { allowVerified = false } = {})
       ? payload.manualChecksAcknowledgedIds.slice(0, MAX_MANUAL_CHECKS)
       : [],
     cisTelemetry: payload.cisTelemetry || null,
+    harness: sanitizeHarnessEvidence(payload.harness),
     verified: allowVerified ? true : false,
     conflictFree: payload.conflictFree !== false,
     verification: allowVerified
@@ -1302,6 +1306,7 @@ function buildUnitRows(state) {
         manualCheckAttestations: clone(candidate.manualCheckAttestations || []),
         manualChecksAcknowledgedIds: clone(candidate.manualChecksAcknowledgedIds || []),
         cisTelemetry: candidate.cisTelemetry ? clone(candidate.cisTelemetry) : null,
+        harness: candidate.harness ? clone(candidate.harness) : null,
         verification: clone(candidate.verification || null),
       }) : null,
       candidateHash: candidate?.candidateHash || null,

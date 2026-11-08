@@ -14,8 +14,6 @@ export function isBoundedHttpUrl(raw) {
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
   if (parsed.username || parsed.password) return false;
-  if (parsed.hash) return false;
-  if (parsed.search) return false;
   return true;
 }
 
@@ -48,11 +46,23 @@ export function canonicalizeDeploymentUrl(raw) {
   return `${parsed.origin}${pathname}`;
 }
 
+/**
+ * Scope is origin + base path only: the deployment URL must be canonical (no query/hash), but a
+ * scanned URL's query and hash never matter, so they are dropped before the length/shape check.
+ */
 export function isUrlWithinDeploymentScope(scannedUrl, deploymentUrl) {
   const canonicalDeployment = canonicalizeDeploymentUrl(deploymentUrl);
-  if (!canonicalDeployment || !isBoundedHttpUrl(scannedUrl)) return false;
+  if (!canonicalDeployment || typeof scannedUrl !== 'string' || CONTROL_CHARS.test(scannedUrl)) return false;
 
-  const scanned = new URL(scannedUrl);
+  let scanned;
+  try {
+    scanned = new URL(scannedUrl);
+  } catch {
+    return false;
+  }
+  scanned.search = '';
+  scanned.hash = '';
+  if (!isBoundedHttpUrl(scanned.href)) return false;
   const deployment = new URL(`${canonicalDeployment}/`);
 
   if (scanned.origin !== deployment.origin) return false;

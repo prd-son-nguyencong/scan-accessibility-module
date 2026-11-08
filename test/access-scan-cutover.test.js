@@ -71,7 +71,7 @@ async function withPage(markup, run) {
   }
 }
 
-test('public catalog exposes 83 registry-backed rules across 11 categories', () => {
+test('public catalog exposes 85 registry-backed rules across 11 categories', () => {
   const catalog = listAccessScanCatalogRuleIds().sort();
   const golden = loadGoldenCatalogRuleIds();
   assert.equal(ACCESSSCAN_CATEGORIES.length, 11);
@@ -198,6 +198,23 @@ test('standalone scanWithAccessScan navigates once and installs runtime hooks', 
   }
 });
 
+test('scanWithAccessScan onlyRules evaluates just those rules and reports phase timings', async () => {
+  await withPage('<!doctype html><html><head><title>Only</title></head><body><ul id="empty"></ul><img src="x.png"></body></html>', async (page) => {
+    let timings = null;
+    const all = await scanWithAccessScan(page, 'fixture://only', { skipNavigation: true, activateContent: false });
+    const only = await scanWithAccessScan(page, 'fixture://only', {
+      skipNavigation: true,
+      activateContent: false,
+      onlyRules: new Set(['ListEmpty']),
+      onExecutionRecords: (_records, meta) => { timings = meta.timings; },
+    });
+    assert.ok(new Set(all.map((v) => v.ruleId)).size > 1, 'the page trips several rules');
+    assert.deepEqual([...new Set(only.map((v) => v.ruleId))], ['ListEmpty']);
+    assert.deepEqual(Object.keys(timings), ['activate', 'snapshot', 'rules']);
+    assert.ok(Object.values(timings).every((ms) => ms >= 0));
+  });
+});
+
 test('scanWithAccessScan activates below-fold lazy content before snapshotting', async () => {
   await withPage(
     `
@@ -233,7 +250,46 @@ test('scanWithAccessScan activates below-fold lazy content before snapshotting',
   );
 });
 
-test('scanWithAccessScan retries navigation after Playwright TimeoutError', async () => {
+test('scanWithAccessScan activation waits for rendered frames, not only wall-clock time', async () => {
+  // Deterministic stand-in for a loaded machine: frames arrive 700ms late, longer than the 500ms settle dwell.
+  await withPage(
+    `
+      <!doctype html>
+      <html>
+        <head><title>Slow frames</title></head>
+        <body>
+          <div style="height: 1800px"></div>
+          <div id="lazy-sentinel">Waiting</div>
+          <script>
+            const realRaf = window.requestAnimationFrame.bind(window);
+            window.requestAnimationFrame = (callback) => setTimeout(() => realRaf(callback), 700);
+            const sentinel = document.getElementById('lazy-sentinel');
+            const check = () => {
+              if (sentinel.getBoundingClientRect().top < window.innerHeight) {
+                sentinel.innerHTML = '<ul id="activated-empty-list"></ul>';
+              } else {
+                window.requestAnimationFrame(check);
+              }
+            };
+            window.addEventListener('scroll', () => window.requestAnimationFrame(check), { passive: true });
+          </script>
+        </body>
+      </html>
+    `,
+    async (page) => {
+      const violations = await scanWithAccessScan(page, 'fixture://slow-frames', {
+        skipNavigation: true,
+        skipRules: (await getSharedBuiltInRuleRegistry()).getActiveRuleIds()
+          .filter((ruleId) => ruleId !== 'ListEmpty'),
+      });
+      const activated = violations.find((violation) => violation.ruleId === 'ListEmpty');
+      assert.ok(activated, 'content revealed by a late frame must be captured');
+      assert.match(activated.element.outerHTML, /activated-empty-list/);
+    },
+  );
+});
+
+test('scanWithAccessScan navigates once with waitUntil load (no timeout retry)', async () => {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await context.newPage();
@@ -241,21 +297,19 @@ test('scanWithAccessScan retries navigation after Playwright TimeoutError', asyn
   page.on('pageerror', () => {});
 
   let attempts = 0;
+  const waits = [];
   const originalGoto = page.goto.bind(page);
-  page.goto = async (...args) => {
+  page.goto = async (u, opts) => {
     attempts += 1;
-    if (attempts === 1) {
-      const err = new Error('Timeout 60000ms exceeded');
-      err.name = 'TimeoutError';
-      throw err;
-    }
-    return originalGoto(...args);
+    waits.push(opts.waitUntil);
+    return originalGoto(u, opts);
   };
 
   try {
     const url = 'data:text/html,<html><head><title>Retry</title></head><body><ul id="empty"></ul></body></html>';
     const violations = await scanWithAccessScan(page, url, { skipNavigation: false });
-    assert.equal(attempts, 2);
+    assert.equal(attempts, 1);
+    assert.deepEqual(waits, ['load']);
     assert.ok(violations.some((violation) => violation.ruleId === 'ListEmpty'));
   } finally {
     await context.close();

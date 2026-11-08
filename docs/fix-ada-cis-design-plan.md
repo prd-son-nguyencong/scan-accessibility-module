@@ -10,7 +10,8 @@
 
 **Status:** The `cis-contract`, scanner-parity resume gate, and `report-v2`
 milestones are complete. Evidence is recorded in
-`docs/hit-01-r1-parity-evidence.md`; `trusted-controller` is the next milestone.
+`docs/hit-01-r1-parity-evidence.md`. `trusted-controller`, `cis-advisory`, `verify-apply`
+and `hybrid-eval` are implemented under `src/fix/` (see the milestone table).
 
 ---
 
@@ -42,7 +43,7 @@ The following decisions are fixed:
 
 ## Why scanner parity comes first
 
-The Hitachi HIT-01 R1 comparison exposed producer defects that would contaminate every
+The site-728 HIT-01 R1 comparison exposed producer defects that would contaminate every
 later CIS decision:
 
 - The module axe layer reported one violation while independent Lighthouse exposed
@@ -484,10 +485,10 @@ the failed transaction. It must never reset unrelated work or use whole-tree git
 | CIS review demo | Completed prototype | File-first review direction validated; no production source writes |
 | Scanner parity gate | Completed | HIT-01 R1 findings classified; scanner metadata and regression evidence recorded |
 | `report-v2` | Completed | V2 is the source of truth with stable IDs, scanner evidence, trace/build attestation, validation, and a temporary V1 projection |
-| `trusted-controller` | Pending | New `src/fix/` state machine, mode gate, policies, canonical units |
-| `cis-advisory` | Pending | Runtime CIS transport, parser, bounded context loop |
-| `verify-apply` | Pending | Shadow verification, diff-hash approval, transaction and rollback |
-| `hybrid-eval` | Pending | Build attestation and PoC safety/quality/cost gates |
+| `trusted-controller` | Implemented | `src/fix/controller`, `policy`, `canonical`, `candidate`: state machine, mode gate, policies, canonical units |
+| `cis-advisory` | Implemented | `src/fix/cis`, `context`, `proposal`: runtime CIS transport, parser, bounded context loop |
+| `verify-apply` | Implemented | `src/fix/verify`, `apply`, `review`: shadow verification, diff-hash approval, transaction and rollback |
+| `hybrid-eval` | Implemented (code) | `src/fix/trace`, `eval`: build attestation and PoC gates; live PoC gate evidence is not recorded here |
 
 ---
 
@@ -691,7 +692,7 @@ Supported commands:
 ```bash
 ada-scan --fix --fix-mode cis --ui
 ada-scan --url https://example.test --source /absolute/local/root --fix --fix-mode cis --ui
-ada-scan fix --report scan-reports/latest.json --ui
+ada-scan fix --report scan-reports/latest.json --fix-mode cis --ui
 ```
 
 `ada-scan --url ... --fix` without `--source` prints a scan-only reason and never imports

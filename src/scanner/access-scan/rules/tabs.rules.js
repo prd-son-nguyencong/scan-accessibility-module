@@ -7,6 +7,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '4.1.2' },
     severity: { impact: 'serious', priority: 3 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'tablist roles are checked against the tab graph, with some potential checks',
     checks: [
       {
         id: 'tabs:tablist-role-explicit',
@@ -51,6 +53,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '4.1.2' },
     severity: { impact: 'serious', priority: 3 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'attribute presence on role="tab" elements',
     checks: [{
       id: 'tabs:tab-aria-selected',
       profiles: ['standards'],
@@ -71,20 +75,22 @@ export default [
     category: 'tabs',
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '4.1.2' },
     severity: { impact: 'serious', priority: 3 },
-    automation: 'deterministic',
+    automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'aria-controls on a tab is recommended by the ARIA Authoring Practices, not required by WCAG',
     checks: [{
       id: 'tabs:tab-aria-controls',
       profiles: ['standards'],
       evaluator: 'tab-graph',
       options: { mode: 'tab-aria-controls' },
-      classification: 'confirmed',
+      classification: 'potential',
     }],
     reporting: {
       title: 'Tab elements should have aria-controls',
       requirement: 'Tab elements need aria-controls pointing to the tabpanel ID so screen readers can link tabs to their content panels.',
       recommendation: 'Add aria-controls pointing to the tabpanel ID.',
     },
-    fix: { deterministic: true, policy: 'mechanically_safe' },
+    fix: { deterministic: false, policy: 'manual_only' },
   },
   {
     id: 'TabListMisuse',
@@ -93,6 +99,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '4.1.2' },
     severity: { impact: 'serious', priority: 3 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'role="tablist" placement is checked against the tab graph',
     checks: [{
       id: 'tabs:tablist-misuse',
       profiles: ['standards'],
@@ -114,6 +122,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '4.1.2' },
     severity: { impact: 'serious', priority: 3 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'tab roles are checked against the tab graph, with some potential checks',
     checks: [
       {
         id: 'tabs:tab-mismatch-explicit',
@@ -158,6 +168,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '4.1.2' },
     severity: { impact: 'serious', priority: 3 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'role="tab" placement is checked against the tab graph',
     checks: [{
       id: 'tabs:tab-misuse',
       profiles: ['standards'],
@@ -179,6 +191,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '4.1.2' },
     severity: { impact: 'serious', priority: 3 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'tabpanel roles are checked against the tab graph, with some potential checks',
     checks: [
       {
         id: 'tabs:tab-panel-mismatch-explicit',
@@ -223,6 +237,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '4.1.2' },
     severity: { impact: 'serious', priority: 3 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'role="tabpanel" placement is checked against the tab graph',
     checks: [{
       id: 'tabs:tab-panel-misuse',
       profiles: ['standards'],
@@ -243,19 +259,21 @@ export default [
     category: 'tabs',
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '4.1.2' },
     severity: { impact: 'moderate', priority: 4 },
-    automation: 'deterministic',
+    automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'a labelled tab panel is recommended by the ARIA Authoring Practices, not required by WCAG',
     checks: [{
       id: 'tabs:tabpanel-labelledby',
       profiles: ['standards'],
       evaluator: 'tab-graph',
       options: { mode: 'tabpanel-labelledby' },
-      classification: 'confirmed',
+      classification: 'potential',
     }],
     reporting: {
       title: 'Tab panels should have aria-labelledby',
       requirement: 'Tab panels need aria-labelledby referencing the controlling tab element ID for screen reader navigation.',
       recommendation: 'Add aria-labelledby referencing the controlling tab element ID.',
     },
-    fix: { deterministic: true, policy: 'mechanically_safe' },
+    fix: { deterministic: false, policy: 'manual_only' },
   },
 ];

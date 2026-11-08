@@ -11,6 +11,7 @@ import {
   getIndexes,
   getSnapshot,
 } from './lib/runtime-context.js';
+import { withDeadline } from '../engine/deadline.js';
 
 const EXCLUDED_WIDGET_ROLES = new Set([
   'listbox', 'combobox', 'menu', 'menubar', 'dialog', 'disclosure',
@@ -44,7 +45,7 @@ export default {
     }
 
     if (mode === 'tab-mismatch-explicit') {
-      for (const element of snapshot.elements) {
+      for (const element of withDeadline(snapshot.elements)) {
         if (element.attributes.role !== 'tablist') continue;
         const tabs = getDescendants(snapshot, indexes, element, (child) => (
           child.attributes.role === 'tab'
@@ -79,7 +80,7 @@ export default {
     }
 
     if (mode === 'tab-aria-selected') {
-      for (const element of snapshot.elements) {
+      for (const element of withDeadline(snapshot.elements)) {
         if (element.attributes.role !== 'tab') continue;
         if (!hasAncestor(snapshot, indexes, element, (ancestor) => ancestor.attributes.role === 'tablist')) {
           continue;
@@ -91,7 +92,7 @@ export default {
     }
 
     if (mode === 'tab-aria-controls') {
-      for (const element of snapshot.elements) {
+      for (const element of withDeadline(snapshot.elements)) {
         if (element.attributes.role !== 'tab') continue;
         if (!hasAncestor(snapshot, indexes, element, (ancestor) => ancestor.attributes.role === 'tablist')) {
           continue;
@@ -103,7 +104,7 @@ export default {
     }
 
     if (mode === 'tablist-misuse') {
-      for (const element of snapshot.elements) {
+      for (const element of withDeadline(snapshot.elements)) {
         if (element.attributes.role !== 'tablist') continue;
         const tabs = getDescendants(snapshot, indexes, element, (child) => child.attributes.role === 'tab');
         if (tabs.length === 0) findings.push(elementFinding(element));
@@ -112,7 +113,7 @@ export default {
     }
 
     if (mode === 'tab-misuse') {
-      for (const element of snapshot.elements) {
+      for (const element of withDeadline(snapshot.elements)) {
         if (element.attributes.role !== 'tab') continue;
         if (!hasAncestor(snapshot, indexes, element, (ancestor) => ancestor.attributes.role === 'tablist')) {
           findings.push(elementFinding(element));
@@ -122,7 +123,7 @@ export default {
     }
 
     if (mode === 'tab-panel-mismatch-explicit') {
-      for (const element of snapshot.elements) {
+      for (const element of withDeadline(snapshot.elements)) {
         if (element.attributes.role !== 'tab') continue;
         const controls = element.attributes['aria-controls'];
         if (!controls) continue;
@@ -137,7 +138,7 @@ export default {
     }
 
     if (mode === 'tab-panel-misuse') {
-      for (const element of snapshot.elements) {
+      for (const element of withDeadline(snapshot.elements)) {
         if (element.attributes.role !== 'tabpanel') continue;
         const labelledBy = resolveIdRefs(element, indexes, 'aria-labelledby').resolved;
         const controlsFromTabs = snapshot.elements.some((tab) => {
@@ -155,7 +156,7 @@ export default {
     }
 
     if (mode === 'tabpanel-labelledby') {
-      for (const element of snapshot.elements) {
+      for (const element of withDeadline(snapshot.elements)) {
         if (element.attributes.role !== 'tabpanel') continue;
         if (element.attributes['aria-labelledby'] || element.attributes['aria-label']) continue;
         findings.push(elementFinding(element));
@@ -176,7 +177,7 @@ export default {
 function groupTabsByContainer(snapshot, indexes) {
   /** @type {Map<number, { container: import('../runtime/types.js').SnapshotElement, tabs: import('../runtime/types.js').SnapshotElement[], containerRole: string | undefined }>} */
   const groups = new Map();
-  for (const element of snapshot.elements) {
+  for (const element of withDeadline(snapshot.elements)) {
     if (element.attributes.role !== 'tab') continue;
     const container = findNearestTabGroup(snapshot, indexes, element);
     if (!container) continue;
@@ -370,13 +371,4 @@ function dedupeInterfaces(interfaces) {
     acceptedTriggerIds.push(triggerIds);
   }
   return accepted;
-}
-
-/**
- * @param {import('../runtime/types.js').Snapshot} snapshot
- * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
- * @param {import('../runtime/types.js').SnapshotElement} element
- */
-function getDirectChildren(snapshot, indexes, element) {
-  return snapshot.elements.filter((child) => child.parentId === element.id);
 }

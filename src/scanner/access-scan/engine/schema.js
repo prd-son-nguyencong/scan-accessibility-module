@@ -5,6 +5,7 @@ import { validateCheckTarget } from './target-validation.js';
 /**
  * @typedef {'active' | 'legacy-readable'} RuleStatus
  * @typedef {'deterministic' | 'heuristic' | 'behavioral' | 'manual'} AutomationKind
+ * @typedef {'deterministic' | 'heuristic' | 'manual'} RuleKind
  * @typedef {'standards' | 'commercial-parity'} ProfileId
  * @typedef {'confirmed' | 'potential' | 'commercial-parity' | 'manual-review'} ViolationType
  *
@@ -26,6 +27,8 @@ import { validateCheckTarget } from './target-validation.js';
  * @property {{ version: string, level: string, criterion: string }} standard
  * @property {{ impact: string, priority: number }} severity
  * @property {AutomationKind} automation
+ * @property {RuleKind=} kind how sure a finding of this rule is; see src/utils/verdict.js
+ * @property {string=} kindRationale
  * @property {RuleCheckDescriptor[]} checks
  * @property {{ title: string, requirement: string, recommendation: string }} reporting
  * @property {{ deterministic: boolean, policy: string }} fix
@@ -90,6 +93,8 @@ export const RULE_DESCRIPTOR_SCHEMA = Object.freeze({
       type: 'string',
       enum: ['deterministic', 'heuristic', 'behavioral', 'manual'],
     },
+    kind: { type: 'string', enum: ['deterministic', 'heuristic', 'manual'] },
+    kindRationale: { type: 'string', minLength: 1 },
     checks: {
       type: 'array',
       items: {

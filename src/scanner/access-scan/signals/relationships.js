@@ -12,13 +12,14 @@ import {
 } from './lib/dom.js';
 import { isSearchInput } from './lib/search.js';
 import { createDomFact, SIGNAL_FAMILIES } from './types.js';
+import { withDeadline } from '../engine/deadline.js';
 
 function collectVisualTabGroups(snapshot, indexes) {
   /** @type {Array<{ container: import('../runtime/types.js').SnapshotElement, triggers: import('../runtime/types.js').SnapshotElement[], panels: import('../runtime/types.js').SnapshotElement[], activePanel: import('../runtime/types.js').SnapshotElement }>} */
   const groups = [];
   const seenTriggerIds = new Set();
 
-  for (const container of snapshot.elements) {
+  for (const container of withDeadline(snapshot.elements)) {
     if (!isActiveContent(container)) continue;
     const children = getScopedChildren(indexes, container, container)
       .filter((child) => isActiveContent(child));
@@ -42,9 +43,9 @@ function collectVisualTabGroups(snapshot, indexes) {
 }
 
 /**
- * Commercial accessScan often scores job-search chrome (Search / Clear / Locate)
+ * Reference accessScan often scores job-search chrome (Search / Clear / Locate)
  * as an unlabeled tablist even without exclusive panels. Emit the same visual-tab
- * fact shape so existing TabListMisMatch / TabMismatch policies apply.
+ * fact shape so existing tab-list policies apply.
  *
  * @param {import('../runtime/types.js').Snapshot} snapshot
  * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
@@ -54,7 +55,7 @@ function collectSearchChromeTabGroups(snapshot, indexes) {
   const groups = [];
   const seen = new Set();
 
-  for (const container of snapshot.elements) {
+  for (const container of withDeadline(snapshot.elements)) {
     if (!isActiveContent(container) || container.tag !== 'div') continue;
     if (!containerContainsSearchEntryControls(snapshot, indexes, container)) continue;
 
@@ -71,7 +72,7 @@ function collectSearchChromeTabGroups(snapshot, indexes) {
     const hasClearOrReset = triggers.some((trigger) => (
       /(?:clear|reset)/i.test(buttonAccessibleText(trigger))
     ));
-    // Commercial samples the Search + Clear Filter pair; locate-me is optional.
+    // Reference samples the Search + Clear Filter pair; locate-me is optional.
     if (!hasSearchSubmit || !hasClearOrReset || triggers.length < 2) continue;
 
     // Prefer the tightest container that still holds ≥2 search actions.
@@ -103,7 +104,7 @@ function collectSearchChromeTabGroups(snapshot, indexes) {
 
 /**
  * Sibling button strips that use exclusive `.active` / `.current` state (carousels,
- * consent choosers) without ARIA tabs — commercial TabList/TabMismatch samples.
+ * consent choosers) without ARIA tabs — reference tab-list samples.
  *
  * @param {import('../runtime/types.js').Snapshot} snapshot
  * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
@@ -113,7 +114,7 @@ function collectExclusiveActiveButtonTabGroups(snapshot, indexes) {
   const groups = [];
   const seen = new Set();
 
-  for (const container of snapshot.elements) {
+  for (const container of withDeadline(snapshot.elements)) {
     if (!isActiveContent(container)) continue;
     const children = getScopedChildren(indexes, container, container)
       .filter((child) => isActiveContent(child));
@@ -189,7 +190,7 @@ function collectConsentButtonTabGroups(snapshot, indexes) {
   const groups = [];
   const seen = new Set();
 
-  for (const container of snapshot.elements) {
+  for (const container of withDeadline(snapshot.elements)) {
     if (!isActiveContent(container) || container.tag !== 'div') continue;
     const children = getScopedChildren(indexes, container, container)
       .filter((child) => isActiveContent(child));
@@ -266,7 +267,7 @@ function isSearchChromeActionButton(element) {
 }
 
 /**
- * Jobs list / pagination mounts near a search chrome container — commercial
+ * Jobs list / pagination mounts near a search chrome container — reference
  * TabPanelMismatch samples these alongside Search/Clear triggers.
  *
  * @param {import('../runtime/types.js').Snapshot} snapshot
@@ -514,7 +515,7 @@ function collectWrappedFooterRegions(snapshot, indexes) {
     const links = getDescendants(snapshot, indexes, footer, (child) => (
       child.tag === 'a' && Boolean(child.attributes.href)
     ));
-    // Prefer copyright markers, but commercial also wraps footers that only
+    // Prefer copyright markers, but reference also wraps footers that only
     // expose privacy/contact/applicant chrome without a © line.
     if (
       !GLOBAL_INFORMATION_MARKER.test(footerText)
@@ -539,7 +540,7 @@ function collectGroupedActionButtons(indexes, snapshot) {
   /** @type {Array<{ container: import('../runtime/types.js').SnapshotElement, triggers: import('../runtime/types.js').SnapshotElement[], panels: import('../runtime/types.js').SnapshotElement[] }>} */
   const groups = [];
 
-  for (const container of snapshot.elements) {
+  for (const container of withDeadline(snapshot.elements)) {
     if (!isActiveContent(container) || container.attributes.role) continue;
     const children = getScopedChildren(indexes, container, container)
       .filter(isActiveContent);

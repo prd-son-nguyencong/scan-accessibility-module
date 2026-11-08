@@ -1,3 +1,4 @@
+import { externalGate } from '../utils/external.js';
 const PSI_API_URL = 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed';
 const PSI_CATEGORIES = ['performance', 'accessibility', 'best-practices', 'seo'];
 const PSI_TIMEOUT_MS = 90_000;
@@ -189,6 +190,7 @@ function extractMetrics(lhr) {
       displayValue: formatMetricValue(id, value),
       rating: metricRating(id, value),
       score: audit.score,
+      target: `good <= ${formatMetricValue(id, config.good)}, poor > ${formatMetricValue(id, config.poor)}`,
     };
   }
   return metrics;
@@ -337,12 +339,40 @@ export function extractAccessibilityAudits(lhr = {}) {
   return { failedAudits, summary };
 }
 
+// Lighthouse a11y audit id -> [impact, WCAG success criterion (null = best practice only)]. Unknown ids stay moderate/null and are flagged unmapped.
+const A11Y_AUDIT_MAP = {
+  'color-contrast': ['serious', '1.4.3'], 'image-alt': ['critical', '1.1.1'], 'input-image-alt': ['critical', '1.1.1'],
+  'object-alt': ['serious', '1.1.1'], 'button-name': ['critical', '4.1.2'], 'link-name': ['serious', '2.4.4'],
+  'label': ['critical', '1.3.1'], 'select-name': ['critical', '4.1.2'], 'html-has-lang': ['serious', '3.1.1'],
+  'html-lang-valid': ['serious', '3.1.1'], 'valid-lang': ['serious', '3.1.2'], 'document-title': ['serious', '2.4.2'],
+  'meta-viewport': ['critical', '1.4.4'], 'meta-refresh': ['critical', '2.2.1'], 'bypass': ['serious', '2.4.1'],
+  'frame-title': ['serious', '4.1.2'], 'tabindex': ['serious', null], 'heading-order': ['moderate', null],
+  'duplicate-id-aria': ['critical', '4.1.2'], 'aria-allowed-attr': ['critical', '4.1.2'],
+  'aria-required-attr': ['critical', '4.1.2'], 'aria-valid-attr': ['critical', '4.1.2'],
+  'aria-valid-attr-value': ['critical', '4.1.2'], 'aria-roles': ['critical', '4.1.2'],
+  'aria-hidden-body': ['critical', '4.1.2'], 'aria-hidden-focus': ['serious', '4.1.2'],
+  'aria-input-field-name': ['serious', '4.1.2'], 'aria-command-name': ['serious', '4.1.2'],
+  'aria-toggle-field-name': ['serious', '4.1.2'], 'aria-dialog-name': ['serious', '4.1.2'],
+  'aria-meter-name': ['serious', '1.1.1'], 'aria-progressbar-name': ['serious', '1.1.1'],
+  'aria-tooltip-name': ['serious', '4.1.2'], 'aria-treeitem-name': ['serious', '4.1.2'],
+  'list': ['serious', '1.3.1'], 'listitem': ['serious', '1.3.1'], 'definition-list': ['serious', '1.3.1'],
+  'dlitem': ['serious', '1.3.1'], 'td-headers-attr': ['serious', '1.3.1'], 'th-has-data-cells': ['serious', '1.3.1'],
+  'video-caption': ['critical', '1.2.2'], 'target-size': ['serious', '2.5.8'], 'link-in-text-block': ['serious', '1.4.1'],
+  'autocomplete-valid': ['serious', '1.3.5'], 'label-content-name-mismatch': ['serious', '2.5.3'],
+};
+
+export function mapLighthouseA11yAudit(auditId) {
+  const hit = A11Y_AUDIT_MAP[auditId];
+  return hit ? { impact: hit[0], wcagCriteria: hit[1], unmapped: false } : { impact: 'moderate', wcagCriteria: null, unmapped: true };
+}
+
 export function generateLighthouseAccessibilityViolations(result = {}) {
   const findings = new Map();
 
   for (const [deviceName, device] of Object.entries(result)) {
     for (const audit of device?.accessibility?.failedAudits || []) {
       const nodes = audit.nodes?.length > 0 ? audit.nodes : [{}];
+      const mapped = mapLighthouseA11yAudit(audit.id);
       for (const node of nodes) {
         const key = `${audit.id}|${node.selector || ''}|${node.snippet || ''}`;
         if (!findings.has(key)) {
@@ -350,17 +380,20 @@ export function generateLighthouseAccessibilityViolations(result = {}) {
             rule: audit.id,
             category: 'accessibility',
             description: [audit.title, node.explanation].filter(Boolean).join(' — '),
-            impact: 'moderate',
-            wcagCriteria: null,
+            impact: mapped.impact,
+            wcagCriteria: mapped.wcagCriteria,
             selector: node.selector || '',
             snippet: node.snippet || '',
             evidence: {
+              layer: 'lighthouse',
+              unmapped: mapped.unmapped,
               audit: {
                 title: audit.title,
                 description: audit.description,
                 score: audit.score,
                 weight: audit.weight,
               },
+              explanation: node.explanation || '',
               nodeLabel: node.nodeLabel || '',
               path: node.path || '',
               viewports: [],
@@ -383,28 +416,31 @@ function extractScores(lhr) {
   const scores = {};
   for (const [key, catId] of [['performance', 'performance'], ['accessibility', 'accessibility'], ['bestPractices', 'best-practices'], ['seo', 'seo']]) {
     const cat = lhr.categories[catId];
-    scores[key] = cat ? Math.round((cat.score || 0) * 100) : null;
+    scores[key] = typeof cat?.score === 'number' ? Math.round(cat.score * 100) : null;
   }
   return scores;
 }
 
-async function runLighthouseForDevice(pageUrl, deviceMode, chromePort) {
-  const { default: lighthouse } = await import('lighthouse');
+/**
+ * A page Lighthouse could not score (empty template, blocked load): no category has a score, or every
+ * score is 0 while at least half of the audits are incomplete (errored, no result). Not a 0/100 result.
+ */
+export function isUnscorable(lhr = {}) {
+  const cats = Object.values(lhr.categories || {});
+  if (!cats.length || cats.every((c) => c.score == null)) return true;
+  if (!cats.every((c) => !c.score)) return false;
+  const refs = new Set(cats.flatMap((c) => (c.auditRefs || []).map((r) => r.id)));
+  const incomplete = [...refs].filter((id) => {
+    const a = lhr.audits?.[id];
+    return !a || (a.score == null && !['manual', 'notApplicable', 'informative'].includes(a.scoreDisplayMode));
+  }).length;
+  return refs.size > 0 && incomplete * 2 >= refs.size;
+}
+
+function buildDeviceResult(lhr, deviceMode, pageUrl) {
   const deviceConfig = DEVICE_CONFIGS[deviceMode];
-
-  const options = {
-    logLevel: 'error',
-    output: 'json',
-    onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo'],
-    port: chromePort,
-    ...deviceConfig,
-  };
-
-  const result = await lighthouse(pageUrl, options);
-  const lhr = result.lhr;
-
   const { audits, groups, passedAudits, passedGroups } = extractAudits(lhr);
-  const accessibility = extractAccessibilityAudits(lhr);
+  const unscorable = isUnscorable(lhr);
   return {
     device: deviceMode,
     engineVersion: lhr.lighthouseVersion || null,
@@ -412,26 +448,125 @@ async function runLighthouseForDevice(pageUrl, deviceMode, chromePort) {
       width: deviceConfig.screenEmulation.width,
       height: deviceConfig.screenEmulation.height,
     },
-    scores: extractScores(lhr),
+    scores: unscorable ? extractScores({ categories: {} }) : extractScores(lhr),
+    ...(unscorable ? { unscorable: true } : {}),
     metrics: extractMetrics(lhr),
     audits,
     groups,
     passedAudits,
     passedGroups,
-    accessibility,
+    accessibility: extractAccessibilityAudits(lhr),
     finalUrl: lhr.finalDisplayedUrl || lhr.finalUrl || pageUrl,
     fetchTime: lhr.fetchTime,
     runWarnings: (lhr.runWarnings || []).slice(0, 5),
   };
 }
 
+/** Default runner: one headless Chrome per run (killed on abort), returns the raw lhr. */
+export async function runLocalLighthouse(pageUrl, deviceMode, { signal } = {}) {
+  const { default: lighthouse } = await import('lighthouse');
+  const { launch: chromeLaunch } = await import('chrome-launcher');
+  const chrome = await chromeLaunch({ chromeFlags: ['--headless', '--no-sandbox', '--disable-gpu'] });
+  const kill = () => chrome.kill();
+  signal?.addEventListener('abort', kill);
+  try {
+    const result = await lighthouse(pageUrl, {
+      logLevel: 'error',
+      output: 'json',
+      onlyCategories: PSI_CATEGORIES,
+      port: chrome.port,
+      ...DEVICE_CONFIGS[deviceMode],
+    });
+    return result.lhr;
+  } finally {
+    signal?.removeEventListener('abort', kill);
+    await kill();
+  }
+}
+
+function median(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+}
+
+async function runWithTimeout(runner, pageUrl, deviceMode, timeoutMs) {
+  const controller = new AbortController();
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(Object.assign(new Error(`Lighthouse ${deviceMode} run timed out after ${timeoutMs} ms`), { code: 'timeout' }));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([runner(pageUrl, deviceMode, { signal: controller.signal, timeoutMs }), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Runs one form factor `runs` times. Reported scores are the per-category MEDIAN; audits/metrics come
+ * from the run with the median performance score. Throws only when every run failed.
+ */
+async function runLocalDevice(pageUrl, deviceMode, { runs, timeoutMs, runner }) {
+  const done = [];
+  let lastError;
+  for (let i = 0; i < runs; i++) {
+    try {
+      done.push(buildDeviceResult(await runWithTimeout(runner, pageUrl, deviceMode, timeoutMs), deviceMode, pageUrl));
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  if (done.length === 0) throw lastError;
+  const byPerf = [...done].sort((a, b) => (a.scores.performance ?? 0) - (b.scores.performance ?? 0));
+  const picked = byPerf[(byPerf.length - 1) >> 1];
+  const scores = {};
+  for (const key of Object.keys(picked.scores)) {
+    const nums = done.map((d) => d.scores[key]).filter((n) => typeof n === 'number');
+    scores[key] = nums.length ? median(nums) : null;
+  }
+  const { unscorable: _, ...rest } = picked;
+  return {
+    ...rest,
+    scores,
+    ...(done.every((d) => d.unscorable) ? { unscorable: true } : {}),
+    runs: done.map((d) => ({ scores: d.scores, fetchTime: d.fetchTime })),
+    provenance: {
+      source: 'local',
+      version: picked.engineVersion,
+      formFactor: deviceMode,
+      runsRequested: runs,
+      runs: done.length,
+      comparableToPsi: false,
+    },
+  };
+}
+
+// Lighthouse runs never overlap, even when pages are scanned concurrently.
+let lighthouseQueue = Promise.resolve();
+const serialize = (fn) => {
+  const next = lighthouseQueue.then(fn, fn);
+  lighthouseQueue = next.catch(() => {});
+  return next;
+};
+
 // ─── PSI API integration ─────────────────────────────────────────────────────
 
-async function fetchPSI(pageUrl, strategy, retries = 2) {
+// Key travels in a header, never the URL; scrub it (and any key= echo) from error text.
+function redactSecret(text, apiKey) {
+  let out = String(text ?? '').replace(/([?&]key=)[^&\s"']*/gi, '$1[redacted]');
+  if (apiKey) out = out.split(apiKey).join('[redacted]');
+  return out;
+}
+
+export async function fetchPSI(pageUrl, strategy, retries = 2) {
   const params = new URLSearchParams({ url: pageUrl, strategy });
   for (const cat of PSI_CATEGORIES) params.append('category', cat);
   const apiKey = process.env.GOOGLE_API_KEY;
-  if (apiKey) params.set('key', apiKey);
+  const headers = apiKey ? { 'X-Goog-Api-Key': apiKey } : {};
 
   let lastError;
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -445,16 +580,17 @@ async function fetchPSI(pageUrl, strategy, retries = 2) {
     const timer = setTimeout(() => controller.abort(), PSI_TIMEOUT_MS);
 
     try {
-      const resp = await fetch(`${PSI_API_URL}?${params}`, { signal: controller.signal });
+      const resp = await fetch(`${PSI_API_URL}?${params}`, { headers, signal: controller.signal });
       if (resp.ok) return await resp.json();
 
       const body = await resp.text().catch(() => '');
       const detail = body.includes('"message"') ? JSON.parse(body).error?.message || '' : '';
-      lastError = new Error(`PSI API ${resp.status}: ${resp.statusText}${detail ? ` — ${detail}` : ''}`);
+      lastError = new Error(redactSecret(`PSI API ${resp.status}: ${resp.statusText}${detail ? ` — ${detail}` : ''}`, apiKey));
 
       if (resp.status >= 400 && resp.status < 500 && resp.status !== 429) throw lastError;
     } catch (err) {
       lastError = err;
+      if (err.message) err.message = redactSecret(err.message, apiKey);
       if (err.name === 'AbortError') lastError = new Error(`PSI API timed out after ${PSI_TIMEOUT_MS / 1000}s`);
       if (err.message?.includes('PSI API 4') && !err.message?.includes('429')) throw err;
     } finally {
@@ -468,7 +604,8 @@ function normalizePSIResponse(psiData) {
   const lhr = psiData.lighthouseResult;
   if (!lhr) throw new Error('PSI response missing lighthouseResult');
 
-  const scores = extractScores(lhr);
+  const unscorable = isUnscorable(lhr);
+  const scores = unscorable ? extractScores({ categories: {} }) : extractScores(lhr);
   const metrics = extractMetrics(lhr);
   const { audits, groups, passedAudits, passedGroups } = extractAudits(lhr);
   const accessibility = extractAccessibilityAudits(lhr);
@@ -485,12 +622,21 @@ function normalizePSIResponse(psiData) {
       height: screenEmulation.height || null,
     },
     scores,
+    ...(unscorable ? { unscorable: true } : {}),
     metrics,
     audits,
     groups,
     passedAudits,
     passedGroups,
     accessibility,
+    provenance: {
+      source: 'psi-api',
+      version: lhr.lighthouseVersion || null,
+      formFactor: device,
+      runsRequested: 1,
+      runs: 1,
+      comparableToPsi: true,
+    },
     finalUrl: lhr.finalDisplayedUrl || lhr.finalUrl || '',
     fetchTime: lhr.fetchTime || new Date().toISOString(),
     runWarnings: (lhr.runWarnings || []).slice(0, 5),
@@ -504,57 +650,29 @@ async function runPSIForDevice(pageUrl, strategy) {
 
 // ─── Violation generation from device results ─────────────────────────────────
 
-function generateViolations(result, pageUrl, config) {
-  const violations = [];
+// Only Lighthouse ACCESSIBILITY audits become findings. Performance, best-practices, SEO and the metric audits
+// stay informational (scores feed the lighthouse.* thresholds, metrics appear in the Performance section).
+function generateViolations(result) {
   const passes = [];
-  const { mobile } = result;
-  const scores = mobile.scores;
-  const isDevMode = pageUrl.includes('localhost') || pageUrl.includes('127.0.0.1');
-  const configThreshold = config.thresholds?.performance || 90;
-  const perfThreshold = isDevMode ? Math.min(configThreshold, 60) : configThreshold;
+  const mobile = result.mobile;
+  if (mobile?.scores?.performance != null) passes.push(`Mobile Performance: ${mobile.scores.performance}/100`);
+  return { violations: generateLighthouseAccessibilityViolations(result), passes };
+}
 
-  if (scores.performance !== null && scores.performance < perfThreshold) {
-    violations.push({
-      rule: 'lighthouse-performance',
-      description: `Mobile performance score ${scores.performance}/100 is below threshold of ${perfThreshold}`,
-      impact: scores.performance < 50 ? 'critical' : 'serious',
-      wcagCriteria: 'perf',
-      element: null,
-    });
-  } else if (scores.performance !== null) {
-    passes.push(`Mobile Performance: ${scores.performance}/100`);
-  }
-
-  const DEV_SKIP_METRICS = new Set(['first-contentful-paint', 'largest-contentful-paint', 'total-blocking-time', 'interactive']);
-  for (const [id, metric] of Object.entries(mobile.metrics)) {
-    if (isDevMode && DEV_SKIP_METRICS.has(id)) continue;
-    if (metric.rating === 'poor') {
-      violations.push({ rule: id, description: `${metric.label} ${metric.displayValue} exceeds poor threshold`, impact: 'critical', wcagCriteria: 'perf', element: null });
-    } else if (metric.rating === 'average' && !isDevMode) {
-      violations.push({ rule: id, description: `${metric.label} ${metric.displayValue} needs improvement`, impact: 'serious', wcagCriteria: 'perf', element: null });
+/** Per form factor: every run's category scores, their median and max-min spread (additive report field). */
+export function summarizeLighthouseRuns(lighthouse) {
+  const out = {};
+  for (const [ff, d] of Object.entries(lighthouse || {})) {
+    if (!d?.scores) continue;
+    const runs = (d.runs?.length ? d.runs.map((r) => r.scores) : [d.scores]);
+    const spread = {};
+    for (const key of Object.keys(d.scores)) {
+      const nums = runs.map((r) => r[key]).filter((n) => typeof n === 'number');
+      spread[key] = nums.length ? Math.max(...nums) - Math.min(...nums) : null;
     }
+    out[ff] = { runs, median: d.scores, spread };
   }
-
-  const DEV_ONLY_AUDITS = new Set(['unminified-javascript', 'unminified-css', 'unused-css-rules', 'unused-javascript']);
-  for (const [, entries] of Object.entries(mobile.groups)) {
-    for (const audit of entries) {
-      if (audit.score !== null && audit.score < 0.5) {
-        if (isDevMode && DEV_ONLY_AUDITS.has(audit.id)) continue;
-        violations.push({
-          rule: audit.id,
-          description: `${audit.title}${audit.displayValue ? ` — ${audit.displayValue}` : ''}`,
-          impact: audit.score === 0 ? 'serious' : 'moderate',
-          wcagCriteria: 'perf',
-          element: null,
-          details: audit.details || null,
-        });
-      }
-    }
-  }
-
-  violations.push(...generateLighthouseAccessibilityViolations(result));
-
-  return { violations, passes };
+  return out;
 }
 
 // ─── Main export ─────────────────────────────────────────────────────────────
@@ -562,15 +680,15 @@ function generateViolations(result, pageUrl, config) {
 /**
  * Runs performance analysis in both mobile and desktop modes.
  *
- * For remote URLs (when config.usePSI !== false), calls the PageSpeed Insights
+ * For remote URLs (only when external.psi is enabled), calls the PageSpeed Insights
  * API to get results identical to pagespeed.web.dev. Falls back to local
- * Lighthouse via chrome-launcher if PSI fails or for local URLs.
+ * Lighthouse via chrome-launcher if PSI fails or for local URLs. Local runs use config.lighthouse.runs
+ * (median reported) and timeoutMs per run; `deps.runner(url, formFactor, {signal})` returns an lhr (tests inject it).
  */
-export async function scanWithLighthouse(pageUrl, config = {}) {
+export async function scanWithLighthouse(pageUrl, config = {}, deps = {}) {
   const violations = [];
   const passes = [];
-  const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)/i.test(pageUrl);
-  const usePSI = !isLocal && config.usePSI !== false;
+  const usePSI = externalGate('psi', pageUrl, config, { sends: 'the page URL', endpoint: PSI_API_URL }).allowed;
   let psiFailure = null;
 
   if (usePSI) {
@@ -578,7 +696,7 @@ export async function scanWithLighthouse(pageUrl, config = {}) {
       const mobile = await runPSIForDevice(pageUrl, 'mobile');
       const desktop = await runPSIForDevice(pageUrl, 'desktop');
       const result = { mobile, desktop };
-      const { violations: vs, passes: ps } = generateViolations(result, pageUrl, config);
+      const { violations: vs, passes: ps } = generateViolations(result);
       return {
         url: pageUrl,
         scores: mobile.scores,
@@ -599,61 +717,73 @@ export async function scanWithLighthouse(pageUrl, config = {}) {
     }
   }
 
-  try {
-    const { launch: chromeLaunch } = await import('chrome-launcher');
-    const chrome = await chromeLaunch({ chromeFlags: ['--headless', '--no-sandbox', '--disable-gpu'] });
-
-    try {
-      const mobile = await runLighthouseForDevice(pageUrl, 'mobile', chrome.port);
-      const desktop = await runLighthouseForDevice(pageUrl, 'desktop', chrome.port);
-      const result = { mobile, desktop };
-      const { violations: vs, passes: ps } = generateViolations(result, pageUrl, config);
-
-      return {
-        url: pageUrl,
-        scores: mobile.scores,
-        lighthouse: result,
-        violations: vs,
-        passes: ps,
-        source: psiFailure ? 'local-fallback' : 'local',
-        provenance: createLighthouseProvenance({
-          requestedSource: usePSI ? 'psi-api' : 'local',
-          actualSource: 'local',
-          fallbackError: psiFailure,
-        }),
-        timestamp: new Date().toISOString(),
-      };
-    } finally {
-      await chrome.kill();
+  const runs = config.lighthouse?.runs ?? 1;
+  const timeoutMs = config.lighthouse?.timeoutMs ?? 120_000;
+  const runner = deps.runner || runLocalLighthouse;
+  const result = { mobile: null, desktop: null };
+  const errors = {};
+  await serialize(async () => {
+    for (const mode of ['mobile', 'desktop']) {
+      try {
+        result[mode] = await runLocalDevice(pageUrl, mode, { runs, timeoutMs, runner });
+      } catch (err) {
+        errors[mode] = {
+          code: err.code === 'timeout' || /timed out/i.test(err.message) ? 'timeout' : 'error',
+          message: err.message,
+          missingDep: err.code === 'ERR_MODULE_NOT_FOUND' || /Cannot find (package|module)/i.test(err.message),
+        };
+      }
     }
-  } catch (err) {
-    const missingDep = err.code === 'ERR_MODULE_NOT_FOUND' || /Cannot find (package|module)/i.test(err.message);
-    if (missingDep) {
-      console.warn('  Lighthouse layer disabled — optional deps missing. Install with: pnpm add lighthouse chrome-launcher');
-    }
-    violations.push({
-      rule: 'lighthouse-unavailable',
-      description: missingDep
-        ? 'Lighthouse layer skipped — optional deps (lighthouse, chrome-launcher) not installed.'
-        : `Lighthouse scan failed: ${err.message}`,
-      impact: 'info',
-      wcagCriteria: 'perf',
-      element: null,
-    });
+  });
 
+  if (result.mobile || result.desktop) {
+    const { violations: vs, passes: ps } = generateViolations(result);
     return {
       url: pageUrl,
-      scores: {},
-      lighthouse: null,
-      violations,
-      passes,
-      source: 'error',
+      scores: (result.mobile || result.desktop).scores,
+      lighthouse: result,
+      violations: vs,
+      passes: ps,
+      source: psiFailure ? 'local-fallback' : 'local',
+      partial: Object.keys(errors).length > 0,
+      errors,
       provenance: createLighthouseProvenance({
         requestedSource: usePSI ? 'psi-api' : 'local',
-        actualSource: 'error',
-        fallbackError: psiFailure || err,
+        actualSource: 'local',
+        fallbackError: psiFailure,
       }),
       timestamp: new Date().toISOString(),
     };
   }
+
+  const first = Object.values(errors)[0];
+  const missingDep = first.missingDep;
+  if (missingDep) {
+    console.warn('  Lighthouse layer disabled — optional deps missing. Install with: pnpm add lighthouse chrome-launcher');
+  }
+  violations.push({
+    rule: 'lighthouse-unavailable',
+    description: missingDep
+      ? 'Lighthouse layer skipped — optional deps (lighthouse, chrome-launcher) not installed.'
+      : `Lighthouse scan failed: ${first.message}`,
+    impact: 'info',
+    wcagCriteria: 'perf',
+    element: null,
+  });
+
+  return {
+    url: pageUrl,
+    scores: {},
+    lighthouse: null,
+    violations,
+    passes,
+    source: 'error',
+    errors,
+    provenance: createLighthouseProvenance({
+      requestedSource: usePSI ? 'psi-api' : 'local',
+      actualSource: 'error',
+      fallbackError: psiFailure || new Error(first.message),
+    }),
+    timestamp: new Date().toISOString(),
+  };
 }

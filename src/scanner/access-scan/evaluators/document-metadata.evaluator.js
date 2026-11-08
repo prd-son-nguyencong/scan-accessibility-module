@@ -93,7 +93,9 @@ export default {
     if (mode === 'meta-refresh-present') {
       const refreshMetas = headChildren.filter(
         (element) => element.tag === 'meta'
-          && normalizeText(element.attributes['http-equiv']) === 'refresh',
+          && normalizeText(element.attributes['http-equiv']) === 'refresh'
+          // An immediate redirect (`0;url=...`) is not a timed refresh.
+          && !/^\s*0\s*[;,]\s*(?:url\s*=)?\s*\S/i.test(element.attributes.content || ''),
       );
       candidatesScanned = refreshMetas.length || 1;
       for (const meta of refreshMetas) {
@@ -105,7 +107,7 @@ export default {
     if (mode === 'meta-viewport-missing') {
       candidatesScanned = 1;
       const hasViewport = headChildren.some(
-        (element) => element.tag === 'meta' && element.attributes.name === 'viewport',
+        (element) => element.tag === 'meta' && normalizeText(element.attributes.name) === 'viewport',
       );
       if (!hasViewport) {
         findings.push(elementFinding(syntheticElement(undefined, {
@@ -118,11 +120,11 @@ export default {
 
     if (mode === 'meta-viewport-not-scalable') {
       const viewportMetas = headChildren.filter(
-        (element) => element.tag === 'meta' && element.attributes.name === 'viewport',
+        (element) => element.tag === 'meta' && normalizeText(element.attributes.name) === 'viewport',
       );
       candidatesScanned = viewportMetas.length || 1;
       for (const meta of viewportMetas) {
-        const content = meta.attributes.content || '';
+        const content = (meta.attributes.content || '').toLowerCase();
         const blocksScaling = (
           content.includes('user-scalable=no')
           || content.includes('user-scalable=0')

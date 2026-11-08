@@ -383,7 +383,7 @@ test('HIT-01 R1 axe fixture retains all 7 rule groups across desktop and mobile'
     'meta-viewport',
     'select-name',
   ];
-  const makeHitachiRule = (id) => {
+  const makeSiteRule = (id) => {
     const critical = id === 'button-name' || id === 'select-name';
     const bestPractice = id === 'heading-order' || id.startsWith('landmark-');
     return violation(
@@ -398,7 +398,7 @@ test('HIT-01 R1 axe fixture retains all 7 rule groups across desktop and mobile'
     {
       viewport: desktop.viewport,
       results: {
-        violations: expectedRules.filter((id) => id !== 'button-name').map(makeHitachiRule),
+        violations: expectedRules.filter((id) => id !== 'button-name').map(makeSiteRule),
         passes: [],
         incomplete: [],
         inapplicable: [],
@@ -407,7 +407,7 @@ test('HIT-01 R1 axe fixture retains all 7 rule groups across desktop and mobile'
     {
       viewport: mobile.viewport,
       results: {
-        violations: expectedRules.map(makeHitachiRule),
+        violations: expectedRules.map(makeSiteRule),
         passes: [],
         incomplete: [],
         inapplicable: [],

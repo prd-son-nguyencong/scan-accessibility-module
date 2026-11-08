@@ -143,3 +143,15 @@ test('deduplicateW3cViolations keeps distinct Nu messages on the same extract', 
     'w3c-multiple-main',
   ].sort());
 });
+
+test('w3c: a validator answer of non-document-error is an error run, not a pass', async () => {
+  const page = { content: async () => '<!doctype html><title>t</title>', evaluate: async () => [], context: () => ({ close: async () => {} }) };
+  const result = await w3c.scanW3cValidation(
+    'https://career.example.com/',
+    { external: { w3c: true } },
+    { page, rawSourceHtml: '', validator: async () => ({ messages: [{ type: 'non-document-error', subType: 'io', message: 'boom' }] }) },
+  );
+  assert.equal(result.scannerRun.status, 'error');
+  assert.equal(result.scannerRun.evidence.errorCode, 'non-document-error');
+  assert.deepEqual(result.passes, []);
+});

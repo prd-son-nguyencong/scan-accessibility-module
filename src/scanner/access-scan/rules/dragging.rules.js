@@ -7,6 +7,8 @@ export default [
     standard: { version: 'WCAG 2.2', level: 'AA', criterion: '2.5.7' },
     severity: { impact: 'serious', priority: 3 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'detects slider-like widgets but cannot tell if a single-pointer alternative exists',
     checks: [{
       id: 'dragging:dragging-alternative',
       profiles: ['standards'],

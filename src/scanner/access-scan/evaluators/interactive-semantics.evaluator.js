@@ -5,6 +5,7 @@ import {
   getSnapshot,
   queryCandidates,
 } from './lib/runtime-context.js';
+import { withDeadline } from '../engine/deadline.js';
 
 /** @type {import('../engine/loader.js').EvaluatorModule} */
 export default {
@@ -22,9 +23,13 @@ export default {
         .filter((candidate) => candidate.tag === 'button' && candidate.rendered && candidate.focusable)
         .map((button) => elementFinding(button).element);
 
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (isActionAnchor(element)) {
           findings.push(elementFinding(element, { successfulElements: successfulButtons }));
+          continue;
+        }
+        if (isNavigatingButton(snapshot, indexes, element)) {
+          findings.push(elementFinding(element, { successfulElements: successfulButtons, inferredFrom: 'button-used-for-navigation' }));
           continue;
         }
         if (isPseudoInteractiveHost(element)) {
@@ -64,6 +69,23 @@ function isActionAnchor(element) {
   if (element.tag !== 'a' || element.attributes.role === 'button') return false;
   const href = (element.attributes.href ?? '').trim().toLowerCase();
   return href === '' || href === '#' || href.startsWith('javascript:');
+}
+
+/**
+ * The converse case: a <button> that navigates is a link in disguise. Signals: a navigation URL in a data attribute or an
+ * inline handler, or a button wrapped inside a real link. A submit/reset button or one with a custom role is left alone.
+ *
+ * @param {import('../runtime/types.js').Snapshot} snapshot
+ * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function isNavigatingButton(snapshot, indexes, element) {
+  if (element.tag !== 'button' || element.attributes.role || !element.rendered) return false;
+  if (['submit', 'reset'].includes((element.attributes.type || '').toLowerCase()) || element.attributes.formaction) return false;
+  const attrs = element.attributes;
+  if (/^(?:https?:\/\/|\/|\.\.?\/)\S*$/i.test((attrs['data-href'] || attrs['data-url'] || attrs['data-link'] || '').trim())) return true;
+  if (/\b(?:location(?:\.href)?\s*=[^=]|location\.(?:assign|replace)\(|window\.open\()/.test(attrs.onclick || '')) return true;
+  return getAncestors(snapshot, indexes, element).some((a) => a.tag === 'a' && a.attributes.href);
 }
 
 /**

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { getBrowser, closeBrowser } from '../src/scanner/browser.js';
+import { closeBrowser } from '../src/scanner/browser.js';
+import { requireBrowser } from './helpers/require-browser.js';
 import { getAccessScanCategory } from '../src/schema.js';
 import {
   createFixturePage,
@@ -29,13 +30,8 @@ test('sticky header findings are grouped under Interactive Content', () => {
 });
 
 test('accessScan compatibility and correctness fixtures', async (t) => {
-  let browser;
-  try {
-    browser = await getBrowser();
-  } catch (error) {
-    t.skip(`Playwright browser unavailable: ${error.message}`);
-    return;
-  }
+  const browser = await requireBrowser(t);
+  if (!browser) return;
 
   try {
     await t.test('accessible names may add context when they retain the visible label', async () => {
@@ -56,8 +52,8 @@ test('accessScan compatibility and correctness fixtures', async (t) => {
         <button id="icon-only" aria-label="Previous category">
           <svg aria-hidden="true"></svg>
         </button>
-        <a id="logo-link" href="/" aria-label="Hitachi official website">
-          <img src="logo.svg" alt="Hitachi">
+        <a id="logo-link" href="/" aria-label="Example official website">
+          <img src="logo.svg" alt="Example">
         </a>
         <span id="query-label">I'm Looking For</span>
         <input
@@ -90,9 +86,9 @@ test('accessScan compatibility and correctness fixtures', async (t) => {
         </style>
         <p>
           Showing
-          <span id="from" class="results-header__content__from">1</span>
-          to <span id="to" class="results-header__content__to">6</span>
-          of <span id="total" class="results-header__content__total">6</span> jobs
+          <span id="from" class="results-header__content__from">first</span>
+          to <span id="to" class="results-header__content__to">sixth</span>
+          of <span id="total" class="results-header__content__total">all</span> jobs
         </p>
         <h3>Engineering Lead <span id="remote" class="remote">Remote</span></h3>
         <div id="job-search" class="search-box" data-testid="jobs-search_container">
@@ -341,8 +337,9 @@ test('accessScan compatibility and correctness fixtures', async (t) => {
             background: white;
             z-index: 2;
           }
+          body { min-height: 3000px; } /* scrollable page: a fixed control is never measured, an in-flow one is */
           #covered {
-            position: fixed;
+            position: absolute;
             top: 10px;
             left: 10px;
             width: 40px;

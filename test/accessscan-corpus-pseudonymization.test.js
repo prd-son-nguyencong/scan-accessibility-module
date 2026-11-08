@@ -20,6 +20,7 @@ import {
   containsNonNeutralCommittedText,
   containsPartialRedactionMarker,
   isNeutralPlaceholderText,
+  neutralizeEvidenceUrl,
   pseudonymizeHtmlTextContent,
   pseudonymizeHumanText,
   pseudonymizeCommittedTextValue,
@@ -46,10 +47,15 @@ test('containsHostLeakage detects loopback and literal IP hosts', () => {
   assert.equal(containsHostLeakage('/neutral-asset.png'), false);
 });
 
+test('pseudonymizeHumanText is idempotent on already-neutral placeholders', () => {
+  const once = pseudonymizeHumanText('ACME', 'text', new Map());
+  assert.equal(pseudonymizeHumanText(once, 'text', new Map()), once);
+});
+
 test('pseudonymizeHumanText replaces marketing copy with deterministic neutral placeholders', () => {
   const registry = new Map();
-  const first = pseudonymizeHumanText('RMHC', 'text', registry);
-  const second = pseudonymizeHumanText('RMHC', 'text', registry);
+  const first = pseudonymizeHumanText('ACME', 'text', registry);
+  const second = pseudonymizeHumanText('ACME', 'text', registry);
   const other = pseudonymizeHumanText('Fortune award copy', 'text', registry);
 
   assert.equal(first, second);
@@ -60,18 +66,18 @@ test('pseudonymizeHumanText replaces marketing copy with deterministic neutral p
 
 test('pseudonymizeHtmlTextContent pseudonymizes semantic attributes and text nodes', () => {
   const html = pseudonymizeHtmlTextContent(
-    '<a aria-label="Ronald House Charities (Opens in a new tab)"> RMHC </a>',
+    '<a aria-label="Acme Foundation (Opens in a new tab)"> ACME </a>',
   );
   assert.equal(containsPartialRedactionMarker(html), false);
-  assert.equal(html.includes('RMHC'), false);
-  assert.equal(html.includes('Ronald'), false);
+  assert.equal(html.includes('ACME'), false);
+  assert.equal(html.includes('Foundation'), false);
   assert.match(html, /aria-label="neutral-aria-label-/);
   assert.match(html, />neutral-text-/);
 });
 
 test('sanitizeOracleSnippetHtml removes partial redaction markers and brand residue', () => {
   const html = sanitizeOracleSnippetHtml(
-    '<svg role="img" aria-label="Elevance Health logo" alt="Health\'s white logo"><use href="https://127.0.0.1/logo.png"></use></svg>',
+    '<svg role="img" aria-label="Example Health logo" alt="Health\'s white logo"><use href="https://127.0.0.1/logo.png"></use></svg>',
   );
   assert.equal(containsPartialRedactionMarker(html), false);
   assert.equal(containsHostLeakage(html), false);
@@ -135,7 +141,7 @@ test('pseudonymizeCommittedTextValue tokenizes concatenated accessible names', (
 });
 
 test('containsNonNeutralCommittedText flags marketing residue and partial redaction', () => {
-  assert.equal(containsNonNeutralCommittedText('Ronald House Charities'), true);
+  assert.equal(containsNonNeutralCommittedText('Acme Foundation'), true);
   assert.equal(containsNonNeutralCommittedText('[redacted] Health'), true);
   assert.equal(containsNonNeutralCommittedText('neutral-text-0-abcdef12'), false);
   assert.equal(containsNonNeutralCommittedText('Neutral header'), false);
@@ -159,4 +165,23 @@ test('pseudonymizeHtmlTextContent neutralizes non-framework meta content attribu
   );
   assert.equal(html.includes('Fortune'), false);
   assert.match(html, /content="neutral-content-/);
+});
+
+test('neutralizeEvidenceUrl strips origins and maps bare loopback hosts via the shared classifier', () => {
+  const table = [
+    ['http://localhost:3000/a.png', '/a.png'],
+    ['https://127.0.0.1/x?y=1', '/x?y=1'],
+    ['http://[::1]:80/p', '/p'],
+    ['https://cdn.example.com/a.png', '/a.png'],
+    ['http://localhost', '/'],
+    ['a.png', '/a.png'],
+    ['127.0.0.1/foo', '/127.0.0.1/foo'],
+    ['localhost', '/neutral-asset.png'],
+    ['LOCALHOST', '/neutral-asset.png'],
+    ['127.0.0.1', '/neutral-asset.png'],
+    ['127.0.0.2', '/neutral-asset.png'],
+    ['[::1]', '/neutral-asset.png'],
+    ['::1', '/neutral-asset.png'],
+  ];
+  for (const [input, expected] of table) assert.equal(neutralizeEvidenceUrl(input), expected, input);
 });

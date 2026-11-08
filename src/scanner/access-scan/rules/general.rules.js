@@ -7,6 +7,8 @@ export default [
     standard: { version: 'WCAG 2.1', level: 'A', criterion: '1.1.1' },
     severity: { impact: 'moderate', priority: 3 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'alt attribute on a non-img element is a checkable markup fact',
     checks: [
       {
         id: 'general:alt-misuse',
@@ -43,6 +45,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '4.1.2' },
     severity: { impact: 'serious', priority: 2 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'accessible name computed from the DOM is empty or not',
     checks: [{
       id: 'general:iframe-discernible',
       profiles: ['standards', 'commercial-parity'],
@@ -64,21 +68,23 @@ export default [
     category: 'general',
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '4.1.2' },
     severity: { impact: 'serious', priority: 2 },
-    automation: 'deterministic',
+    automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'role="application" is discouraged practice; it is a failure only when it removes screen reader navigation, which markup cannot show',
     checks: [{
       id: 'general:no-role-application',
       profiles: ['standards', 'commercial-parity'],
       evaluator: 'attributes-roles',
       target: { selector: '[role="application"]' },
       options: { mode: 'forbidden-role', role: 'application' },
-      classification: 'confirmed',
+      classification: 'potential',
     }],
     reporting: {
       title: 'Avoid using role="application"',
       requirement: 'Using role="application" is generally discouraged because it disables standard screen reader modes and forces users into an application mode, removing familiar navigation shortcuts.',
       recommendation: 'Remove role="application" — it disables standard screen reader navigation shortcuts.',
     },
-    fix: { deterministic: true, policy: 'mechanically_safe' },
+    fix: { deterministic: false, policy: 'manual_only' },
   },
   {
     id: 'NoExtraInformationInTitle',
@@ -86,7 +92,9 @@ export default [
     category: 'general',
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '4.1.2' },
     severity: { impact: 'minor', priority: 4 },
-    automation: 'deterministic',
+    automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'title-only information is discouraged practice; whether it is the only carrier is a judgement',
     checks: [
       {
         id: 'general:no-extra-information-in-title-only',
@@ -94,7 +102,7 @@ export default [
         evaluator: 'attributes-roles',
         target: { selector: '[title]' },
         options: { mode: 'title-only-primary-label' },
-        classification: 'confirmed',
+        classification: 'potential',
       },
       {
         id: 'general:no-extra-information-in-title-duplicate',
@@ -110,7 +118,7 @@ export default [
       requirement: 'The title attribute is announced inconsistently across screen readers and browsers, making it unreliable for labeling interactive controls.',
       recommendation: 'Provide a visible label, aria-label, or associated label instead of relying on title alone. Remove redundant title attributes that duplicate visible text.',
     },
-    fix: { deterministic: true, policy: 'mechanically_safe' },
+    fix: { deterministic: false, policy: 'manual_only' },
   },
   {
     id: 'FigureDiscernible',
@@ -119,6 +127,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.1.1' },
     severity: { impact: 'moderate', priority: 3 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'whether a figure needs a text description depends on what it shows',
     checks: [{
       id: 'general:figure-discernible',
       profiles: ['standards', 'commercial-parity'],
@@ -141,6 +151,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'serious', priority: 2 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'id lookup: the referenced id exists or it does not',
     checks: [{
       id: 'general:aria-describedby-has-reference',
       profiles: ['standards', 'commercial-parity'],
@@ -163,6 +175,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'serious', priority: 2 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'id lookup: the referenced id exists or it does not',
     checks: [{
       id: 'general:aria-labelledby-has-reference',
       profiles: ['standards', 'commercial-parity'],
@@ -185,6 +199,8 @@ export default [
     standard: { version: 'Best Practice', level: 'n/a', criterion: 'n/a' },
     severity: { impact: 'minor', priority: 5 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'infers strong-importance intent from visual styling',
     checks: [{
       id: 'general:strong-mismatch',
       profiles: ['standards', 'commercial-parity'],
@@ -207,6 +223,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'moderate', priority: 3 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'infers emphasis intent from visual styling',
     checks: [
       {
         id: 'general:emphasis-mismatch',
@@ -239,6 +257,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '4.1.2' },
     severity: { impact: 'serious', priority: 2 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'guesses whether visibly hidden content is meant for assistive technology',
     checks: [
       {
         id: 'general:visibility-misuse',
@@ -277,7 +297,9 @@ export default [
     category: 'general',
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '4.1.2' },
     severity: { impact: 'moderate', priority: 3 },
-    automation: 'deterministic',
+    automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'whether visible aria-hidden content is decorative or meaningful is a judgement',
     checks: [
       {
         id: 'general:visibility-mismatch',
@@ -286,7 +308,7 @@ export default [
         target: { selector: '[aria-hidden="true"]' },
         eligibility: { visibility: 'all' },
         options: { mode: 'visibility-mismatch' },
-        classification: 'confirmed',
+        classification: 'potential',
       },
       {
         id: 'parity:aria-hidden-visible',
@@ -310,6 +332,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'moderate', priority: 3 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'breadcrumb markup is checked against fixed structural criteria',
     checks: [{
       id: 'general:breadcrumbs-nav',
       profiles: ['standards'],
@@ -332,6 +356,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'serious', priority: 3 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'guesses original versus discounted prices from styling',
     checks: [{
       id: 'general:sale-price-discernible',
       profiles: ['standards'],
@@ -354,6 +380,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '2.4.4' },
     severity: { impact: 'moderate', priority: 4 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'ambiguous link text (e.g. "click here") is a language heuristic',
     checks: [{
       id: 'general:link-anchor-ambiguous',
       profiles: ['standards'],

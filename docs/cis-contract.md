@@ -18,17 +18,11 @@ runtime transport and strict parser live under `src/fix/cis/`.
 | Sandbox one-file demo | `pnpm cis:demo` — persistent sandbox, artifact export, authenticated rollback (local operator workflow) |
 | Operator provisioning | `pnpm cis:configure`, `pnpm cis:models`, `pnpm cis:benchmark`, `pnpm cis:demo` (see package README) |
 
-### Implementation verification (2026-07-16)
+### Implementation verification
 
-Baseline evidence from the secure live CIS implementation. Test counts may change as the
-suite evolves; this records a point-in-time baseline, not a promise they stay constant.
-
-| Command (from `ada-scan/`) | Result (2026-07-16) |
-| --- | --- |
-| `node --test test/cis-redaction.test.js test/cis-contract.test.js` | 25/25 pass |
-| `node --test test/fix/*.test.js` | 491/491 pass (trusted-fix baseline) |
-| `pnpm test` | 851/851 pass |
-| `pnpm build` (after `cd ..` from `ada-scan/`) | exit 0 |
+Test counts and pass rates are not recorded here: a point-in-time number goes stale (the 2026-07-16
+figures of 851 and 491 no longer matched the suite). Run `pnpm test` (or
+`node --test test/fix/*.test.js` for the trusted-fix tests) from the module directory for current evidence.
 
 ## What is actually observed
 
@@ -366,7 +360,7 @@ Benchmark only IDs returned live. Suggested candidate order when present:
 
 ```bash
 ADA_SCAN_ROOT=.. pnpm cis:benchmark -- \
-  --report "../scan-reports/latest.json" \
+  --report "../.ada-scan/latest.json" \
   --local-root ".." \
   --models "anthropic.claude-opus-4-8,anthropic.claude-sonnet-5,anthropic.claude-sonnet-4-20250514-v1:0" \
   --max-units 15

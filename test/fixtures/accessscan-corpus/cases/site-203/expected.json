@@ -334,9 +334,9 @@
     {
       "ruleId": "VisibleTextPartOfAccessibleName",
       "canonicalRuleId": "VisibleTextPartOfAccessibleName",
-      "violationType": "potential",
+      "violationType": "commercial-parity",
       "evidence": {
-        "checkId": "aria:visible-text-part-of-accessible-name"
+        "checkId": "parity:visible-text-part-of-accessible-name"
       },
       "element": {
         "semantic": {

@@ -1,23 +1,21 @@
 import { generateRoiDocuments } from './roi-doc.js';
-import { loadBaseline, projectReportForLegacy } from './scan-report.js';
+import { projectReportForLegacy } from './scan-report.js';
 
 /**
- * Generates ROI comparison documents from the latest scan report.
+ * Generates the summary documents from the latest scan report.
+ * The comparison (fixed / remaining / new by stableId) was computed at scan time and travels in the report.
  * Called by `pnpm scan:report` (--report-only flag).
  */
 export async function generateExecSummary(latestReport) {
-  const baselineSource = loadBaseline();
-  const baseline = baselineSource ? projectReportForLegacy(baselineSource) : null;
   const latest = projectReportForLegacy(latestReport);
 
-  if (!baseline) {
-    console.log('\nNo baseline found. Run `pnpm scan:baseline` first to enable comparison.');
-    console.log('Generating single-run report without comparison...');
+  if (!latest.comparison) {
+    console.log('\nNo comparison in this scan (no baseline or previous scan). Run `pnpm scan:baseline` to save one.');
   }
 
-  const { comparisonPath, technicalPath } = generateRoiDocuments(latest, baseline);
+  const { comparisonPath, technicalPath } = generateRoiDocuments(latest);
 
-  console.log(`\nROI Documents generated:`);
+  console.log(`\nSummary documents generated:`);
   console.log(`  Executive summary: ${comparisonPath}`);
   console.log(`  Technical report:  ${technicalPath}`);
 

@@ -7,6 +7,7 @@ import {
 } from './lib/constants.js';
 import { isActiveContent, getScopedChildren } from './lib/dom.js';
 import { createDomFact, SIGNAL_FAMILIES } from './types.js';
+import { withDeadline } from '../engine/deadline.js';
 
 /**
  * @param {import('../runtime/types.js').Snapshot} snapshot
@@ -18,7 +19,7 @@ function collectStructuralVisibilityMisuse(snapshot, indexes) {
   /** @type {Array<{ element: import('../runtime/types.js').SnapshotElement, reason: string }>} */
   const candidates = [];
 
-  for (const element of snapshot.elements) {
+  for (const element of withDeadline(snapshot.elements)) {
     // Chat/widget shadow trees over-fire opacity/clipped text heuristics.
     if (element.shadowPath.length > 0) continue;
     if (!isActiveContent(element)) continue;
@@ -138,19 +139,19 @@ function collectStructuralVisibilityMisuse(snapshot, indexes) {
     }
 
     // opacity-hidden-text / overflow-clipped-* over-fire on carousel copy relative
-    // to commercial occurrence counts — keep helpers but do not emit by default.
+    // to reference occurrence counts — keep helpers but do not emit by default.
 
   }
 
   // display:none absolute flyouts are excluded from isActiveContent but still
-  // appear in commercial VisibilityMisuse samples.
-  for (const element of snapshot.elements) {
+  // appear in reference VisibilityMisuse samples.
+  for (const element of withDeadline(snapshot.elements)) {
     if (isAbsoluteHiddenDisclosurePanel(snapshot, indexes, element)) {
       candidates.push({ element, reason: 'absolute-hidden-disclosure-panel' });
     }
   }
 
-  for (const element of snapshot.elements) {
+  for (const element of withDeadline(snapshot.elements)) {
     if (isAbsoluteHiddenDisclosureInner(snapshot, indexes, element)) {
       candidates.push({ element, reason: 'absolute-hidden-disclosure-inner' });
     }
@@ -200,7 +201,7 @@ function isEmptyOpacityOverlay(indexes, element) {
 
   if (getScopedChildren(indexes, element, element).length !== 0) return false;
 
-  // Commercial samples empty overlays that sit on top of sibling media (card
+  // Reference samples empty overlays that sit on top of sibling media (card
   // hover scrims). Bare absolute opacity-0 shells elsewhere over-fire.
   const parent = element.parentId != null ? indexes.byElementId.get(element.parentId) : null;
   if (!parent) return false;
@@ -264,7 +265,7 @@ function hasVideoAncestor(indexes, element) {
 /**
  * Dual-state brand marks stack absolute empty-alt <img> twins. Flag any twin
  * that is opacity-hidden, and also the visible twin when a hidden sibling exists
- * (commercial engines list both layers).
+ * (reference engines list both layers).
  *
  * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
  * @param {import('../runtime/types.js').SnapshotElement} element
@@ -340,7 +341,7 @@ function isEmptyPresentationDivider(indexes, element) {
 
 /**
  * Collapsed absolute flyout/disclosure panels (display:none) still carry link
- * subtrees in the DOM. Commercial scanners flag the panel root. Fixed-position
+ * subtrees in the DOM. Reference scanners flag the panel root. Fixed-position
  * chrome menus are excluded — they over-fire on sites that already match VisMisuse.
  *
  * @param {import('../runtime/types.js').Snapshot} snapshot
@@ -356,8 +357,8 @@ function isAbsoluteHiddenDisclosurePanel(snapshot, indexes, element) {
     return false;
   }
 
-  // Explicit aria-hidden removals are not commercial VisMisuse. display:none
-  // alone still sets hiddenFromAT in our snapshot, but commercial samples those
+  // Explicit aria-hidden removals are not reference VisMisuse. display:none
+  // alone still sets hiddenFromAT in our snapshot, but reference samples those
   // absolute disclosure roots — do not treat that flag as a skip.
   if (element.attributes['aria-hidden'] === 'true') {
     return false;
@@ -379,7 +380,7 @@ function isAbsoluteHiddenDisclosurePanel(snapshot, indexes, element) {
 }
 
 /**
- * Commercial samples often include the inner link column inside a collapsed
+ * Reference samples often include the inner link column inside a collapsed
  * absolute disclosure panel, not only the panel root.
  *
  * @param {import('../runtime/types.js').Snapshot} snapshot
@@ -786,7 +787,7 @@ function isCollapsedMaxHeightOpacityPanel(indexes, element) {
 
 /**
  * Empty filter/tag lists remain in the accessibility tree as list containers
- * with no items — commercial VisibilityMisuse samples these when the surrounding
+ * with no items — reference VisibilityMisuse samples these when the surrounding
  * framework mount still has visible chrome (nonzero height). When the parent
  * mount itself collapses to zero height, the mount signal already covers it.
  *
@@ -816,7 +817,7 @@ function isEmptyExposedList(snapshot, indexes, element) {
 
 /**
  * Mobile chrome toggles often keep a zero-box `javascript:void(0)` host in the
- * tree while the visible icon is painted elsewhere — commercial VisMisuse.
+ * tree while the visible icon is painted elsewhere — reference VisMisuse.
  *
  * @param {import('../runtime/types.js').SnapshotElement} element
  */
@@ -1100,7 +1101,7 @@ function collectVisibilityFacts(snapshot, indexes) {
   /** @type {import('./types.js').DomFact[]} */
   const facts = [];
 
-  for (const element of snapshot.elements) {
+  for (const element of withDeadline(snapshot.elements)) {
     if (element.attributes['aria-hidden'] !== 'true') continue;
     if (!element.rendered || element.rect.width <= 0 || element.rect.height <= 0) continue;
     if (hasAncestor(

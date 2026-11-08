@@ -1,29 +1,6 @@
-import { existsSync, lstatSync } from 'node:fs';
-import { join } from 'node:path';
 import { resolveTrustedVerificationConfig } from './config.js';
-import { createStaticSiteAdapter, createViteSiteAdapter } from './site.js';
+import { createStaticSiteAdapter, createViteSiteAdapter, hasRegularViteConfig } from './site.js';
 import { createProductionScannerAdapter } from './scanner.js';
-
-const VITE_CONFIG_FILES = Object.freeze([
-  'vite.config.js',
-  'vite.config.mjs',
-  'vite.config.cjs',
-  'vite.config.ts',
-  'vite.config.mts',
-  'vite.config.cts',
-]);
-
-function hasRegularViteConfig(localRoot) {
-  return VITE_CONFIG_FILES.some((name) => {
-    const file = join(localRoot, name);
-    try {
-      const stat = lstatSync(file);
-      return existsSync(file) && stat.isFile() && !stat.isSymbolicLink();
-    } catch {
-      return false;
-    }
-  });
-}
 
 /**
  * Build trusted production verification adapters from host `.scan-config.json`.

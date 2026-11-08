@@ -9,6 +9,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '4.1.2' },
     severity: { impact: 'serious', priority: 2 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'accessible name computed from the DOM is empty or not',
     checks: [
       {
         id: 'interactive:button-discernible',
@@ -41,14 +43,27 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '2.4.4' },
     severity: { impact: 'serious', priority: 2 },
     automation: 'deterministic',
-    checks: [{
-      id: 'interactive:link-anchor-discernible',
-      profiles: ['standards', 'commercial-parity'],
-      evaluator: 'accessible-name',
-      target: { selector: 'a[href^="#"]' },
-      options: { mode: 'anchor-link-missing-name' },
-      classification: 'confirmed',
-    }],
+    kind: 'deterministic',
+    kindRationale: 'accessible name computed from the DOM is empty or not',
+    checks: [
+      {
+        id: 'interactive:link-anchor-discernible',
+        profiles: ['commercial-parity'],
+        evaluator: 'accessible-name',
+        target: { selector: 'a[href^="#"]' },
+        options: { mode: 'anchor-link-missing-name' },
+        classification: 'confirmed',
+      },
+      {
+        // Standards: every real link needs a name, not only fragment links.
+        id: 'interactive:link-anchor-discernible-any',
+        profiles: ['standards'],
+        evaluator: 'accessible-name',
+        target: { selector: 'a[href]' },
+        options: { mode: 'anchor-link-missing-name', anyHref: true },
+        classification: 'confirmed',
+      },
+    ],
     reporting: {
       title: 'Anchor links should have a descriptive label',
       requirement: 'Activating anchor links enables users to navigate to a different section within the same page. Anchor links without visible text or labeled images should be assigned labels that inform screen reader users of their destination.',
@@ -63,6 +78,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '4.1.2' },
     severity: { impact: 'serious', priority: 2 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'accessible name computed from the DOM is empty or not',
     checks: [{
       id: 'interactive:link-navigation-discernible',
       profiles: ['standards', 'commercial-parity'],
@@ -85,6 +102,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'AAA', criterion: '3.2.5' },
     severity: { impact: 'minor', priority: 5 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'a new-window warning is a recommendation, not a requirement',
     checks: [{
       id: 'interactive:link-opens-new-window',
       profiles: ['standards'],
@@ -106,21 +125,23 @@ export default [
     category: 'interactive',
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '3.2.1' },
     severity: { impact: 'moderate', priority: 4 },
-    automation: 'deterministic',
+    automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'autofocus is discouraged practice; it fails 3.2.1 only when it moves focus unexpectedly, which markup cannot show',
     checks: [{
       id: 'interactive:no-autofocus',
       profiles: ['standards', 'commercial-parity'],
       evaluator: 'attributes-roles',
       target: { selector: '[autofocus]' },
       options: { mode: 'has-autofocus' },
-      classification: 'confirmed',
+      classification: 'potential',
     }],
     reporting: {
       title: 'Avoid using autofocus',
       requirement: 'Make sure that no element has an autofocus attribute.',
       recommendation: 'Remove autofocus attribute — it causes unexpected focus movement for screen reader users.',
     },
-    fix: { deterministic: true, policy: 'mechanically_safe' },
+    fix: { deterministic: false, policy: 'manual_only' },
   },
   {
     id: 'MenuTriggerClickable',
@@ -129,6 +150,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '2.1.1' },
     severity: { impact: 'serious', priority: 2 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'ARIA relationship attribute on an element whose role disallows it is a markup fact',
     checks: [{
       id: 'interactive:menu-trigger-clickable',
       profiles: ['standards', 'commercial-parity'],
@@ -151,6 +174,8 @@ export default [
     standard: BP,
     severity: { impact: 'moderate', priority: 4 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'advisory against role="menu"; whether it is misused for navigation is a judgement',
     checks: [{
       id: 'interactive:menu-avoid',
       profiles: ['standards', 'commercial-parity'],
@@ -173,6 +198,8 @@ export default [
     standard: BP,
     severity: { impact: 'moderate', priority: 4 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'advisory against role="menubar"; whether it is misused for navigation is a judgement',
     checks: [{
       id: 'interactive:menubar-avoid',
       profiles: ['standards', 'commercial-parity'],
@@ -195,6 +222,8 @@ export default [
     standard: BP,
     severity: { impact: 'moderate', priority: 4 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'advisory against role="menuitem"; whether it is misused for navigation is a judgement',
     checks: [{
       id: 'interactive:menuitem-avoid',
       profiles: ['standards', 'commercial-parity'],
@@ -217,6 +246,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'serious', priority: 2 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'id lookup: the referenced id exists or it does not',
     checks: [{
       id: 'interactive:aria-controls-has-reference',
       profiles: ['standards', 'commercial-parity'],
@@ -239,6 +270,8 @@ export default [
     standard: BP,
     severity: { impact: 'minor', priority: 5 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'guesses the link target type from its URL; a warning is advisory',
     checks: [{
       id: 'interactive:link-image-warning',
       profiles: ['standards'],
@@ -261,6 +294,8 @@ export default [
     standard: BP,
     severity: { impact: 'minor', priority: 5 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'a mailto: warning is a recommendation, not a requirement',
     checks: [{
       id: 'interactive:link-mailto-warning',
       profiles: ['standards', 'commercial-parity'],
@@ -283,6 +318,8 @@ export default [
     standard: BP,
     severity: { impact: 'minor', priority: 5 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'guesses the link target type from its URL; a warning is advisory',
     checks: [{
       id: 'interactive:link-pdf-warning',
       profiles: ['standards', 'commercial-parity'],
@@ -305,11 +342,13 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '4.1.2' },
     severity: { impact: 'serious', priority: 4 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'guesses from styling and behaviour that an element is meant to be a button',
     checks: [{
       id: 'interactive:button-mismatch',
       profiles: ['standards', 'commercial-parity'],
       evaluator: 'interactive-semantics',
-      target: { selector: 'a, span, div' },
+      target: { selector: 'a, span, div, button' },
       options: { mode: 'button-mismatch' },
       classification: 'potential',
     }],
@@ -327,6 +366,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'moderate', priority: 4 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'guesses that a link points to the current page from visual cues',
     checks: [{
       id: 'interactive:link-current-page',
       profiles: ['standards'],
@@ -349,6 +390,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '2.4.4' },
     severity: { impact: 'serious', priority: 5 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'guesses whether a navigation link needs extra context',
     checks: [
       {
         id: 'interactive:link-navigation-ambiguous',
@@ -389,6 +432,8 @@ export default [
     standard: { version: 'WCAG 2.2', level: 'AA', criterion: '2.5.8' },
     severity: { impact: 'moderate', priority: 4 },
     automation: 'heuristic',
+    kind: 'heuristic',
+    kindRationale: 'size is measured but spacing and inline exceptions need judgement',
     checks: [{
       id: 'interactive:target-size',
       profiles: ['standards'],
@@ -411,6 +456,8 @@ export default [
     standard: { version: 'WCAG 2.2', level: 'AA', criterion: '2.4.11' },
     severity: { impact: 'critical', priority: 1 },
     automation: 'behavioral',
+    kind: 'deterministic',
+    kindRationale: 'measured geometry of the focused element against the sticky footer',
     checks: [
       {
         id: 'interactive:focus-not-obscured-footer',

@@ -1,7 +1,7 @@
 # HIT-01 R1 Scanner Parity Evidence
 
 **Recorded:** 15 July 2026  
-**Target:** `https://hitachi728.preview.sites.stg.paradox.ai/`  
+**Target:** `https://site-728.preview.sites.stg.paradox.ai/`  
 **State:** Initial page state  
 **Machine-readable evidence:** `test/fixtures/hit-01-r1-parity.json`
 

@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+
 /**
  * @typedef {'rule_timeout' | 'scan_cancelled'} DeadlineReason
  */
@@ -19,6 +21,7 @@ export function createRuleDeadline({ timeoutMs, parentSignal }) {
     combinedController.abort();
   };
 
+  const expiresAt = Date.now() + timeoutMs;
   const timer = setTimeout(() => abortCombined('rule_timeout'), timeoutMs);
 
   const onParentAbort = () => abortCombined('scan_cancelled');
@@ -32,6 +35,17 @@ export function createRuleDeadline({ timeoutMs, parentSignal }) {
 
   return {
     signal: combinedController.signal,
+
+    /**
+     * Cooperative check for synchronous loops, where the timer cannot fire: compares the clock itself.
+     * Throws the same error `run` rejects with.
+     */
+    check() {
+      if (!combinedController.signal.aborted && Date.now() >= expiresAt) abortCombined('rule_timeout');
+      if (combinedController.signal.aborted) {
+        throw Object.assign(new DOMException('Aborted', 'AbortError'), { errorCode: reason || 'rule_timeout' });
+      }
+    },
 
     /**
      * Runs an evaluator promise under the combined deadline and contains late rejections.
@@ -77,4 +91,27 @@ export function createRuleDeadline({ timeoutMs, parentSignal }) {
       }
     },
   };
+}
+
+/** Deadline of the check currently being evaluated, visible to the hot loops without threading it through every signature. */
+export const deadlineStorage = new AsyncLocalStorage();
+
+// shortcut: only loops that call checkDeadline/withDeadline can be interrupted; one long non-yielding
+// loop still runs to its end. Upgrade to a worker per evaluator (plan task 3.5) if that bites.
+export function checkDeadline() {
+  deadlineStorage.getStore()?.check();
+}
+
+/**
+ * Iterates `items`, checking the active deadline every 64 items.
+ * @template T
+ * @param {Iterable<T>} items
+ * @returns {Generator<T>}
+ */
+export function* withDeadline(items) {
+  let n = 0;
+  for (const item of items) {
+    if ((n++ & 63) === 0) checkDeadline();
+    yield item;
+  }
 }

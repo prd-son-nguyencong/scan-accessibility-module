@@ -3,21 +3,21 @@ import {
   hasAncestor,
   getAncestors,
   sameScope,
+  scopeKey,
 } from '../runtime/graph-relationships.js';
 import {
   elementFinding,
   getIndexes,
   getSemanticSubtreeText,
   getSnapshot,
-  hasAccessibleName,
   hasLineThroughDecoration,
   isBoldStyle,
-  isFocusableControl,
   isItalicStyle,
-  normalizeText,
   parseStylePx,
   queryCandidates,
 } from './lib/runtime-context.js';
+import { withDeadline } from '../engine/deadline.js';
+import { qualifiesVisibilityMismatch } from '../policies/lib/visibility-standards.js';
 
 /** @type {import('../engine/loader.js').EvaluatorModule} */
 export default {
@@ -31,7 +31,7 @@ export default {
     const findings = [];
 
     if (mode === 'strong-mismatch') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (element.tag !== 'span' || element.attributes.role) continue;
         if (!(element.text.trim() || element.visibleText.trim()) || !isBoldStyle(element)) continue;
         if (hasAncestor(snapshot, indexes, element, (ancestor) => /^h[1-6]$/.test(ancestor.tag))) continue;
@@ -39,6 +39,7 @@ export default {
         if (isReferencedAsControlLabel(snapshot, element)) continue;
         if (isListSectionLabel(indexes, element)) continue;
         if (hasHeadingStyleToken(element)) continue;
+        if (!isBoldInRunningText(snapshot, indexes, element)) continue;
         findings.push(elementFinding(element));
       }
       return { status: 'complete', candidatesScanned: candidates.length, findings };
@@ -46,7 +47,7 @@ export default {
 
     if (mode === 'emphasis-mismatch') {
       const nativeItalicOnly = Boolean(check.options?.nativeItalicOnly);
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (nativeItalicOnly) {
           if (element.tag !== 'i' || element.attributes.role) continue;
         } else if (!['i', 'span'].includes(element.tag) || element.attributes.role) {
@@ -65,20 +66,28 @@ export default {
        *   visibilityReason: string,
        * }>} */
       const qualifyingById = new Map();
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (element.hiddenFromAT || element.attributes['aria-hidden'] === 'true') continue;
         if (element.attributes.hidden !== undefined) continue;
         const style = element.computedStyle;
         if (style.display === 'none' || style.visibility === 'hidden') continue;
         const visibilityReason = getAuthorVisibilityHidingReason(element);
         if (!visibilityReason) continue;
+        if (isFocusableFragmentLink(element)) continue;
+        // A visually hidden heading (sr-only clip pattern) is the standard way to give a page its h1; it is meant for assistive technology.
+        if (visibilityReason === 'clip' && /^h[1-6]$/.test(element.tag)) continue;
+        // The node that actually hides the text (itself, or the ancestor whose opacity hides it) is what a focus rule or
+        // an ARIA relation has to cover.
+        const owner = getVisibilityHidingOwner(snapshot, indexes, element, visibilityReason);
+        if (isRevealedOnFocus(snapshot, indexes, owner)) continue;
+        if (isReferencedByAriaRelation(snapshot, indexes, owner)) continue;
+        if (isNameOfVisibleControl(snapshot, indexes, element)) continue;
         if (
           visibilityReason === 'zero-geometry'
           && hasRenderedVisualDescendant(snapshot, indexes, element)
         ) {
           continue;
         }
-        const owner = getVisibilityHidingOwner(snapshot, indexes, element, visibilityReason);
         const text = getSemanticSubtreeText(snapshot, indexes, owner);
         if (!text || text.length < 3) continue;
         qualifyingById.set(owner.id, { element: owner, visibilityReason });
@@ -99,34 +108,35 @@ export default {
     }
 
     if (mode === 'visibility-mismatch') {
-      for (const element of candidates) {
-        if (element.attributes['aria-hidden'] !== 'true') continue;
-        if (!element.rendered || element.rect.width <= 0 || element.rect.height <= 0) continue;
-        if (element.effectiveOpacity <= 0.1) continue;
-        if (hasAncestor(snapshot, indexes, element, (ancestor) => ancestor.attributes['aria-hidden'] === 'true')) {
-          continue;
-        }
-        if (hasEquivalentExposedGraphic(indexes, element)) continue;
-        if (getAncestorsWithAccessibleName(snapshot, indexes, element)) continue;
-        if (isDecorativeAriaHiddenContainer(snapshot, indexes, element)) continue;
-        findings.push(elementFinding(element));
+      for (const element of withDeadline(candidates)) {
+        if (qualifiesVisibilityMismatch(snapshot, indexes, element)) findings.push(elementFinding(element));
       }
       return { status: 'complete', candidatesScanned: candidates.length, findings };
     }
 
     if (mode === 'breadcrumbs-nav') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         const label = (element.attributes['aria-label'] || '').toLowerCase();
         if (!label.includes('breadcrumb')) continue;
         const hasOrderedList = getDescendants(snapshot, indexes, element, (child) => child.tag === 'ol').length > 0;
         if (hasOrderedList) continue;
-        findings.push(elementFinding(element));
+        // ol/li is the recommended markup, not a WCAG requirement: a labelled breadcrumb nav that marks the current page is a convention deviation.
+        const current = getDescendants(snapshot, indexes, element, (child) => child.attributes['aria-current']).length > 0;
+        if (current) {
+          findings.push({
+            ...elementFinding(element, { conventionOnly: 'breadcrumb nav is labelled and marks the current page; <ol>/<li> is recommended markup' }),
+            violationType: 'manual-review',
+            impact: 'minor',
+          });
+          continue;
+        }
+        findings.push(elementFinding(element, { proof: { type: 'measured-fact', fact: `${element.outerHTML.match(/^\s*<[^>]*>/)?.[0].slice(0, 200)} has no <ol> and no descendant with aria-current: the current page is not indicated` } }));
       }
       return { status: 'complete', candidatesScanned: candidates.length, findings };
     }
 
     if (mode === 'sale-price-discernible') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         if (!(element.text.trim() || element.visibleText.trim())) continue;
         const tagged = element.tag === 'del' || element.tag === 's' || element.tag === 'strike';
         const styled = hasLineThroughDecoration(element);
@@ -141,7 +151,7 @@ export default {
     }
 
     if (mode === 'link-anchor-ambiguous') {
-      for (const element of candidates) {
+      for (const element of withDeadline(candidates)) {
         const href = element.attributes.href ?? '';
         const isAmbiguousHref = href === '' || href === '#';
         if (!isAmbiguousHref || element.attributes.role) continue;
@@ -204,6 +214,118 @@ function isFormControl(element) {
 function hasHeadingStyleToken(element) {
   const className = element.attributes.class || '';
   return /(?:^|\s)(?:h[1-6]|heading(?:[-_][1-6])?)(?:\s|$)/i.test(className);
+}
+
+/**
+ * Bold counts as emphasis only inside running text: the parent carries other text besides this
+ * element, and the element is not a block-level box or a numeric-only badge. A lone, short or
+ * block-styled bold label gets its weight from typography, not from stress.
+ *
+ * @param {import('../runtime/types.js').Snapshot} snapshot
+ * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function isBoldInRunningText(snapshot, indexes, element) {
+  const own = renderedSubtreeText(snapshot, indexes, element);
+  if (/^[\d\s.,:+%#/()-]+$/.test(own)) return false;
+  if (/^(?:block|flex|grid|list-item|table|inline-flex|inline-grid)/.test(element.computedStyle.display || '')) return false;
+  const parent = indexes.byElementId.get(element.parentId);
+  if (!parent) return false;
+  // Full parent text (own text nodes plus every rendered descendant), not parent.visibleText: the snapshot fills that only for controls.
+  return renderedSubtreeText(snapshot, indexes, parent).length > own.length;
+}
+
+/** Whitespace-collapsed text of the element and its rendered descendants (every element's `text` holds only its own text nodes). */
+function renderedSubtreeText(snapshot, indexes, element) {
+  const parts = [element.text, ...getDescendants(snapshot, indexes, element, (d) => d.rendered && d.effectiveOpacity > 0.1).map((d) => d.text)];
+  return parts.join(' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * A focusable in-page link that a :focus stylesheet rule reveals is a skip link, not hidden content. A hidden fragment link
+ * with no focus style stays flagged: keyboard users would tab onto an invisible control.
+ *
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function isFocusableFragmentLink(element) {
+  return element.tag === 'a' && /^#./.test(element.attributes.href || '') && element.focusable && element.focusRevealed === true;
+}
+
+/**
+ * An element (or an ancestor) that a :focus stylesheet rule reveals is reveal-on-focus UI (overlay, skip link), not hidden content.
+ *
+ * @param {import('../runtime/types.js').Snapshot} snapshot
+ * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function isRevealedOnFocus(snapshot, indexes, element) {
+  return element.focusRevealed === true;
+}
+
+// Relations whose target text is written for assistive technology (sr-only name/description text is their normal source).
+const TEXT_RELATIONS = ['aria-labelledby', 'aria-describedby', 'aria-details', 'aria-errormessage'];
+
+const referencedIdsCache = new WeakMap();
+
+/**
+ * Ids referenced per scope, cached per snapshot. aria-controls counts unless the controller says its target is inactive
+ * (an unselected tab or a collapsed disclosure), because that panel stays exposed while hidden by opacity/clip.
+ *
+ * @param {import('../runtime/types.js').Snapshot} snapshot
+ * @returns {Map<string, {text: Set<string>, controls: Set<string>}>}
+ */
+function referencedIdsByScope(snapshot) {
+  let map = referencedIdsCache.get(snapshot);
+  if (map) return map;
+  map = new Map();
+  const add = (el, raw, kind) => {
+    const key = scopeKey(el);
+    if (!map.has(key)) map.set(key, { text: new Set(), controls: new Set() });
+    for (const id of raw.split(/\s+/)) if (id) map.get(key)[kind].add(id);
+  };
+  for (const el of snapshot.elements) {
+    for (const name of TEXT_RELATIONS) if (el.attributes[name]) add(el, el.attributes[name], 'text');
+    const inactive = (el.attributes.role === 'tab' && el.attributes['aria-selected'] !== 'true') || el.attributes['aria-expanded'] === 'false';
+    if (el.attributes['aria-controls'] && !inactive) add(el, el.attributes['aria-controls'], 'controls');
+  }
+  referencedIdsCache.set(snapshot, map);
+  return map;
+}
+
+/**
+ * Text referenced by an ARIA relation (multi-id lists included) is intentional AT content, also when the element sits
+ * inside the referenced node.
+ *
+ * @param {import('../runtime/types.js').Snapshot} snapshot
+ * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function isReferencedByAriaRelation(snapshot, indexes, element) {
+  const { text, controls } = referencedIdsByScope(snapshot).get(scopeKey(element)) || {};
+  const own = element.attributes.id && element.attributes.id.trim();
+  if (own && (text?.has(own) || controls?.has(own))) return true;
+  // Text relations name their target by its whole subtree; aria-controls only exempts the controlled node itself, so a
+  // control pointing at a wrapper such as <main> does not hide junk text inside it.
+  return !!text && getAncestors(snapshot, indexes, element).some((node) => (
+    sameScope(node, element) && node.attributes.id && text.has(node.attributes.id.trim())
+  ));
+}
+
+/**
+ * Visually hidden text inside a visible link, button or tab is that control's accessible name.
+ *
+ * @param {import('../runtime/types.js').Snapshot} snapshot
+ * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
+ * @param {import('../runtime/types.js').SnapshotElement} element
+ */
+function isNameOfVisibleControl(snapshot, indexes, element) {
+  return getAncestors(snapshot, indexes, element).some((ancestor) => (
+    isInteractiveAncestor(ancestor)
+    && ancestor.rendered
+    && ancestor.effectiveOpacity > 0.1
+    && ancestor.rect.width > 0
+    && ancestor.rect.height > 0
+  ));
 }
 
 /**
@@ -331,103 +453,6 @@ function isCollapsingClipPath(value) {
       .map((point) => point.trim())
       .filter(Boolean);
     return points.length >= 3 && new Set(points).size === 1;
-  }
-  return false;
-}
-
-/**
- * @param {import('../runtime/types.js').Snapshot} snapshot
- * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
- * @param {import('../runtime/types.js').SnapshotElement} element
- */
-function getAncestorsWithAccessibleName(snapshot, indexes, element) {
-  return getAncestors(snapshot, indexes, element).find(
-    (parent) => (
-      (parent.tag === 'a' || parent.tag === 'button' || parent.attributes.role === 'button')
-      && hasAccessibleName(parent)
-    ),
-  ) || null;
-}
-
-/**
- * Theme and state variants often render two equivalent images in one control:
- * one AT-exposed image supplies the name while the visible alternate is hidden.
- *
- * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
- * @param {import('../runtime/types.js').SnapshotElement} element
- */
-function hasEquivalentExposedGraphic(indexes, element) {
-  if (element.tag !== 'img' || element.parentId == null) return false;
-  const alt = normalizeText(element.attributes.alt || '');
-  if (!alt) return false;
-
-  return (indexes.childrenByParentId.get(element.parentId) || []).some((sibling) => (
-    sibling.id !== element.id
-    && sibling.tag === 'img'
-    && sameScope(sibling, element)
-    && sibling.attributes['aria-hidden'] !== 'true'
-    && !sibling.hiddenFromAT
-    && normalizeText(sibling.attributes.alt || '') === alt
-  ));
-}
-
-/**
- * @param {import('../runtime/types.js').Snapshot} snapshot
- * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
- * @param {import('../runtime/types.js').SnapshotElement} element
- */
-function isDecorativeAriaHiddenContainer(snapshot, indexes, element) {
-  if (hasMeaningfulVisibleText(snapshot, indexes, element)) {
-    return false;
-  }
-  if (getDescendants(snapshot, indexes, element, (child) => isFocusableControl(child)).length > 0) {
-    return false;
-  }
-  if (getDescendants(snapshot, indexes, element, (child) => hasInformativeGraphic(child)).length > 0) {
-    return false;
-  }
-  if (hasInformativeGraphic(element)) {
-    return false;
-  }
-  if (hasAccessibleName(element)) {
-    return false;
-  }
-  return true;
-}
-
-/**
- * @param {import('../runtime/types.js').Snapshot} snapshot
- * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
- * @param {import('../runtime/types.js').SnapshotElement} element
- */
-function hasMeaningfulVisibleText(snapshot, indexes, element) {
-  const ownText = (element.visibleText || element.text || '').trim();
-  if (ownText.length >= 3) {
-    return true;
-  }
-  return getDescendants(snapshot, indexes, element, (child) => {
-    if (!child.rendered) return false;
-    const text = (child.visibleText || child.text || '').trim();
-    return text.length >= 3;
-  }).length > 0;
-}
-
-/**
- * @param {import('../runtime/types.js').SnapshotElement} element
- */
-function hasInformativeGraphic(element) {
-  if (element.tag === 'img') {
-    const alt = element.attributes.alt ?? '';
-    if (alt.trim().length > 0 && alt.trim().toLowerCase() !== 'image') {
-      return true;
-    }
-    return false;
-  }
-  if (element.attributes.role === 'img' && hasAccessibleName(element)) {
-    return true;
-  }
-  if (element.tag === 'svg' && element.attributes.role === 'img' && hasAccessibleName(element)) {
-    return true;
   }
   return false;
 }

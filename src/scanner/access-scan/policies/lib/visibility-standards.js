@@ -49,9 +49,8 @@ export function hasInformativeGraphic(element) {
     }
     return false;
   }
-  if (element.tag === 'svg') {
-    return element.rendered && element.rect.width > 0 && element.rect.height > 0;
-  }
+  // An svg is informative only when it is exposed as an image with a name; a bare aria-hidden svg is a decorative icon.
+  if (element.attributes.role === 'img' && hasAccessibleName(element)) return true;
   return false;
 }
 

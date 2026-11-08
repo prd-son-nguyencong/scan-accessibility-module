@@ -89,3 +89,19 @@ test('countViolationOccurrences distinguishes fix units from message occurrences
     { ruleId: 'w3c-html-warning' },
   ]), 4);
 });
+
+test('console summary says the source is unavailable instead of naming a guessed page file', async () => {
+  const { buildScanReportV2 } = await import('../src/reporter/report-v2.js');
+  const report = buildScanReportV2([{
+    page: 'home', url: 'https://example.test/', scannerRuns: [{ layer: 'axe', engine: { name: 'axe-core', version: '4.12.1' }, status: 'complete' }],
+    violations: [{ ruleId: 'image-alt', layer: 'axe', category: 'accessibility', impact: 'serious', element: { outerHTML: '<img src="a.png">', selector: 'img' },
+      source: { mode: 'url', file: 'unknown', confidence: 'none', method: 'no-source-project' } }],
+  }], { producer: { version: '0.0.0' } });
+  const logs = [];
+  const original = console.log;
+  console.log = (...a) => logs.push(a.join(' '));
+  try { reporter.printConsoleSummary(report); } finally { console.log = original; }
+  const out = logs.join('\n');
+  assert.match(out, /Source: unavailable \(no source project\) for 1 violation/);
+  assert.doesNotMatch(out, /page-level trace|src\/pages/);
+});

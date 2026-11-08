@@ -22,6 +22,7 @@ import { applyEditsToBytes } from '../candidate/bytes.js';
 import { assertDestinationContained } from '../candidate/path.js';
 import { attachDiffToCandidate } from '../candidate/diff.js';
 import { readSecureFileBytes, touchedFilesForCandidate } from '../candidate/intent.js';
+import { isLoopbackUrl } from '../../utils/host-classify.js';
 import { persistVerificationArtifact } from './artifact.js';
 import { buildCommandEnvironment } from './process-env.js';
 import { compareVerificationFindings } from './verification-key.js';
@@ -39,6 +40,7 @@ const DEFAULT_EXCLUDED_DIRS = new Set([
   'node_modules',
   'dist',
   'scan-reports',
+  '.ada-scan',
 ]);
 const SECRET_NAME_PATTERN = /^\.env|credentials|secrets/i;
 const MAX_TREE_FILES = 5000;
@@ -48,7 +50,6 @@ const MAX_SHADOW_COPY_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_CAPTURED_OUTPUT = 32 * 1024;
 const DEFAULT_BUILD_TIMEOUT_MS = 120_000;
 const KILL_ESCALATION_MS = 5000;
-const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
 
 export function assertLoopbackSiteUrl(url) {
   let parsed;
@@ -60,8 +61,7 @@ export function assertLoopbackSiteUrl(url) {
   if (!['http:', 'https:'].includes(parsed.protocol)) {
     throw new ShadowVerificationError('SITE_URL_INVALID', 'Site URL must use HTTP or HTTPS.');
   }
-  const host = parsed.hostname.toLowerCase();
-  if (!LOOPBACK_HOSTS.has(host)) {
+  if (!isLoopbackUrl(parsed.href)) {
     throw new ShadowVerificationError('SITE_URL_NOT_LOOPBACK', 'Site URL must bind to loopback only.');
   }
   return parsed.href;
@@ -97,6 +97,7 @@ export async function stopCandidateSite(siteHandle) {
 
 function shouldExcludeEntry(name, relPath) {
   if (DEFAULT_EXCLUDED_DIRS.has(name)) return true;
+  if (relPath.startsWith('.ada-scan/') || relPath.includes('/.ada-scan/')) return true;
   if (relPath.startsWith('scan-reports/') || relPath.includes('/scan-reports/')) return true;
   if (SECRET_NAME_PATTERN.test(name)) return true;
   return false;

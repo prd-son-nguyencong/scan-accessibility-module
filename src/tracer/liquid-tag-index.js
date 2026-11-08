@@ -1,11 +1,12 @@
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readdirSync, readFileSync } from 'fs';
 import path from 'path';
-import { getProjectRoot } from '../utils/paths.js';
+import { getProjectRoot, containedPath } from '../utils/paths.js';
 
 const ROOT = getProjectRoot();
 
-// Parsed-source cache, keyed by project-relative source path.
+// Parsed-source cache, keyed by project-relative source path (and root, when not the default one).
 let tagIndexCache = new Map();
+const cacheKeyFor = (root, key) => (root === ROOT ? key : `${root}\0${key}`);
 
 const VOID_TAGS = new Set([
   'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
@@ -16,7 +17,7 @@ const VOID_TAGS = new Set([
 // that survive this filter are the ones worth scoring on.
 const GENERIC_CLASS_RE = /^(?:flex|grid|block|inline|hidden|relative|absolute|fixed|sticky|container|group|w-|h-|min-|max-|p[xytrbl]?-|m[xytrbl]?-|gap-|text-|bg-|border|rounded|shadow|z-|overflow|items-|justify-|self-|order-|col-|row-|space-|leading-|tracking-|font-|opacity-|transition|duration-|ease-|transform|scale-|translate-|rotate-|cursor-|select-|pointer-|size-)/;
 
-function isGenericClass(token) {
+export function isGenericClass(token) {
   return token.length < 4 || GENERIC_CLASS_RE.test(token) || token.includes(':');
 }
 
@@ -97,13 +98,14 @@ function liquidValueToRegex(value) {
  * Parse one .liquid file into a list of open tags:
  *   { tagName, line, attrs, staticClasses, staticAttrs, dynamicAttrs, contentStart }
  */
-export function buildTagIndex(sourceFile) {
-  const cached = tagIndexCache.get(sourceFile);
+export function buildTagIndex(sourceFile, root = ROOT) {
+  const cacheKey = cacheKeyFor(root, sourceFile);
+  const cached = tagIndexCache.get(cacheKey);
   if (cached) return cached;
 
-  const fullPath = path.join(ROOT, sourceFile);
-  if (!existsSync(fullPath)) {
-    tagIndexCache.set(sourceFile, []);
+  const fullPath = containedPath(root, sourceFile);
+  if (!fullPath || !existsSync(fullPath)) {
+    tagIndexCache.set(cacheKey, []);
     return [];
   }
 
@@ -134,11 +136,11 @@ export function buildTagIndex(sourceFile) {
     const attrs = parseAttrs(body);
 
     const classValue = attrs.class || '';
-    const staticClasses = classValue
-      .replace(/\{\{[^}]*\}\}/g, ' ')
-      .replace(/\{%[^%]*%\}/g, ' ')
-      .split(/\s+/)
-      .filter((c) => c && !isGenericClass(c));
+    // A class assembled by Liquid (`banner--{{ kind }}`) is a pattern, not a literal: its static parts must not count as a class the element lacks.
+    const classTokens = classValue.replace(/\{\{[^}]*\}\}|\{%[^%]*%\}/g, '\u0000').split(/\s+/).filter(Boolean);
+    const staticClasses = classTokens.filter((c) => !c.includes('\u0000') && !isGenericClass(c));
+    const dynamicClasses = classTokens.filter((c) => c.includes('\u0000') && c.replace(/\u0000/g, '').length >= 3)
+      .map((c) => new RegExp(`^${c.split('\u0000').map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`));
 
     const staticAttrs = {};
     const dynamicAttrs = {};
@@ -158,13 +160,23 @@ export function buildTagIndex(sourceFile) {
     const outMatch = contentPeek.match(/^[^<]*\{\{-?\s*([^}]+?)\s*-?\}\}/);
     const outExpr = outMatch ? outMatch[1].replace(/\s+/g, ' ') : null;
 
+    // Leading text up to the next tag; null when Liquid could change it or nothing is authored there.
+    const leading = src.slice(end + 1, src.indexOf('<', end + 1) === -1 ? end + 1 : src.indexOf('<', end + 1));
+    const text = /[{}]/.test(leading) || !leading.trim() ? null : leading.replace(/\s+/g, ' ').trim();
+
     tags.push({
       tagName,
+      text,
       outExpr,
       line: lineOf(m.index),
       staticClasses,
+      classTokens: classTokens.filter((c) => !c.includes('\u0000')),
+      dynamicClasses,
       staticAttrs,
       dynamicAttrs,
+      hasClass: attrs.class !== undefined,
+      // A token that is all Liquid (`class="{{ klass }}"`) could render any class: what the element carries beyond the literal tokens proves nothing against this tag.
+      opaqueClass: classTokens.some((c) => c.includes('\u0000') && c.replace(/\u0000/g, '').length < 3),
       selfClosing: VOID_TAGS.has(tagName) || src[end - 1] === '/',
       contentStart: end + 1,
       openStart: m.index,
@@ -172,7 +184,7 @@ export function buildTagIndex(sourceFile) {
     openRe.lastIndex = end + 1;
   }
 
-  tagIndexCache.set(sourceFile, tags);
+  tagIndexCache.set(cacheKey, tags);
   return tags;
 }
 
@@ -183,13 +195,13 @@ export function buildTagIndex(sourceFile) {
  * the argument source text verbatim — so a call site can be matched exactly,
  * even though the component's own markup lives in another file entirely.
  */
-export function buildRenderIndex(sourceFile) {
-  const cacheKey = `render:${sourceFile}`;
+export function buildRenderIndex(sourceFile, root = ROOT) {
+  const cacheKey = cacheKeyFor(root, `render:${sourceFile}`);
   const cached = tagIndexCache.get(cacheKey);
   if (cached) return cached;
 
-  const fullPath = path.join(ROOT, sourceFile);
-  if (!existsSync(fullPath)) {
+  const fullPath = containedPath(root, sourceFile);
+  if (!fullPath || !existsSync(fullPath)) {
     tagIndexCache.set(cacheKey, []);
     return [];
   }
@@ -232,7 +244,7 @@ function decodeEntities(value) {
  * Match a rendered element carrying `data-pdk-render` back to the `{% render %}`
  * line that produced it.
  */
-export function findLineForRenderTag(sourceFile, rendered) {
+export function findLineForRenderTag(sourceFile, rendered, root = ROOT) {
   const component = rendered.attrs['data-pdk-render'] || rendered.attrs['data-pdk-partial'];
   if (!component) return null;
   const wanted = component.replace(/\.liquid$/, '');
@@ -243,13 +255,23 @@ export function findLineForRenderTag(sourceFile, rendered) {
     if (key) renderedParams[key] = decodeEntities(value);
   }
 
-  const calls = buildRenderIndex(sourceFile).filter((c) => c.name === wanted
+  // The stamped attribute is the argument's source text: a call whose same-named argument reads differently did not render this element
+  // (a value cut short by truncation still prefixes the real one).
+  const disagrees = (call) => Object.entries(renderedParams).some(([key, value]) => {
+    const sourceValue = call.params[key];
+    if (sourceValue === undefined) return false;
+    const target = value.replace(/^['"]|['"]$/g, '').replace(/(?:\.\.\.|…)$/, '');
+    return !sourceValue.replace(/^['"]|['"]$/g, '').startsWith(target);
+  });
+  const named = buildRenderIndex(sourceFile, root).filter((c) => c.name === wanted
     || c.name.split('/').pop() === wanted.split('/').pop());
+  const calls = named.filter((c) => !disagrees(c));
   if (calls.length === 0) return null;
 
   let best = null;
   let bestScore = -1;
   let tied = false;
+  let tiedCalls = [];
   for (const call of calls) {
     let score = 0;
     for (const [key, value] of Object.entries(renderedParams)) {
@@ -261,17 +283,20 @@ export function findLineForRenderTag(sourceFile, rendered) {
       const target = value.replace(/^['"]|['"]$/g, '');
       score += (sourceValue === value || unquoted === target) ? 4 : -2;
     }
-    if (score > bestScore) { bestScore = score; best = call; tied = false; }
-    else if (score === bestScore) tied = true;
+    if (score > bestScore) { bestScore = score; best = call; tied = false; tiedCalls = [call]; }
+    else if (score === bestScore) { tied = true; tiedCalls.push(call); }
   }
 
+  // Every parameter the live element carries disagrees with this call site: it did not render the element.
+  if (bestScore < 0) return null;
   if (!best || bestScore <= 0) {
     return calls.length === 1
-      ? { line: calls[0].line, confidence: 'medium', method: 'liquid-render-call', ambiguous: false }
+      ? { line: calls[0].line, lines: [calls[0].line], confidence: 'medium', method: 'liquid-render-call', ambiguous: false }
       : null;
   }
   return {
     line: best.line,
+    lines: tiedCalls.map((c) => c.line),
     confidence: tied ? 'medium' : 'high',
     method: 'liquid-render-call',
     ambiguous: tied,
@@ -294,7 +319,11 @@ export function parseRenderedTag(outerHTML) {
   const body = end === -1 ? html.slice(m[0].length) : html.slice(m[0].length, end);
   const attrs = parseAttrs(body);
   const classes = (attrs.class || '').split(/\s+/).filter(Boolean);
-  return { tagName: m[1].toLowerCase(), attrs, classes, classSet: new Set(classes) };
+  // Leading text, only when a tag follows it (an outerHTML cut mid-text proves nothing).
+  const after = end === -1 ? '' : html.slice(end + 1);
+  const next = after.indexOf('<');
+  const text = next > 0 && after.slice(0, next).trim() ? after.slice(0, next).replace(/\s+/g, ' ').trim() : null;
+  return { tagName: m[1].toLowerCase(), text, attrs, classes, classSet: new Set(classes) };
 }
 
 // Attributes worth scoring: stable, authored, and rarely rewritten at runtime.
@@ -304,10 +333,27 @@ const SCORED_ATTRS = [
   'aria-expanded', 'aria-controls', 'aria-current', 'data-testid', 'for', 'value',
 ];
 
+// Fallback when the scanned page's host is unknown: the host a dev server resolves a root-relative URL against is a single-label name (localhost, a container name), a .localhost / .test / .local name, an address literal or host.docker.internal.
+// `local` is the scanned page's hostname when the caller knows it (exact match, any dev host name works), else true (this guess), else false (deployed page: any host).
+const DEV_HOST = /^([^.]+|\[[0-9a-f:]+\]|\d{1,3}(\.\d{1,3}){3}|[^.]+\.(localhost|test|local)|host\.docker\.internal)$/i;
+
+/**
+ * A root-relative authored `href` / `src` (`/jobs`) equals the rendered absolute form (`http://host/jobs`): the browser and the dev server resolve it.
+ * With `local` (a scan of the local dev server) only the dev server's own host resolves it: `https://other.example/jobs` is another site's link, not this tag.
+ */
+function sameAttrValue(name, authored, rendered, local = false) {
+  if (authored === rendered) return true;
+  if ((name !== 'href' && name !== 'src') || !authored.startsWith('/') || authored.startsWith('//')) return false;
+  try { const u = new URL(rendered); return /^https?:$/.test(u.protocol) && (!local || (typeof local === 'string' ? u.hostname === local : DEV_HOST.test(u.hostname))) && `${u.pathname}${u.search}${u.hash}` === authored; } catch { return false; }
+}
+
+/** A script that appends the route to an authored absolute link (`href += path`): the rendered href starts with the authored one. An authored absolute URL that the rendered one extends (at a path, query or hash boundary) is the same link, not a mismatch. An exact match outranks it (see scoreTag). */
+const appendedUrl = (name, authored, rendered) => (name === 'href' || name === 'src') && /^https?:\/\//i.test(authored) && rendered.length > authored.length && rendered.startsWith(authored) && (authored.endsWith('/') || /[/?#]/.test(rendered[authored.length]));
+
 /**
  * Score one source tag against a rendered element. Returns -1 for a reject.
  */
-function scoreTag(tag, rendered) {
+function scoreTag(tag, rendered, local = false) {
   if (tag.tagName !== rendered.tagName) return -1;
 
   let score = 1;
@@ -325,6 +371,20 @@ function scoreTag(tag, rendered) {
     if (matched === 0) return -1;
     score += matched * 4;
     score -= (tag.staticClasses.length - matched);
+  } else if (rendered.classes.length > 0 && !tag.hasClass) {
+    // The source tag cannot have produced these classes (script-added ones aside): weaken, never decisive.
+    score -= 2;
+  }
+  // A tag whose whole literal class list (variants and utilities included) is on the element is that element, whatever a state class
+  // like `current` also matches on a smaller tag.
+  if (tag.classTokens.length >= 4 && tag.classTokens.every((c) => rendered.classSet.has(c))) score += 6;
+  for (const re of tag.dynamicClasses || []) score += rendered.classes.some((c) => re.test(c)) ? 3 : -1;
+  // Utility classes carry no identity alone, but the whole literal list does: a tag that writes classes the element lacks is probably another
+  // element (a script adds classes such as `current`, it rarely removes several); one whose list the element contains is the likely author.
+  // Never rejects on its own (a script can strip classes); only ranks. Skipped when the element's class list was cut short or the tag's is Liquid.
+  if (score > 0 && tag.classTokens.length > 0 && !tag.opaqueClass && tag.dynamicClasses.length === 0 && rendered.classes.length > 0 && !rendered.classes.some((c) => /\u2026|\.\.\./.test(c))) {
+    const present = tag.classTokens.filter((c) => rendered.classSet.has(c)).length;
+    score = Math.max(1, score + Math.min(present, 4) - 2 * (tag.classTokens.length - present));
   }
 
   for (const name of SCORED_ATTRS) {
@@ -334,7 +394,8 @@ function scoreTag(tag, rendered) {
       continue;
     }
     if (tag.staticAttrs[name] !== undefined) {
-      score += tag.staticAttrs[name] === renderedValue ? 5 : -2;
+      // byte-equal 6 > equivalent 5 > a dynamic attr 3 > an extended (script-appended) prefix 2: a prefix is weak evidence, never outranks a link that matches
+      score += tag.staticAttrs[name] === renderedValue ? 6 : sameAttrValue(name, tag.staticAttrs[name], renderedValue, local) ? 5 : appendedUrl(name, tag.staticAttrs[name], renderedValue) ? 2 : -2;
     } else if (tag.dynamicAttrs[name]) {
       score += tag.dynamicAttrs[name].test(renderedValue) ? 3 : -1;
     }
@@ -347,27 +408,32 @@ function scoreTag(tag, rendered) {
  * Locate the 1-based line in `sourceFile` that renders `outerHTML`.
  * Returns { line, confidence, method, ambiguous } or null.
  */
-export function findLineForRenderedHtml(sourceFile, outerHTML) {
+export function findLineForRenderedHtml(sourceFile, outerHTML, root = ROOT, { local = false } = {}) {
   const rendered = parseRenderedTag(outerHTML);
   if (!rendered) return null;
 
   // A component instance points at its call site, not at the component's own
   // markup — the file we were given is the caller.
-  const renderHit = findLineForRenderTag(sourceFile, rendered);
+  const renderHit = findLineForRenderTag(sourceFile, rendered, root);
   if (renderHit) return renderHit;
 
-  const tags = buildTagIndex(sourceFile);
+  const tags = buildTagIndex(sourceFile, root);
   if (tags.length === 0) return null;
 
   let best = null;
   let bestScore = 0;
   let runnerUp = 0;
+  let bestTags = [];
   for (const tag of tags) {
-    const score = scoreTag(tag, rendered);
+    const score = scoreTag(tag, rendered, local);
     if (score > bestScore) {
       runnerUp = bestScore;
       bestScore = score;
       best = tag;
+      bestTags = [tag];
+    } else if (score > 0 && score === bestScore) {
+      runnerUp = score;
+      bestTags.push(tag);
     } else if (score > runnerUp) {
       runnerUp = score;
     }
@@ -378,6 +444,7 @@ export function findLineForRenderedHtml(sourceFile, outerHTML) {
   const decisive = bestScore >= 5 && bestScore > runnerUp;
   return {
     line: best.line,
+    lines: bestTags.map((t) => t.line),
     confidence: decisive ? 'high' : 'medium',
     method: 'liquid-tag-index',
     ambiguous: !decisive && sameTagCount > 1,
@@ -390,8 +457,8 @@ export function findLineForRenderedHtml(sourceFile, outerHTML) {
  * keyboard layer carries. Text authored inline in the template is found
  * directly; text that came from a data file falls back to a unique tag match.
  */
-export function findLineForTagText(sourceFile, tagName, text) {
-  const tags = buildTagIndex(sourceFile);
+export function findLineForTagText(sourceFile, tagName, text, root = ROOT) {
+  const tags = buildTagIndex(sourceFile, root);
   if (tags.length === 0) return null;
   const wanted = (tagName || '').toLowerCase();
   const candidates = tags.filter((t) => t.tagName === wanted);
@@ -399,8 +466,9 @@ export function findLineForTagText(sourceFile, tagName, text) {
 
   const needle = (text || '').trim().slice(0, 60);
   if (needle.length >= 3) {
-    const fullPath = path.join(ROOT, sourceFile);
+    const fullPath = containedPath(root, sourceFile);
     try {
+      if (!fullPath) throw new Error('outside root');
       const lines = stripLiquidComments(readFileSync(fullPath, 'utf8')).split('\n');
       for (let i = 0; i < lines.length; i += 1) {
         if (!lines[i].includes(needle)) continue;
@@ -426,9 +494,9 @@ export function findLineForTagText(sourceFile, tagName, text) {
 /**
  * Locate a line from an href. Handles both literal hrefs and interpolated ones.
  */
-export function findLineForHref(sourceFile, href) {
+export function findLineForHref(sourceFile, href, root = ROOT) {
   if (!href) return null;
-  const tags = buildTagIndex(sourceFile);
+  const tags = buildTagIndex(sourceFile, root);
   const exact = [];
   const loose = [];
   for (const tag of tags) {
@@ -454,9 +522,9 @@ export function clearTagIndexCache() {
 const LAYOUT_DEFAULT = 'layout';
 const RENDER_DEPTH_LIMIT = 3;
 
-function layoutForPage(pageFile) {
-  const fullPath = path.join(ROOT, pageFile);
-  if (!existsSync(fullPath)) return LAYOUT_DEFAULT;
+function layoutForPage(pageFile, root = ROOT) {
+  const fullPath = containedPath(root, pageFile);
+  if (!fullPath || !existsSync(fullPath)) return LAYOUT_DEFAULT;
   try {
     const head = readFileSync(fullPath, 'utf8').slice(0, 2000);
     const m = head.match(/\{%-?\s*layout\s+(?:'([^']+)'|"([^"]+)")/);
@@ -466,98 +534,69 @@ function layoutForPage(pageFile) {
   }
 }
 
-function renderTargetToFile(name) {
+function renderTargetToFile(name, root = ROOT) {
   const normalized = name.replace(/\\/g, '/').replace(/\.liquid$/, '');
   if (normalized.startsWith('/') || normalized.split('/').includes('..')) return null;
   const candidates = normalized.startsWith('components/')
     ? [`src/${normalized}.liquid`]
     : [`src/partials/${normalized}.liquid`, `src/components/${normalized}.liquid`];
-  return candidates.find((c) => existsSync(path.join(ROOT, c))) || null;
+  return candidates.find((c) => existsSync(path.join(root, c))) || null;
 }
 
-/**
- * Walk the render tree rooted at a page's layout, looking for the file and line
- * that produced a document-level element. `<html>`, `<body>`, and the script and
- * link tags live in the layout chain, never in the page body — attributing them
- * to the page file gives a file with no line in it.
- *
- * @returns {{ file, line, confidence, method } | null}
- */
-export function findDocumentSource(pageFile, outerHTML) {
-  const rendered = parseRenderedTag(outerHTML);
-  if (!rendered) return null;
+const PAGE_LEVEL_PROBES = [
+  [new Set(['carousel-dots-missing-active-state', 'carousel-missing-label', 'carousel-next-button-no-label',
+    'carousel-next-not-functional', 'carousel-prev-button-no-label', 'carousel-slides-missing-labels']),
+  /data-carousel|embla|carousel/i],
+  [new Set(['missing-h1', 'multiple-h1', 'no-headings', 'empty-heading', 'heading-level-skipped', 'page-has-heading-one', 'heading-order']),
+    /<h1|<h2/i],
+  [new Set(['missing-main-landmark', 'multiple-main-landmarks', 'landmark-one-main', 'landmark-no-duplicate-main']), /<main/i],
+  [new Set(['skip-link-missing', 'bypass']), /skip/i],
+  [new Set(['focus-order-illogical', 'tabindex']), /<main|tabindex/i],
+];
 
-  const layoutName = layoutForPage(pageFile);
-  const layoutFile = `src/layouts/${layoutName}.liquid`;
+// Rules about the page's structure as a whole. Their fix is authored in the page file, so they anchor
+// there even when the reported element (<html>, <body>) is written in the layout.
+const PAGE_STRUCTURE_RULES = new Set([
+  'landmark-one-main', 'landmark-no-duplicate-main', 'page-has-heading-one', 'bypass', 'region',
+  'missing-main-landmark', 'multiple-main-landmarks', 'missing-h1', 'multiple-h1', 'no-headings', 'skip-link-missing',
+  'regionmaincontentsingle', 'regionmaincontentmisuse', 'regionmaincontentmismatch', 'skip-link',
+]);
+// The reported element (the skip link) lives in the layout, but the defect is the missing target, authored in the page's <main>.
+const PAGE_TARGET_RULES = new Set(['skip-link', 'bypass', 'skip-link-missing']);
+export const isPageTargetRule = (ruleId) => PAGE_TARGET_RULES.has(String(ruleId || '').toLowerCase());
+const DOCUMENT_TAGS = new Set(['html', 'head', 'body']);
 
-  // Search the page's own partials as well as the layout chain: a page file
-  // that only composes `{% render %}` calls holds none of the markup a
-  // violation points at.
-  const roots = [];
-  if (pageFile && existsSync(path.join(ROOT, pageFile))) roots.push({ file: pageFile, depth: 0 });
-  if (existsSync(path.join(ROOT, layoutFile))) roots.push({ file: layoutFile, depth: 0 });
-  if (roots.length === 0) return null;
-
-  const seen = new Set();
-  let queue = roots;
-  let fallback = null;
-
-  while (queue.length > 0) {
-    const next = [];
-    for (const { file, depth } of queue) {
-      if (seen.has(file)) continue;
-      seen.add(file);
-
-      const hit = file === pageFile ? null : findLineForRenderedHtml(file, outerHTML);
-      if (hit && hit.confidence === 'high' && !hit.ambiguous) {
-        return { file, line: hit.line, confidence: 'high', method: `render-tree:${hit.method}` };
-      }
-      if (hit && !fallback) {
-        fallback = { file, line: hit.line, confidence: 'medium', method: `render-tree:${hit.method}` };
-      }
-
-      if (depth >= RENDER_DEPTH_LIMIT) continue;
-      for (const call of buildRenderIndex(file)) {
-        const target = renderTargetToFile(call.name);
-        if (target && !seen.has(target)) next.push({ file: target, depth: depth + 1 });
-      }
-    }
-    queue = next;
-  }
-
-  return fallback;
-}
-
-/**
- * True when an element belongs to the document shell rather than to page
- * content — the case where `findDocumentSource` is worth trying.
- */
-export function isDocumentLevelElement(outerHTML) {
-  const rendered = parseRenderedTag(outerHTML);
-  if (!rendered) return false;
-  return ['html', 'body', 'head', 'script', 'link', 'meta', 'title'].includes(rendered.tagName);
-}
+export const isPageStructureRule = (ruleId) => PAGE_STRUCTURE_RULES.has(String(ruleId || '').toLowerCase());
+export const isDocumentTag = (tagName) => DOCUMENT_TAGS.has(tagName);
 
 /**
  * Anchor line for a page-level finding — one that reports the absence of
  * something ("no h1", "no main landmark", "no skip link") and so has no element
  * to point at. The anchor is where the missing markup would go.
  */
-export function findPageLevelAnchor(pageFile, ruleId) {
+export function findPageLevelAnchor(pageFile, ruleId, root = ROOT) {
   const rule = (ruleId || '').toLowerCase();
 
   // What the rule is about decides where a fix would be written. These are
   // anchors, not the location of an element — the element does not exist.
-  let probe = null;
-  if (/carousel|slide/.test(rule)) probe = /data-carousel|embla|carousel/i;
-  else if (/h1|heading/.test(rule)) probe = /<h1|<h2/i;
-  else if (/main|landmark/.test(rule)) probe = /<main/i;
-  else if (/skip-link/.test(rule)) probe = /skip/i;
-  else if (/focus-order|tabindex/.test(rule)) probe = /<main|tabindex/i;
+  // Exact rule ids only: a substring test sent unrelated rules (`domain-...`, `...-remaining`) to a wrong anchor.
+  const probe = PAGE_LEVEL_PROBES.find(([ids]) => ids.has(rule))?.[1] || null;
 
-  for (const file of collectRenderTree(pageFile)) {
-    const fullPath = path.join(ROOT, file);
-    if (!existsSync(fullPath)) continue;
+  // Structural rules belong to the page file: the probe line when it has one, else its <main>, else the file alone.
+  const pageFull = PAGE_STRUCTURE_RULES.has(rule) && pageFile ? containedPath(root, pageFile) : null;
+  if (pageFull && existsSync(pageFull)) {
+    const lines = stripLiquidComments(readFileSync(pageFull, 'utf8')).split('\n');
+    const probed = probe ? lines.findIndex((l) => probe.test(l)) + 1 : 0;
+    const main = buildTagIndex(pageFile, root).find((t) => t.tagName === 'main');
+    // No probe hit and no <main> (error/stub page): the page's first element, else its layout include, so the source always carries a line.
+    const firstElement = lines.findIndex((l) => /<[a-z]/i.test(l)) + 1;
+    const layoutInclude = lines.findIndex((l) => /\{%-?\s*layout\b/.test(l)) + 1;
+    return { file: pageFile, line: probed || main?.line || firstElement || layoutInclude || 1, confidence: 'low', method: 'page-level-anchor' };
+  }
+
+  for (const file of collectRenderTree(pageFile, RENDER_DEPTH_LIMIT, root)) {
+    const fullPath = containedPath(root, file);
+    if (!fullPath || !existsSync(fullPath)) continue;
     let content;
     try { content = stripLiquidComments(readFileSync(fullPath, 'utf8')); } catch { continue; }
     if (probe) {
@@ -569,31 +608,67 @@ export function findPageLevelAnchor(pageFile, ruleId) {
       }
       continue;
     }
-    const tags = buildTagIndex(file);
+    const tags = buildTagIndex(file, root);
     const anchor = tags.find((t) => t.tagName === 'main') || tags.find((t) => t.tagName === 'body');
     if (anchor) return { file, line: anchor.line, confidence: 'low', method: 'page-level-anchor' };
   }
 
   // Nothing matched: point at the layout's <main>, the insertion site for
   // anything the page as a whole is missing.
-  const layoutFile = `src/layouts/${layoutForPage(pageFile)}.liquid`;
-  const layoutTags = buildTagIndex(layoutFile);
+  const layoutFile = `src/layouts/${layoutForPage(pageFile, root)}.liquid`;
+  const layoutTags = buildTagIndex(layoutFile, root);
   const fallback = layoutTags.find((t) => t.tagName === 'main') || layoutTags.find((t) => t.tagName === 'body');
   return fallback
     ? { file: layoutFile, line: fallback.line, confidence: 'low', method: 'page-level-anchor' }
     : null;
 }
 
+function pageFilesOf(root) {
+  const out = [];
+  const walk = (dir) => {
+    let entries = [];
+    try { entries = readdirSync(path.join(root, dir), { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (e.isDirectory()) walk(`${dir}/${e.name}`);
+      else if (e.name.endsWith('.liquid')) out.push(`${dir}/${e.name}`);
+    }
+  };
+  walk('src/pages');
+  return out;
+}
+
+/**
+ * Where a missing skip link is fixed: the header the layout renders, not the page <main> it would target. Only when the same header (or, failing a
+ * header partial, the same layout) serves every page of the project; otherwise null and the page anchor stays the only answer.
+ * @returns {{ file: string, line: number, confidence: 'low', method: 'page-level-anchor', shared: string } | null}
+ */
+export function findSkipLinkHome(pageFile, root = ROOT) {
+  const pages = pageFilesOf(root);
+  if (!pageFile || !pages.length) return null;
+  const byLayout = new Map();
+  for (const f of pages) { const l = layoutForPage(f, root); if (!byLayout.has(l)) byLayout.set(l, f); }
+  const tree = collectRenderTree(pageFile, RENDER_DEPTH_LIMIT, root);
+  const header = tree.find((f) => /^src\/(partials|components)\/(?:[^/]+\/)*header[^/]*\.liquid$/i.test(f));
+  if (header && [...byLayout.values()].every((f) => collectRenderTree(f, RENDER_DEPTH_LIMIT, root).includes(header))) {
+    const first = buildTagIndex(header, root)[0];
+    if (first) return { file: header, line: first.line, confidence: 'low', method: 'page-level-anchor', shared: `${header} is rendered by every page layout` };
+  }
+  if (byLayout.size !== 1) return null;
+  const layoutFile = `src/layouts/${layoutForPage(pageFile, root)}.liquid`;
+  const body = buildTagIndex(layoutFile, root).find((t) => t.tagName === 'body');
+  return body ? { file: layoutFile, line: body.line, confidence: 'low', method: 'page-level-anchor', shared: `${layoutFile} is the layout of every page` } : null;
+}
+
 /**
  * Every source file reachable from a page: the page, its layout, and the
  * partials and components they render, breadth-first.
  */
-export function collectRenderTree(pageFile, depthLimit = RENDER_DEPTH_LIMIT) {
-  const layoutFile = `src/layouts/${layoutForPage(pageFile)}.liquid`;
+export function collectRenderTree(pageFile, depthLimit = RENDER_DEPTH_LIMIT, root = ROOT) {
+  const layoutFile = `src/layouts/${layoutForPage(pageFile, root)}.liquid`;
   const seen = new Set();
   const ordered = [];
   let queue = [pageFile, layoutFile]
-    .filter((f) => f && existsSync(path.join(ROOT, f)))
+    .filter((f) => f && existsSync(path.join(root, f)))
     .map((file) => ({ file, depth: 0 }));
 
   while (queue.length > 0) {
@@ -603,8 +678,8 @@ export function collectRenderTree(pageFile, depthLimit = RENDER_DEPTH_LIMIT) {
       seen.add(file);
       ordered.push(file);
       if (depth >= depthLimit) continue;
-      for (const call of buildRenderIndex(file)) {
-        const target = renderTargetToFile(call.name);
+      for (const call of buildRenderIndex(file, root)) {
+        const target = renderTargetToFile(call.name, root);
         if (target && !seen.has(target)) next.push({ file: target, depth: depth + 1 });
       }
     }

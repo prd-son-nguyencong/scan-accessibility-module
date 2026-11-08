@@ -8,6 +8,7 @@ import {
   findScopedBody, findScopedTitle, isActiveContent, isBanner, isMainLandmark,
 } from './lib/dom.js';
 import { createDomFact, SIGNAL_FAMILIES } from './types.js';
+import { withDeadline } from '../engine/deadline.js';
 
 const LANDMARK_ROLES = new Set([
   'banner', 'complementary', 'contentinfo', 'form', 'main', 'navigation', 'region', 'search',
@@ -146,12 +147,14 @@ function redactSensitiveHtml(element) {
   let html = element.outerHTML;
   for (const [name, value] of Object.entries(element.attributes)) {
     if (!shouldRedactAttribute(name, element)) continue;
-    const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escaped = String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     html = html
-      .replace(new RegExp(`${name}="[^"]*"`, 'gi'), `${name}="[redacted]"`)
-      .replace(new RegExp(`${name}='[^']*'`, 'gi'), `${name}='[redacted]'`)
-      .replace(new RegExp(`${name}=([^\\s>]+)`, 'gi'), `${name}="[redacted]"`)
-      .replace(new RegExp(escaped, 'g'), '[redacted]');
+      .replace(new RegExp(`${escapedName}="[^"]*"`, 'gi'), `${name}="[redacted]"`)
+      .replace(new RegExp(`${escapedName}='[^']*'`, 'gi'), `${name}='[redacted]'`)
+      .replace(new RegExp(`${escapedName}=([^\\s>]+)`, 'gi'), `${name}="[redacted]"`);
+    // An empty value would match between every character and corrupt the snippet.
+    if (escaped) html = html.replace(new RegExp(escaped, 'g'), '[redacted]');
   }
   return html;
 }
@@ -181,7 +184,7 @@ function collectCheckboxLabelAnomalies(snapshot, indexes) {
   /** @type {Array<{ element: import('../runtime/types.js').SnapshotElement, visibleText: string, accessibleName: string }>} */
   const observations = [];
 
-  for (const element of snapshot.elements) {
+  for (const element of withDeadline(snapshot.elements)) {
     if (element.tag !== 'input' || element.attributes.type !== 'checkbox') continue;
     if (!element.attributes['aria-labelledby'] || !isActiveContent(element)) continue;
 
@@ -197,17 +200,30 @@ function collectCheckboxLabelAnomalies(snapshot, indexes) {
   return observations;
 }
 
+// Roles whose name comes from content or a visible label (WCAG 2.5.3 applies); group/region/carousel containers do not.
+const LABELED_CONTROL_ROLES = new Set([
+  'button', 'link', 'tab', 'checkbox', 'radio', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'option', 'switch',
+  'treeitem', 'textbox', 'searchbox', 'combobox', 'spinbutton', 'slider',
+]);
+
+/** A control with a visible label: native control, or an explicit labeled-control role. A bare tabindex or a container role does not qualify. */
+function hasLabeledControlSemantics(element) {
+  const role = element.attributes.role;
+  if (role) return LABELED_CONTROL_ROLES.has(role);
+  return element.tag === 'button' || (element.tag === 'a' && 'href' in element.attributes)
+    || ['input', 'select', 'textarea', 'summary'].includes(element.tag);
+}
+
 /**
  * @param {import('../runtime/types.js').Snapshot} snapshot
  * @param {ReturnType<import('../runtime/graph-relationships.js').buildSnapshotIndexes>} indexes
  */
-
 function collectAccessibleNameObservations(snapshot, indexes) {
   /** @type {Array<{ element: import('../runtime/types.js').SnapshotElement, visibleText: string, accessibleName: string }>} */
   const observations = [];
 
-  for (const element of snapshot.elements) {
-    if (isLandmark(element) || !isInteractiveControl(element)) continue;
+  for (const element of withDeadline(snapshot.elements)) {
+    if (isLandmark(element) || !isInteractiveControl(element) || !hasLabeledControlSemantics(element)) continue;
     if (!element.attributes['aria-label'] && !element.attributes['aria-labelledby']) continue;
 
     const visibleText = deriveVisibleLabel(snapshot, indexes, element);

@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createContextBroker, hashBlockText } from '../../src/fix/context/broker.js';
 import { parseCisActionFromModelOutput } from '../../src/fix/cis/parser.js';
-import { runCisAdvisory, buildInitialUserPrompt, evaluateAdvisoryBudgets } from '../../src/fix/cis/advisory.js';
+import { runCisAdvisory, buildInitialUserPrompt } from '../../src/fix/cis/advisory.js';
 import { CIS_POC_LIMITS } from '../../src/fix/cis/limits.js';
 import { POLICIES } from '../../src/fix/policy/registry.js';
 
@@ -154,7 +154,7 @@ test('advisory loop handles request_context then propose_patch within budgets', 
   assert.equal(call, 2);
 });
 
-test('repeated request_context for already supplied blocks returns cannot_fix without extra calls', async () => {
+test('request_context for already supplied blocks gets one nudge, a repeat returns cannot_fix', async () => {
   const broker = makeBroker();
   let call = 0;
   const transport = {
@@ -181,7 +181,25 @@ test('repeated request_context for already supplied blocks returns cannot_fix wi
 
   assert.equal(result.kind, 'cannot_fix');
   assert.equal(result.reasonCode, 'CONTEXT_ALREADY_SUPPLIED');
-  assert.equal(call, 1);
+  assert.equal(call, 2);
+});
+
+test('a model that asks once for blocks it already holds can still propose a patch after the nudge', async () => {
+  const broker = makeBroker();
+  const blockHash = hashBlockText(FIXTURE.sourceBlockText);
+  let call = 0;
+  let seen = [];
+  const transport = {
+    chatCompletion: async ({ messages }) => {
+      call += 1; seen = messages;
+      if (call === 1) return { content: JSON.stringify({ action: 'request_context', blockIds: [FIXTURE.blockId], reason: 'Need it' }) };
+      return { content: JSON.stringify({ action: 'propose_patch', edits: [{ blockId: FIXTURE.blockId, expectedSha256: blockHash, oldText: FIXTURE.oldText, newText: FIXTURE.newText }], resolvesFindingIds: [FIXTURE.findingId], rationale: 'r', manualChecks: ['c'] }) };
+    },
+  };
+  const result = await runCisAdvisory({ fixUnit: baseFixUnit(), policyDecision: { policy: POLICIES.SEMANTIC_ASSISTANCE }, broker, transport, model: 'test-model', initialBlockIds: [FIXTURE.blockId] });
+  assert.equal(result.kind, 'propose_patch');
+  assert.equal(call, 2);
+  assert.ok(seen.at(-1).content.includes('already supplied'));
 });
 
 test('empty manualChecks on propose_patch returns MANUAL_CHECKS_REQUIRED', async () => {
@@ -252,7 +270,7 @@ test('repair prompt budget overflow returns INPUT_BUDGET_EXHAUSTED', async () =>
       return { content: 'not-json' };
     },
   };
-  const nearLimitMessage = 'z'.repeat(31620);
+  const nearLimitMessage = 'z'.repeat(30600);
 
   const result = await runCisAdvisory({
     fixUnit: {
@@ -468,32 +486,6 @@ test('wall-clock budget exhaustion returns SESSION_WALL_CLOCK_EXHAUSTED cannot_f
   assert.equal(result.action, 'cannot_fix');
   assert.equal(result.reasonCode, 'SESSION_WALL_CLOCK_EXHAUSTED');
   assert.equal(transportCalls, 0);
-});
-
-test('session call budget exhaustion returns SESSION_CALL_BUDGET_EXHAUSTED cannot_fix', () => {
-  const result = evaluateAdvisoryBudgets({
-    startedAt: 1_000,
-    now: () => 1_000,
-    sessionCalls: CIS_POC_LIMITS.sessionCallBudget,
-  });
-
-  assert.equal(result?.kind, 'cannot_fix');
-  assert.equal(result?.action, 'cannot_fix');
-  assert.equal(result?.reasonCode, 'SESSION_CALL_BUDGET_EXHAUSTED');
-});
-
-test('evaluateAdvisoryBudgets still throws ADVISORY_CANCELLED for external abort', () => {
-  const controller = new AbortController();
-  controller.abort();
-  assert.throws(
-    () => evaluateAdvisoryBudgets({
-      signal: controller.signal,
-      startedAt: 1_000,
-      now: () => 1_000,
-      sessionCalls: 0,
-    }),
-    (error) => error.code === 'ADVISORY_CANCELLED',
-  );
 });
 
 test('mutated source between supply and propose_patch returns validated cannot_fix', async () => {

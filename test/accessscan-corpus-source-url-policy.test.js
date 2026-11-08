@@ -1,4 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
@@ -20,6 +22,7 @@ import { installCorpusToolingTestResetHooks } from './helpers/accessscan-corpus-
 installCorpusToolingTestResetHooks();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.join(__dirname, '..');
 const publicResolver = async () => ['8.8.8.8'];
 
 test('CASE_ID_PATTERN accepts opaque site ids and rejects traversal tokens', () => {
@@ -42,9 +45,9 @@ test('validateSourceManifestUrlShape denies unsafe schemes hosts and credentials
     'https://10.0.0.12/',
     'https://192.168.1.4/',
     'https://172.16.0.2/',
-    'https://user:secret@hitachi728.preview.sites.stg.paradox.ai/',
+    'https://user:secret@site-728.preview.sites.stg.paradox.ai/',
     'https://evil.example/',
-    'https://hitachi728.preview.sites.stg.paradox.ai:8080/',
+    'https://site-728.preview.sites.stg.paradox.ai:8080/',
   ];
 
   for (const url of denied) {
@@ -57,9 +60,8 @@ test('validateSourceManifestUrlShape denies unsafe schemes hosts and credentials
 });
 
 test('validateSourceManifestUrlShape accepts reviewed staging suffixes', () => {
-  assert.doesNotThrow(() => validateSourceManifestUrlShape('https://hitachi728.preview.sites.stg.paradox.ai/'));
-  assert.doesNotThrow(() => validateSourceManifestUrlShape('https://americold375.sites.stg.paradox.ai/'));
-  assert.doesNotThrow(() => validateSourceManifestUrlShape('https://mcdonalds203.preview.sites.stg.mchire.com/'));
+  assert.doesNotThrow(() => validateSourceManifestUrlShape('https://site-728.preview.sites.stg.paradox.ai/'));
+  assert.doesNotThrow(() => validateSourceManifestUrlShape('https://site-375.sites.stg.paradox.ai/'));
 });
 
 test('current committed source manifest URLs and case ids pass policy shape checks', () => {
@@ -92,7 +94,7 @@ test('assertSafeSubresourceUrl blocks syntactic private IP literals', async () =
 test('assertSafeSourceNavigationUrl blocks DNS-private allowlisted hostnames', async () => {
   setDnsResolverForTests(async () => ['10.0.0.55']);
   await assert.rejects(
-    () => assertSafeSourceNavigationUrl('https://hitachi728.preview.sites.stg.paradox.ai/'),
+    () => assertSafeSourceNavigationUrl('https://site-728.preview.sites.stg.paradox.ai/'),
     /private|reserved|forbidden/i,
   );
 });
@@ -100,12 +102,30 @@ test('assertSafeSourceNavigationUrl blocks DNS-private allowlisted hostnames', a
 test('validateSourceManifestUrl resolves DNS before accepting navigation URLs', async () => {
   setDnsResolverForTests(publicResolver);
   await assert.doesNotReject(async () => validateSourceManifestUrl(
-    'https://hitachi728.preview.sites.stg.paradox.ai/',
+    'https://site-728.preview.sites.stg.paradox.ai/',
     { resolver: publicResolver },
   ));
 });
 
 test('REVIEWED_SOURCE_HOST_SUFFIXES remain stable for manifest validation', () => {
-  assert.ok(REVIEWED_SOURCE_HOST_SUFFIXES.length >= 3);
+  assert.ok(REVIEWED_SOURCE_HOST_SUFFIXES.length >= 2);
   assert.ok(REVIEWED_SOURCE_HOST_SUFFIXES.every((suffix) => suffix.startsWith('.')));
+});
+
+test('local manifest may add reviewed host suffixes; none are built in', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'ada-suffix-'));
+  try {
+    const localPath = path.join(dir, 'm.local.json');
+    writeFileSync(localPath, JSON.stringify({ reviewedHostSuffixes: ['.preview.sites.stg.example.test', 'no-dot.test'] }));
+    const child = spawnSync(process.execPath, [
+      '--input-type=module',
+      '-e',
+      "import { REVIEWED_SOURCE_HOST_SUFFIXES as s } from './scripts/accessscan-corpus/lib/source-url-policy.js'; console.log(JSON.stringify(s));",
+    ], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, ADA_CORPUS_SOURCE_MANIFEST_LOCAL: localPath } });
+    const suffixes = JSON.parse(child.stdout);
+    assert.ok(suffixes.includes('.preview.sites.stg.example.test'), child.stderr);
+    assert.ok(!suffixes.includes('no-dot.test'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

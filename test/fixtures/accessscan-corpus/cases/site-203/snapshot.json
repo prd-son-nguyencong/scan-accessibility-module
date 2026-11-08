@@ -509,7 +509,7 @@
       "reportSelector": "document>html > body:nth-of-type(1) > header:nth-of-type(1) > nav:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(1)",
       "framePath": [],
       "shadowPath": [],
-      "outerHTML": "<li><a>Home</a></li>",
+      "outerHTML": "<li><a href=\"/\">Home</a></li>",
       "rect": {
         "x": 48,
         "y": 8,
@@ -949,7 +949,7 @@
       "reportSelector": "document>html > body:nth-of-type(1) > main:nth-of-type(1) > section:nth-of-type(3)",
       "framePath": [],
       "shadowPath": [],
-      "outerHTML": "<section aria-label=\"slice-2\"><a>neutral-text-0-e9717fbc</a></section>",
+      "outerHTML": "<section aria-label=\"slice-2\"><a href=\"/neutral-asset.png\">neutral-text-1-d008c756</a></section>",
       "rect": {
         "x": 8,
         "y": 42,
@@ -1008,7 +1008,7 @@
       "reportSelector": "document>html > body:nth-of-type(1) > main:nth-of-type(1) > section:nth-of-type(3) > a:nth-of-type(1)",
       "framePath": [],
       "shadowPath": [],
-      "outerHTML": "<a aria-label=\"neutral-aria-label-0-e5a0d916\" href=\"/neutral-text-0-aac3ef75\" rel=\"neutral-text-0-2b60d9db neutral-text-1-e9d40a96\" target=\"neutral-text-0-a48bba0d\">neutral-text-1-e9717fbc</a>",
+      "outerHTML": "<a aria-label=\"neutral-aria-label-0-e5a0d916\" href=\"/neutral-text-0-aac3ef75\" rel=\"neutral-text-0-2b60d9db neutral-text-1-e9d40a96\" target=\"neutral-text-0-a48bba0d\">neutral-text-1-d008c756</a>",
       "rect": {
         "x": 8,
         "y": 42,
@@ -1453,7 +1453,7 @@
       "reportSelector": "document>html > body:nth-of-type(1) > main:nth-of-type(1) > section:nth-of-type(6) > svg:nth-of-type(1)",
       "framePath": [],
       "shadowPath": [],
-      "outerHTML": "<svg aria-label=\"neutral-aria-label-0-391dd330\" role=\"neutral-text-0-763f13bf\"><use>neutral-text-1-f3adeba7</use></svg>",
+      "outerHTML": "<svg aria-label=\"neutral-aria-label-0-391dd330\" role=\"neutral-text-0-763f13bf\"><use>neutral-text-0-f3adeba7</use></svg>",
       "rect": {
         "x": 8,
         "y": 360,
@@ -1622,7 +1622,7 @@
       "reportSelector": "document>html > body:nth-of-type(1) > main:nth-of-type(1) > section:nth-of-type(7) > svg:nth-of-type(1)",
       "framePath": [],
       "shadowPath": [],
-      "outerHTML": "<svg aria-label=\"neutral-aria-label-0-61e089e2\" role=\"neutral-text-0-763f13bf\"><use>neutral-text-1-f3adeba7</use></svg>",
+      "outerHTML": "<svg aria-label=\"neutral-aria-label-0-61e089e2\" role=\"neutral-text-0-763f13bf\"><use>neutral-text-0-f3adeba7</use></svg>",
       "rect": {
         "x": 8,
         "y": 510,
@@ -1791,7 +1791,7 @@
       "reportSelector": "document>html > body:nth-of-type(1) > main:nth-of-type(1) > section:nth-of-type(8) > svg:nth-of-type(1)",
       "framePath": [],
       "shadowPath": [],
-      "outerHTML": "<svg aria-label=\"neutral-aria-label-0-50fdd00d\" role=\"neutral-text-0-763f13bf\"><use>neutral-text-1-f3adeba7</use></svg>",
+      "outerHTML": "<svg aria-label=\"neutral-aria-label-0-50fdd00d\" role=\"neutral-text-0-763f13bf\"><use>neutral-text-0-f3adeba7</use></svg>",
       "rect": {
         "x": 8,
         "y": 660,
@@ -1960,7 +1960,7 @@
       "reportSelector": "document>html > body:nth-of-type(1) > main:nth-of-type(1) > section:nth-of-type(9) > svg:nth-of-type(1)",
       "framePath": [],
       "shadowPath": [],
-      "outerHTML": "<svg aria-label=\"neutral-aria-label-0-7e10134f\" role=\"neutral-text-0-763f13bf\"><use>neutral-text-1-f3adeba7</use></svg>",
+      "outerHTML": "<svg aria-label=\"neutral-aria-label-0-7e10134f\" role=\"neutral-text-0-763f13bf\"><use>neutral-text-0-f3adeba7</use></svg>",
       "rect": {
         "x": 8,
         "y": 810,
@@ -2129,7 +2129,7 @@
       "reportSelector": "document>html > body:nth-of-type(1) > main:nth-of-type(1) > section:nth-of-type(10) > svg:nth-of-type(1)",
       "framePath": [],
       "shadowPath": [],
-      "outerHTML": "<svg aria-label=\"neutral-aria-label-0-01090387\" role=\"neutral-text-0-763f13bf\"><use>neutral-text-1-f3adeba7</use></svg>",
+      "outerHTML": "<svg aria-label=\"neutral-aria-label-0-01090387\" role=\"neutral-text-0-763f13bf\"><use>neutral-text-0-f3adeba7</use></svg>",
       "rect": {
         "x": 8,
         "y": 960,
@@ -2298,7 +2298,7 @@
       "reportSelector": "document>html > body:nth-of-type(1) > main:nth-of-type(1) > section:nth-of-type(11) > svg:nth-of-type(1)",
       "framePath": [],
       "shadowPath": [],
-      "outerHTML": "<svg aria-label=\"neutral-aria-label-0-47f542cf\" role=\"neutral-text-0-763f13bf\"><use>neutral-text-1-f3adeba7</use></svg>",
+      "outerHTML": "<svg aria-label=\"neutral-aria-label-0-47f542cf\" role=\"neutral-text-0-763f13bf\"><use>neutral-text-0-f3adeba7</use></svg>",
       "rect": {
         "x": 8,
         "y": 1110,
@@ -2467,7 +2467,7 @@
       "reportSelector": "document>html > body:nth-of-type(1) > main:nth-of-type(1) > section:nth-of-type(12) > svg:nth-of-type(1)",
       "framePath": [],
       "shadowPath": [],
-      "outerHTML": "<svg aria-label=\"neutral-aria-label-0-94449166\" role=\"neutral-text-0-763f13bf\"><use>neutral-text-1-f3adeba7</use></svg>",
+      "outerHTML": "<svg aria-label=\"neutral-aria-label-0-94449166\" role=\"neutral-text-0-763f13bf\"><use>neutral-text-0-f3adeba7</use></svg>",
       "rect": {
         "x": 8,
         "y": 1260,
@@ -2636,7 +2636,7 @@
       "reportSelector": "document>html > body:nth-of-type(1) > main:nth-of-type(1) > section:nth-of-type(13) > svg:nth-of-type(1)",
       "framePath": [],
       "shadowPath": [],
-      "outerHTML": "<svg aria-label=\"neutral-aria-label-0-18447ba0\" role=\"neutral-text-0-763f13bf\"><use>neutral-text-1-f3adeba7</use></svg>",
+      "outerHTML": "<svg aria-label=\"neutral-aria-label-0-18447ba0\" role=\"neutral-text-0-763f13bf\"><use>neutral-text-0-f3adeba7</use></svg>",
       "rect": {
         "x": 8,
         "y": 1410,
@@ -2805,7 +2805,7 @@
       "reportSelector": "document>html > body:nth-of-type(1) > main:nth-of-type(1) > section:nth-of-type(14) > svg:nth-of-type(1)",
       "framePath": [],
       "shadowPath": [],
-      "outerHTML": "<svg aria-label=\"neutral-aria-label-0-fa627f45\" role=\"neutral-text-0-763f13bf\"><use>neutral-text-1-f3adeba7</use></svg>",
+      "outerHTML": "<svg aria-label=\"neutral-aria-label-0-fa627f45\" role=\"neutral-text-0-763f13bf\"><use>neutral-text-0-f3adeba7</use></svg>",
       "rect": {
         "x": 8,
         "y": 1560,
@@ -2974,7 +2974,7 @@
       "reportSelector": "document>html > body:nth-of-type(1) > main:nth-of-type(1) > section:nth-of-type(15) > svg:nth-of-type(1)",
       "framePath": [],
       "shadowPath": [],
-      "outerHTML": "<svg aria-label=\"neutral-aria-label-0-d791a10f\" role=\"neutral-text-0-763f13bf\"><use>neutral-text-1-f3adeba7</use></svg>",
+      "outerHTML": "<svg aria-label=\"neutral-aria-label-0-d791a10f\" role=\"neutral-text-0-763f13bf\"><use>neutral-text-0-f3adeba7</use></svg>",
       "rect": {
         "x": 8,
         "y": 1710,

@@ -2,7 +2,7 @@
   "schemaVersion": "1.0.0",
   "target": {
     "name": "HIT-01 Homepage",
-    "url": "https://hitachi728.preview.sites.stg.paradox.ai/",
+    "url": "https://site-728.preview.sites.stg.paradox.ai/",
     "pageState": "initial"
   },
   "baseline": {

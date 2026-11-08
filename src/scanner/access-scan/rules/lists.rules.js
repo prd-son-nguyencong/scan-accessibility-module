@@ -7,6 +7,8 @@ export default [
     standard: { version: 'WCAG 2.0', level: 'A', criterion: '1.3.1' },
     severity: { impact: 'moderate', priority: 4 },
     automation: 'deterministic',
+    kind: 'deterministic',
+    kindRationale: 'counting list items in a list is exact',
     checks: [{
       id: 'lists:list-empty',
       profiles: ['standards', 'commercial-parity'],
@@ -29,6 +31,8 @@ export default [
     standard: { version: 'WCAG 2.2', level: 'AA', criterion: '2.4.11' },
     severity: { impact: 'critical', priority: 1 },
     automation: 'behavioral',
+    kind: 'deterministic',
+    kindRationale: 'measured geometry of the focused element against the sticky header',
     checks: [
       {
         id: 'lists:sticky-header-obscures-focus',
