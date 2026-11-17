@@ -31,7 +31,7 @@ Choose one way.
 Run this in the site folder:
 
 ```bash
-pnpm add -D git+ssh://git@github.com/prd-son-nguyencong/scan-accessibility-module.git#v1.2.1
+pnpm add -D git+ssh://git@github.com/prd-son-nguyencong/scan-accessibility-module.git#v1.2.2
 npx playwright install chromium
 npx ada-scan doctor
 ```
@@ -50,7 +50,7 @@ Use this if you want to read or change the tool code.
 cd ..                      # the folder that holds your site
 git clone git@github.com:prd-son-nguyencong/scan-accessibility-module.git
 cd scan-accessibility-module
-git checkout v1.2.1
+git checkout v1.2.2
 pnpm install
 npx playwright install chromium
 cd ../<your-site-folder>
@@ -79,7 +79,7 @@ All settings live in one file in the site root: `.scan-config.json`.
    .ada-scan/
    ```
 
-3. Keep port 1234 free. The tool starts the dev server itself. If another server already answers on port 1234, the tool uses that server, even when it belongs to a different project. See "When something goes wrong".
+3. Keep port 1234 free. The tool starts the dev server itself. If a server from another project already answers on port 1234, the scan stops with exit 2 and names it (pass `--no-server` to scan it on purpose). If the owner cannot be read (Windows, no `lsof`), the tool warns and uses that server. See "When something goes wrong".
 
 ## 4. Scan all pages
 
@@ -202,7 +202,7 @@ A deeper description of the checks is in [fix-harness.md](fix-harness.md). The f
 
 | Symptom | What to do |
 |---|---|
-| `HTTP 404 — page not scanned` for a page that exists | Another server may be using port 1234. Run `lsof -nP -iTCP:1234 -sTCP:LISTEN`, stop it (`kill <pid>`), and scan again. |
+| `HTTP 404 — page not scanned` for a page that exists | Another server may be using port 1234. The tool now stops with exit 2 and names the other project when it can tell (`doctor` warns too). Run `lsof -nP -iTCP:1234 -sTCP:LISTEN`, stop it (`kill <pid>`), and scan again. Without `lsof` (Windows) the tool only warns, so check by hand. |
 | `Dev server not ready within 30000ms via "pnpm dev"`, or many `pnpm` processes appear | Do not run `pnpm dev` again. A `postinstall` script such as `pnpm link ../some-package`, together with a `link:` override in `pnpm-workspace.yaml`, can make `pnpm` start itself again and again. Stop it with `pkill -f "pnpm link"`. Then start the server yourself, for example `node node_modules/vite/bin/vite.js dev --port 1234 --strictPort`, and run `npx ada-scan` in a second terminal: the tool uses a server that already answers on port 1234. Or set `devCommand` in `.scan-config.json` to that command. |
 | `doctor` says Node is too old | `nvm use` (needs Node 20.18.1 or newer). |
 | Chromium is missing | `npx playwright install chromium`. |

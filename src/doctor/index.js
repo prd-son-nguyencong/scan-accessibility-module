@@ -5,6 +5,7 @@ import { parseCliArgs } from '../utils/cli-args.js';
 import { withTimeout } from '../utils/with-timeout.js';
 import { getDirname, getProjectRoot } from '../utils/paths.js';
 import { planTracingBuild } from '../tracer/vite-wrapper.js';
+import { listenerCwds, serverOwner } from '../utils/server.js';
 
 const PKG_ROOT = path.resolve(getDirname(import.meta.url), '../..');
 const OPTIONS = {
@@ -38,6 +39,7 @@ const real = {
     await browser.close();
   },
   fetch: (url, init) => fetch(url, init),
+  listenerCwds,
   statfs: (p) => { const s = statfsSync(p); return s.bavail * s.bsize; },
 };
 
@@ -107,10 +109,15 @@ async function checkDevServer(d, config) {
   if (!isLoopback(config.baseUrl)) return r('PASS', 'dev-server', 'no local URL configured, nothing to probe');
   try {
     await probe(d, config.baseUrl, { method: 'HEAD' });
-    return r('PASS', 'dev-server', `${config.baseUrl} is reachable`);
   } catch {
     return r('WARN', 'dev-server', `${config.baseUrl} is not reachable`, `A scan starts it itself; to start it by hand run "${config.devCommand}"`);
   }
+  const url = new URL(config.baseUrl);
+  const found = d.listenerCwds?.(url.port || (url.protocol === 'https:' ? '443' : '80'));
+  if (serverOwner(d.root, found) === 'foreign') {
+    return r('WARN', 'dev-server', `${config.baseUrl} is served by another project (${found.map((l) => `pid ${l.pid} in ${l.cwd}`).join(', ')})`, 'Stop it or change baseUrl; a scan would otherwise test the wrong site');
+  }
+  return r('PASS', 'dev-server', `${config.baseUrl} is reachable`);
 }
 
 function checkBuildScript(d, config) {

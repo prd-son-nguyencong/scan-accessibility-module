@@ -27,7 +27,7 @@ async function runCli(policy) {
     baseUrl: site.url, buildCommand: 'node -e 0', pages: [{ path: '/real' }, { path: '/empty' }], ...(policy ? { scan: { emptyPagePolicy: policy } } : {}),
   }));
   try {
-    const child = spawn(process.execPath, [CLI, '--layers', 'axe,htmlValidate', '--no-psi'], { cwd: root, env: { ...process.env, ADA_SCAN_ROOT: root, ADA_SCAN_DEPLOYMENT_URL: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [CLI, '--layers', 'axe,htmlValidate', '--no-psi', '--no-server'], { cwd: root, env: { ...process.env, ADA_SCAN_ROOT: root, ADA_SCAN_DEPLOYMENT_URL: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
     child.stdout.on('data', (d) => { out += d; });
     const code = await new Promise((r) => child.on('close', r));

@@ -344,6 +344,7 @@ test('safety gate: command timeout reaps the child and removes the shadow worksp
     const isolatedTmp = join(root, 'tmp');
     mkdirSync(isolatedTmp, { recursive: true });
     process.env.TMPDIR = isolatedTmp;
+    writeFile(root, 'package.json', '{"type":"module"}\n'); // hang.js is ESM; Node 20.18 does not detect ESM syntax
     writeFile(root, 'src/real.liquid', 'alpha\n');
     writeFile(
       root,

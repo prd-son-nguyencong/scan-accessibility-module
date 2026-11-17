@@ -9,6 +9,16 @@ comparable across upgrades.
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-11-17
+
+### Fixed
+
+- A local scan no longer reuses a dev server that belongs to another project. When something already answers on a loopback `baseUrl`, the scan reads the working directory of the process listening on that port (`lsof`). If every listener is known and none runs inside the project root, it exits 2 and names the pid and directory; `--no-server` scans it on purpose. When the owner cannot be read (Windows, no `lsof`, another user's process) it warns and continues. `ada-scan doctor` reports the same case as a `dev-server` WARN.
+
+### Changed
+
+- The CI test matrix now includes Node 20 (`engines` is `>=20.18.1`). Running the suite on Node 20.18.1 found 9 failures, all in test fixtures: Node 20.18.1 does not detect ESM syntax, so `.js` files written to temp dirs now get a `package.json` with `"type": "module"`. Every affected file passes on Node 20.18.1.
+
 ## [1.2.1] - 2026-11-08
 
 ### Added

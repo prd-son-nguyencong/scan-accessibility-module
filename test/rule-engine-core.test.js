@@ -127,6 +127,7 @@ test('loadEvaluators auto-discovers evaluator plugins', async () => {
 
 test('a newly added rules file is discovered without editing engine code', async () => {
   const tempDir = mkdtempSync(path.join(tmpdir(), 'ada-scan-rules-'));
+  writeFileSync(path.join(tempDir, 'package.json'), '{"type":"module"}'); // Node 20.18 does not detect ESM syntax
   writeFileSync(
     path.join(tempDir, 'brand-new.rules.js'),
     `export default ${JSON.stringify({
@@ -742,6 +743,7 @@ test('buildRuleRegistry resolves aliases to canonical rules', async () => {
 
 test('loadEvaluators rejects duplicate evaluator IDs', async () => {
   const tempDir = mkdtempSync(path.join(tmpdir(), 'ada-scan-evaluators-'));
+  writeFileSync(path.join(tempDir, 'package.json'), '{"type":"module"}'); // Node 20.18 does not detect ESM syntax
   writeFileSync(
     path.join(tempDir, 'one.evaluator.js'),
     'export default { id: "dup", evaluate: async () => ({ status: "inapplicable", candidates: 0, findings: [] }) };\n',

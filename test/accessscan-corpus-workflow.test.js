@@ -70,7 +70,7 @@ test('module workflows run from the module root and watch paths that exist', () 
   }
   const test = readWorkflow(path.join(REPO_ROOT, '.github/workflows/test.yml'));
   assert.match(test, /continue-on-error:\s*true/);
-  assert.match(test, /node:\s*\[22, 24\]/);
+  assert.match(test, /node:\s*\[20, 22, 24\]/);
   const corpus = readWorkflow(path.join(REPO_ROOT, '.github/workflows/accessscan-corpus.yml'));
   for (const [, watched] of corpus.matchAll(/^\s+- '([^']+)'$/gm)) {
     const base = watched.replace(/\/\*\*$/, '');

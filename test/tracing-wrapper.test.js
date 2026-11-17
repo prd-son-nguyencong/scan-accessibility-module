@@ -13,9 +13,10 @@ const MODULE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 // Neutral project: a vite config WITHOUT the instrumentation plugin and a stand-in local vite binary.
 function project(configName, configSource, script = 'vite build') {
   const root = mkdtempSync(path.join(tmpdir(), 'trace-wrap-'));
-  writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { 'build:vite': script } }));
+  writeFileSync(path.join(root, 'package.json'), JSON.stringify({ type: 'module', scripts: { 'build:vite': script } }));
   writeFileSync(path.join(root, configName), configSource);
   mkdirSync(path.join(root, 'node_modules/vite/bin'), { recursive: true });
+  writeFileSync(path.join(root, 'node_modules/vite/package.json'), '{"type":"module"}'); // the package scope lookup stops at node_modules; Node 20.18 does not detect ESM syntax
   // Stand-in for `vite build --config <file>`: resolve the config like vite does, run the plugin hooks, emit one page.
   writeFileSync(path.join(root, 'node_modules/vite/bin/vite.js'), `
 import path from 'node:path';

@@ -26,7 +26,7 @@ test('CLI end to end: dist/pages shells never become routes, so a clean host-lik
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   writeFileSync(path.join(root, '.scan-config.json'), JSON.stringify({ baseUrl: `http://127.0.0.1:${server.address().port}`, buildCommand: 'node -e 0' }));
   try {
-    const child = spawn(process.execPath, [CLI, '--layers', 'axe', '--no-psi'], { cwd: root, env: { ...process.env, ADA_SCAN_ROOT: root, ADA_SCAN_DEPLOYMENT_URL: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [CLI, '--layers', 'axe', '--no-psi', '--no-server'], { cwd: root, env: { ...process.env, ADA_SCAN_ROOT: root, ADA_SCAN_DEPLOYMENT_URL: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
     const code = await new Promise((r) => child.on('close', r));
     assert.ok([0, 1].includes(code), `exit ${code}, expected 0 or 1`);
     const report = JSON.parse(readFileSync(path.join(root, '.ada-scan/latest.json'), 'utf8'));

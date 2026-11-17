@@ -19,7 +19,7 @@ function setup(over = {}) {
   const deps = {
     root, pkgRoot, env: {}, nodeVersion: '24.1.0', config: async () => cfg,
     exec: () => null, launchChromium: async () => {}, fetch: async () => ({ status: 200, headers: hdrs() }),
-    statfs: () => 50 * 1024 ** 3, ...over,
+    statfs: () => 50 * 1024 ** 3, listenerCwds: () => null, ...over,
   };
   return { root, pkgRoot, deps, done: () => { rmSync(root, { recursive: true, force: true }); rmSync(pkgRoot, { recursive: true, force: true }); } };
 }
@@ -124,6 +124,18 @@ test('dev server: loopback baseUrl down warns, remote baseUrl is not probed', as
   assert.equal(by(await runChecks({}, s.deps), 'dev-server').status, 'PASS');
   assert.deepEqual(calls, []);
   s.done();
+});
+
+test('dev server answered by another project warns and names it; its own server passes', async () => {
+  const foreign = setup({ listenerCwds: () => [{ pid: '7', cwd: `${tmp()}-other` }] });
+  const w = by(await runChecks({}, foreign.deps), 'dev-server');
+  assert.equal(w.status, 'WARN');
+  assert.match(w.detail, /another project \(pid 7/);
+  foreign.done();
+  const own = setup();
+  own.deps.listenerCwds = () => [{ pid: '7', cwd: own.root }];
+  assert.equal(by(await runChecks({}, own.deps), 'dev-server').status, 'PASS');
+  own.done();
 });
 
 test('build script missing warns; custom command passes; npm run names the script', async () => {
