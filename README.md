@@ -19,13 +19,36 @@ Fix every `FAIL` that `doctor` prints. Add `.ada-scan/` to `.gitignore`.
 
 ## 2. Choose the pages to scan
 
-`init` creates `.scan-config.json` with only the home page. Fill it with every page of your site:
+The pages live in `.scan-config.json` (site root). `init` creates it with only the home page. Two ways to list more:
+
+**Automatic (recommended):** fill `pages` from `src/pages`. Run it again when you add a page.
 
 ```bash
 node node_modules/ada-scan/templates/list-pages.mjs
 ```
 
-This reads `src/pages` and writes the `pages` list. Run it again when you add a page. To scan one page only: `npx ada-scan --page /careers`.
+**By hand:** edit `pages`. Example for a career site (copy and change):
+
+```json
+{
+  "baseUrl": "http://localhost:1234",
+  "devCommand": "pnpm dev",
+  "buildCommand": "pnpm build:vite",
+  "pages": [
+    { "path": "/", "name": "homepage" },
+    { "path": "/about" },
+    { "path": "/jobs", "name": "jobs" },
+    { "path": "/job-details", "name": "job-details" },
+    { "path": "/404", "name": "not-found", "allowStatus": [404] }
+  ]
+}
+```
+
+- `path` is the URL path. `name` is optional, must be unique, and defaults to the path (`/about/team` becomes `about-team`).
+- `allowStatus` is for error pages that are meant to answer 404 or 500; without it the page is reported as "not scanned".
+- Keep the rest of the file as `init` wrote it (thresholds, build settings).
+
+Check the result: `git diff .scan-config.json`. To try one page only: `npx ada-scan --page /about`.
 
 ## 3. Scan and read the report
 
@@ -52,11 +75,19 @@ This writes `.ada-scan/tasks/INDEX.md` (the list) and one task file per problem,
 
 ## 5. Fix with the chat
 
-Open the site folder in Cursor or Claude Code and paste this into the chat:
+Open the site folder in Cursor, Claude Code or the CIS chat. Copy this whole prompt into a new chat:
 
-> Fix the accessibility tasks in .ada-scan/tasks/INDEX.md, file by file, following the ada-scan rules. Leave the edits uncommitted.
+````text
+Fix the accessibility findings from the ada-scan export.
 
-Do not let the chat commit, change colours, edit `dist/`, or touch `{{data:..}}`, `{{snippet:..}}` and `data-pdk-*`.
+1. Read .ada-scan/tasks/INDEX.md first. If the ada-scan-fix skill or the ada-scan rules file is installed (.cursor/rules/ada-scan.mdc, or the skill under .claude/skills), follow it.
+2. Work file by file from the "By file" list, highest line first. Open the real file, check the element shown in the task, then make the smallest edit that fixes it.
+3. Never change colours, opacity, backgrounds or design tokens. Skip tasks listed under "Design decisions" and "Not actionable in source".
+4. Never touch {{data:..}}, {{snippet:..}}, {{component:..}}, data-pdk-* or data-react-component, and never edit files under dist/.
+5. Do not change text content, layout, classes or the number of elements unless the task says so. If a fix needs real wording, a translation or a design choice, skip it and ask me.
+6. Do not run git commit, stash or reset. Leave all edits uncommitted.
+7. When done, report one row per task id: done, skipped (with the reason) or reverted. List the files you changed.
+````
 
 ## 6. Check the fix, then scan again
 
