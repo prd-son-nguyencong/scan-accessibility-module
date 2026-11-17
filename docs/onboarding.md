@@ -4,7 +4,7 @@ For a developer who has never used `ada-scan`. About 30 minutes. This page is th
 
 Every command below was checked against `ada-scan --help`. The fix-flow commands were also run on a scratch project (a git repo outside your site) with a real `ScanReportV2` file.
 
-What the tool is: a scanner for Paradox career sites (WCAG 2.2 AA, HTML validity, page speed). It finds problems, points at the `file:line` that causes them, and writes one task per problem for your editor chat. It never edits your site by itself in this flow, and a clean scan is not a compliance statement (see "Limits" in the [README](../README.md)).
+What the tool is: a scanner for Paradox career sites (WCAG 2.2 AA, HTML validity, page speed). It finds problems, points at the `file:line` that causes them, and writes one task per problem for your editor chat. It never edits your site by itself in this flow, and a clean scan is not a compliance statement (see "Limits" in the [README](reference.md)).
 
 ## 1. Install (nothing global)
 
@@ -23,7 +23,7 @@ npx ada-scan doctor
 - `doctor` prints PASS, WARN or FAIL per check with a fix hint (Node version, Chromium, lockfile, dev server, build script, tracing). Fix every FAIL before scanning. A Node version WARN means: run `nvm use` (the project asks for Node 20.18.1 or newer, see `.nvmrc`).
 - Add `.ada-scan/` to `.gitignore`: all output goes there.
 
-Source tracing (finding to `file:line`) needs the Vite plugin. It is optional: the scan adds it through a temporary config when your Vite config does not. `doctor` reports `tracing-ready`. Details: [README, Install](../README.md#install).
+Source tracing (finding to `file:line`) needs the Vite plugin. It is optional: the scan adds it through a temporary config when your Vite config does not. `doctor` reports `tracing-ready`. Details: [README, Install](reference.md#install).
 
 ## 2. First scan of a local PDK site
 
@@ -37,7 +37,7 @@ The scan starts the dev server, builds an instrumented `dist`, runs the layers a
 Expect two limits on a local scan:
 
 - Paradox pages are shells made of `{{snippet:uuid}}` and `{{data:..}}`, `{{attribute:..}}` and `data-pdk-*` that the platform binds at runtime. Locally they are unbound. A defect that exists only because platform data is unbound is not a confirmed defect (it shows as owner `site`, kind `unbound-data`, and is never confirmed).
-- The pass/fail source for QA is the preview URL scan (`npx ada-scan --url <preview-url> --psi --no-fail`), because it renders platform widgets. A local scan is the one that can trace to your files. Add `--source .` to a preview scan to trace it too. See [README, Quick start](../README.md#quick-start).
+- The pass/fail source for QA is the preview URL scan (`npx ada-scan --url <preview-url> --psi --no-fail`), because it renders platform widgets. A local scan is the one that can trace to your files. Add `--source .` to a preview scan to trace it too. See [README, Quick start](reference.md#quick-start).
 
 Save the result as the baseline so later scans show fixed, remaining and new:
 
@@ -59,7 +59,7 @@ Open `.ada-scan/qa-report.html` (verdict and top issues) and `.ada-scan/scan-vis
 
 The report never says "compliant".
 
-**Owner** (badge on every finding; "Origin" in `scan-visual.html`, table in [README, Who owns a finding](../README.md#who-owns-a-finding-origin)):
+**Owner** (badge on every finding; "Origin" in `scan-visual.html`, table in [README, Who owns a finding](reference.md#who-owns-a-finding-origin)):
 
 | Owner | Who fixes it |
 |---|---|
@@ -69,7 +69,7 @@ The report never says "compliant".
 
 **Where**: a traced finding carries `file:line` and a snippet; the task files in section 4 list them, and `tasks/INDEX.md` has a "By file" order. A finding with no traced line has no task and is not auto-fixable.
 
-Other files: `baseline.json`, `history/`, `scan.sarif` (with `--sarif`), `tasks/`. See [README, Reports](../README.md#reports). The rule list is [accessscan-rule-coverage.md](accessscan-rule-coverage.md).
+Other files: `baseline.json`, `history/`, `scan.sarif` (with `--sarif`), `tasks/`. See [README, Reports](reference.md#reports). The rule list is [accessscan-rule-coverage.md](accessscan-rule-coverage.md).
 
 ## 4. Fix with an editor chat (Cursor or Claude Code)
 
@@ -161,7 +161,7 @@ npx ada-scan labels stats                                               # precis
 
 | Need | Read |
 |---|---|
-| All flags and config keys | [README](../README.md) |
+| All flags and config keys | [README](reference.md) |
 | Export format and recipes | [fix-export.md](fix-export.md) |
 | The editor skill and `--verify` | [fix-skill.md](fix-skill.md) |
 | The gates, outcomes, limits | [fix-harness.md](fix-harness.md) |

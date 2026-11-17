@@ -7,7 +7,7 @@ import { ruleDocFacts } from '../scripts/lib/rule-doc.js';
 import { KNOWN_LAYERS } from '../src/utils/config.js';
 import { USAGE } from '../src/utils/cli-args.js';
 
-const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+const readme = readFileSync(new URL('../docs/reference.md', import.meta.url), 'utf8');
 
 test('README generated blocks match the CLI help and the registry (run pnpm docs:readme)', async () => {
   assert.equal(readme, await renderReadme(readme));

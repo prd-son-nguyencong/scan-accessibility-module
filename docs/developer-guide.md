@@ -46,7 +46,7 @@ For a local project the scan starts the dev server, builds an instrumented `dist
 
 Use `--out-dir` whenever you scan a repo you do not own or must keep clean, so the scan never writes inside it. The directory is created for you. The default is `<project>/.ada-scan`.
 
-Useful flags (full list: [README, CLI reference](../README.md#cli-reference)):
+Useful flags (full list: [README, CLI reference](reference.md#cli-reference)):
 
 | Flag | Use |
 |---|---|
@@ -60,7 +60,7 @@ Useful flags (full list: [README, CLI reference](../README.md#cli-reference)):
 Exit codes: 0 ok, 1 violations or failure, 2 bad arguments or config, or an incomplete scan.
 
 A local scan and a preview scan see different things. Platform widgets and bound data only exist on the preview, so use the preview scan for pass or fail and the local scan to trace
-findings to files. Details: [README, Quick start](../README.md#quick-start) and [onboarding.md](onboarding.md).
+findings to files. Details: [README, Quick start](reference.md#quick-start) and [onboarding.md](onboarding.md).
 
 ## 4. Read the report
 
@@ -146,7 +146,7 @@ Configure it with `npm run cis:configure`. Credentials go in a gitignored `.env`
 - Use only a throwaway key and a source tree with nothing sensitive in it. Remove the development keys from `.env` when you are done.
 - The review workbench shows a permanent warning banner while this mode is on.
 
-Full rules: [README, CIS security boundary](../README.md#cis-security-boundary) and [cis-contract.md](cis-contract.md).
+Full rules: [README, CIS security boundary](reference.md#cis-security-boundary) and [cis-contract.md](cis-contract.md).
 
 ## 8. Accuracy
 
@@ -206,7 +206,7 @@ Wrong or missed finding? Label it so the tool can learn its own precision: `npx 
 | Need | Read |
 |---|---|
 | First scan and first fix, step by step | [onboarding.md](onboarding.md) |
-| All flags and config keys | [README](../README.md) |
+| All flags and config keys | [README](reference.md) |
 | What each rule checks | [accessscan-rules-for-po.md](accessscan-rules-for-po.md) |
 | How a verdict is decided | [verdict-matrix.md](verdict-matrix.md) |
 | Fix export, skill and harness | [fix-export.md](fix-export.md), [fix-skill.md](fix-skill.md), [fix-harness.md](fix-harness.md) |
