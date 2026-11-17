@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Gradient clipped to the text</title>
+<style>body{margin:0;font-family:Arial,sans-serif;background:#fff}
+/* the heading is painted by a gradient clipped to its glyphs (transparent fill); the span paints its own navy over it: legible on white, but pixels under the glyphs are the clip */
+h2{font-size:48px;margin:40px 24px;font-weight:700;color:transparent;background:linear-gradient(270deg,#d30f4b,#624963);-webkit-background-clip:text;background-clip:text}
+h2 .navy{color:#10384f}
+/* a button whose text colour is transparent on a solid navy fill */
+.go{margin:0 24px 40px;padding:16px 28px;border:0;font-size:20px;background:#10384f;color:transparent;-webkit-text-fill-color:transparent}</style></head>
+<body><main id="main"><h2 id="clip"><span class="navy">Join our</span> talent community</h2><button class="go" type="button">Search</button></main></body></html>

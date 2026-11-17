@@ -1,0 +1,13 @@
+body { margin: 0; font: 16px/1.5 sans-serif; color: #222; background: #fff; }
+.site-header { padding: 12px 24px; background: #f2f4f7; }
+main { padding: 24px; }
+.photo { margin: 0 0 16px; }
+.photo img { display: block; }
+.photo figcaption { font-size: 14px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.focus\:not-sr-only:focus { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; white-space: normal; }
+.focus\:absolute:focus { position: absolute; }
+.focus\:left-2:focus { left: 2rem; }
+.focus\:top-2:focus { top: 2rem; }
+.focus\:z-50:focus { z-index: 50; }
+.focus\:underline:focus { text-decoration: underline; }

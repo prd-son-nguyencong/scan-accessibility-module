@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Header link on a transitioning bar</title>
+<style>body{margin:0;font-family:Arial,sans-serif;background:#fff}
+header{background:#fff;transition:background-color 30s linear;padding:16px 24px}
+header.scrolled{background:#2f2f2f}
+nav a{font-size:16px;margin-right:24px;text-decoration:none;color:#fff;transition:color 30s linear}
+nav a.current{color:#e41e26}
+.spacer{height:300px}</style></head>
+<body><header id="bar"><nav><a href="#main">Home</a><a href="#main" class="current">Careers</a></nav></header><main id="main"><div class="spacer"></div></main>
+<script>document.addEventListener('DOMContentLoaded',function(){document.getElementById('bar').classList.add('scrolled')})</script></body></html>

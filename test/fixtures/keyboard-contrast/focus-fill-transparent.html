@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Transparent fill</title>
+<style>body{margin:0;padding:24px;background:#fff;font:16px Arial,sans-serif}
+.row{background:#f5f5f3;padding:8px}
+button{outline:0;margin:16px;padding:10px 16px;font:inherit;background:transparent;color:#000;border:0}
+/* transparent at rest, faint fill on focus (about 1.1:1 against the backdrop) */
+.weak:focus-visible{background:#ebebe6}
+/* transparent at rest, strong fill on focus: fine */
+.strong:focus-visible{background:#000;color:#fff}
+</style></head>
+<body><main id="main"><div class="row">
+<button class="weak">Transparent weak</button>
+<button class="strong">Transparent strong</button>
+</div></main></body></html>

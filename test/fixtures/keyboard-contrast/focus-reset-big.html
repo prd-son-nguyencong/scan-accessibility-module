@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Focus reset, large element</title>
+<style>body{margin:0;padding:24px;background:#fff;font:16px Arial,sans-serif}
+button{outline:0;margin:16px;padding:10px 16px;font:inherit;background:#fff;color:#000;border:1px solid #888}
+/* large card, UA ring removed, the cue sits on a bottom-right child far outside a 520x260 clip */
+a.card{display:block;width:900px;height:400px;outline:0;position:relative;color:#000}
+a.card .t{position:absolute;right:0;bottom:0;border-bottom:3px solid transparent}
+a.card:focus-visible .t{border-bottom-color:#00f;background:#cff}
+</style></head>
+<body><main id="main">
+<button>Plain small</button>
+<a href="#main" class="card">Read more<span class="t">Big card</span></a>
+</main></body></html>

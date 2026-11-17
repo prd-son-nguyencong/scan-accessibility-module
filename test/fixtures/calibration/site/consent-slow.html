@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Consent slow</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Calibration fixture Consent slow">
+<link rel="stylesheet" href="/cal.css">
+<style>.cc-window{position:fixed;bottom:0;left:0;right:0;background:#fff;padding:12px}.cc-window p,.cc-window a{color:#aaa}</style>
+<script src="/slow.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header><nav aria-label="Primary"><ul><li><a href="/">Home</a></li></ul></nav></header>
+<main id="main">
+<h1>Consent slow</h1>
+<p>Site content before the injected consent banner.</p>
+</main>
+<footer><p>Calibration footer</p></footer>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  var d = document.createElement("div");
+  d.className = "cc-window cc-banner";
+  d.innerHTML = "<span class=\"cc-message\"><p>We use cookies</p></span><div class=\"cc-compliance\"><a role=\"button\" tabindex=\"0\" class=\"cc-btn cc-dismiss\" aria-label=\"dismiss cookie message\">Got it</a></div>";
+  document.body.appendChild(d);
+  setTimeout(function () { d.remove(); }, 2500);
+});
+</script>
+</body>
+</html>

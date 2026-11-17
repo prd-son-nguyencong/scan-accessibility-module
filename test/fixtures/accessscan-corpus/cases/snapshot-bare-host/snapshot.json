@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "1.0.0",
+  "elements": [
+    {
+      "id": 1,
+      "parentId": null,
+      "tag": "a",
+      "attributes": { "href": "vendor.example/careers" },
+      "text": "",
+      "visibleText": "",
+      "selector": "a",
+      "reportSelector": "a",
+      "framePath": [],
+      "shadowPath": [],
+      "outerHTML": "<a href=\"vendor.example/careers\">Careers</a>",
+      "rect": { "x": 0, "y": 0, "width": 10, "height": 10 },
+      "computedStyle": {},
+      "accessibleName": "",
+      "effectiveOpacity": 1,
+      "rendered": true,
+      "visuallyVisible": true,
+      "hiddenFromAT": false,
+      "focusable": true
+    }
+  ],
+  "diagnostics": [],
+  "counts": { "frameCount": 0, "shadowRootCount": 0, "closedShadowCount": 0 }
+}

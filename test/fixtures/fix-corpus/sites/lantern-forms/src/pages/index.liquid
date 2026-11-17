@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Apply to Lantern</title>
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+{% render "header" %}
+<main id="main">
+  <h1>Apply to Lantern</h1>
+  <form class="apply" action="/apply" method="post" data-pdk-form="apply">
+    <div class="field">
+      <input type="text" id="first" name="first_name" placeholder="First name" data-pdk-field="first">
+    </div>
+    <div class="field">
+      <input type="tel" id="phone" name="phone" aria-label="Phone">
+    </div>
+    <button type="submit" class="send" aria-label="Send">Submit application</button>
+  </form>
+</main>
+</body>
+</html>

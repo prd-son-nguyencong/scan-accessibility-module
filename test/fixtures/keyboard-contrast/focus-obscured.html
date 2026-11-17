@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Sticky header</title>
+<style>body{margin:0;height:2400px;background:#fff;font:16px Arial,sans-serif}
+header{position:fixed;top:0;left:0;right:0;height:90px;background:#222;color:#fff;z-index:10}
+a.item{position:absolute;top:30px;padding:6px;color:#00e;background:#fff}
+a.item:focus-visible{outline:3px solid #0b57d0}
+a.under{left:20px}
+a.over{left:300px;z-index:20}</style></head>
+<body><header>Site header</header><main id="main">
+<a class="item over" href="#main">Over header</a>
+<a class="item under" href="#main">Under header</a>
+</main></body></html>

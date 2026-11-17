@@ -1,0 +1,10 @@
+{
+  "description": "Copy to source-manifest.local.json (gitignored). Overrides label/sourceUrl per manifest entry id and may add reviewed oracle/staging host suffixes; real customer names and hosts stay out of the repo.",
+  "reviewedHostSuffixes": [".preview.sites.stg.example.test"],
+  "entries": {
+    "site-000": {
+      "label": "Customer Name 000",
+      "sourceUrl": "https://customer000.preview.sites.stg.paradox.ai/"
+    }
+  }
+}

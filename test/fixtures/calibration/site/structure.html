@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Structure</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Calibration fixture Structure">
+<link rel="stylesheet" href="/cal.css">
+
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header><nav aria-label="Primary"><ul><li><a href="/">Home</a></li></ul></nav></header>
+<main id="main">
+<h1>Structure</h1>
+<nav aria-label="Menu"><a href="/">Alpha</a></nav>
+<nav aria-label="Menu"><a href="/">Bravo</a></nav>
+<section class="dangling" aria-labelledby="nope"><p>Section named by a missing id.</p></section>
+<h3 class="skipped-h3">Skipped heading</h3>
+<div class="generic-label" aria-label="Sidebar info"><p>Generic div with a label.</p></div>
+<p class="small-targets"><a href="/links#s1" style="display:inline-block;width:20px;height:20px;padding:0;font-size:12px" aria-label="One">1</a><a href="/links#s2" style="display:inline-block;width:20px;height:20px;padding:0;margin-left:0;font-size:12px" aria-label="Two">2</a></p>
+</main>
+<footer><p>Calibration footer</p></footer>
+
+</body>
+</html>

@@ -1,0 +1,73 @@
+{
+  "schemaVersion": "1.0.0",
+  "fixture": "neutral-standards-parity",
+  "intentionalDeltas": [
+    {
+      "ruleId": "PageTitle",
+      "legacyCount": 0,
+      "engineCount": 0,
+      "reason": "standards-first: legacy double-counts missing <title> as PageTitle and PageTitleDescriptive"
+    },
+    {
+      "ruleId": "LinkOpensNewWindow",
+      "field": "fix.deterministic",
+      "legacy": true,
+      "engine": false,
+      "reason": "descriptor classifies advisory link warnings as non-deterministic"
+    },
+    {
+      "ruleId": "RequiredFormFieldAriaRequired",
+      "field": "fix.deterministic",
+      "legacy": true,
+      "engine": false,
+      "reason": "descriptor marks heuristic required-field parity as manual review"
+    }
+  ],
+  "rules": [
+    {
+      "ruleId": "AltMisuse",
+      "legacyCount": 1,
+      "engineCount": 1
+    },
+    {
+      "ruleId": "NoRoleApplication",
+      "legacyCount": 1,
+      "engineCount": 1
+    },
+    {
+      "ruleId": "ListEmpty",
+      "legacyCount": 1,
+      "engineCount": 1
+    },
+    {
+      "ruleId": "LinkOpensNewWindow",
+      "legacyCount": 1,
+      "engineCount": 1
+    },
+    {
+      "ruleId": "RequiredFormFieldAriaRequired",
+      "legacyCount": 1,
+      "engineCount": 1
+    },
+    {
+      "ruleId": "HtmlLang",
+      "legacyCount": 1,
+      "engineCount": 1
+    },
+    {
+      "ruleId": "VisibleTextPartOfAccessibleName",
+      "legacyCount": 1,
+      "engineCount": 1
+    },
+    {
+      "ruleId": "PageTitle",
+      "legacyCount": 0,
+      "engineCount": 0
+    },
+    {
+      "ruleId": "PageTitleDescriptive",
+      "legacyCount": 1,
+      "engineCount": 1
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "site-203",
+  "profile": "commercial-parity",
+  "route": "/",
+  "captureState": "initial",
+  "viewport": {
+    "width": 1280,
+    "height": 900
+  },
+  "captureMode": "oracle-evidence-slice",
+  "notes": [
+    "Frozen cross-site accessScan oracle evidence slice seeded from tooling source manifest.",
+    "This case is an evidence slice rather than a whole-page baseline.",
+    "Evidence slice contains 15 uniquely alignable oracle snippets with 14 aligned findings.",
+    "Limitation: ImageMisuse: oracle reports 11 failures but only 10 failuresHtml snippets were captured",
+    "Limitation: VisibilityMisuse: truncated oracle html snippet skipped at index 0",
+    "Limitation: VisibilityMisuse: truncated oracle html snippet skipped at index 1",
+    "Limitation: VisibilityMisuse: truncated oracle html snippet skipped at index 2",
+    "Limitation: VisibilityMisuse: truncated oracle html snippet skipped at index 3",
+    "Limitation: VisibilityMisuse: non-replayable document-level snippet skipped at index 5",
+    "Limitation: FocusNotObscuredHeader: truncated oracle html snippet skipped at index 7",
+    "Limitation: VisibleTextPartOfAccessibleName: truncated oracle html snippet skipped at index 8",
+    "Limitation: RegionFooterMismatch: truncated oracle html snippet skipped at index 10",
+    "Limitation: RegionFooterMisuse: truncated oracle html snippet skipped at index 11",
+    "Limitation: RegionMainContentMismatch: truncated oracle html snippet skipped at index 12",
+    "Limitation: RegionMainContentMisuse: truncated oracle html snippet skipped at index 13",
+    "Limitation: SearchFormMismatch: truncated oracle html snippet skipped at index 14",
+    "Limitation: HtmlLang: truncated oracle html snippet skipped at index 27",
+    "Limitation: VisibilityMisuse: oracle snippet bound but not replay-confirmed",
+    "Limitation: Reprocess retained 14 replay-confirmed findings after neutralization refresh"
+  ]
+}

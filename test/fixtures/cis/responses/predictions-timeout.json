@@ -1,0 +1,12 @@
+{
+  "meta": {
+    "provenance": "synthetic",
+    "source": "PoC requestTimeoutMs abort simulation",
+    "note": "Synthetic timeout behavior fixture. No HTTP response body is returned when the client aborts."
+  },
+  "response": {
+    "error": "timeout",
+    "elapsedMs": 30000,
+    "headers": {}
+  }
+}

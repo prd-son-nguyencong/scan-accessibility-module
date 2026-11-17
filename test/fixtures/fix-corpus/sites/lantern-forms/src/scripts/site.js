@@ -1,0 +1,1 @@
+// lantern: no behaviour

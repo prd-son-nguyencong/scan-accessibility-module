@@ -1,0 +1,26 @@
+{% layout "layout" %}
+{% block content %}
+<div role="banner" class="promo-banner"><p>We are hiring across the country.</p></div>
+<main id="main">
+<h1>Build your career at Acme</h1>
+<p>Join a team that values you.</p>
+<section id="index-defects">
+  <h2>Seeded defects</h2>
+  <button class="defect-icon-button" type="button"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2l12 12M14 2L2 14" stroke="#000" stroke-width="2"/></svg></button>
+  <img class="defect-img" src="/pixel.svg" width="40" height="40">
+  <p class="defect-low-contrast tw-low-contrast">Faded legal notice that is hard to read.</p>
+  <a class="defect-small-target tw-small-target" href="/benefits" aria-label="Benefits shortcut"></a>
+  <a class="defect-small-target tw-small-target" href="/jobs" aria-label="Jobs shortcut"></a>
+</section>
+{% render "cta", label: "Apply" %}
+{% render "cta", label: "Apply" %}
+<section id="index-clean">
+  <h2>Clean twins</h2>
+  <button class="clean-icon-button" type="button" aria-label="Close"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2l12 12M14 2L2 14" stroke="#000" stroke-width="2"/></svg></button>
+  <img class="clean-img" src="/pixel.svg" width="40" height="40" alt="Acme team photo">
+  <p class="clean-contrast tw-ok-contrast">Readable legal notice.</p>
+  <a class="clean-target tw-ok-target" href="/benefits" aria-label="Benefits shortcut"></a>
+  <a class="clean-target tw-ok-target" href="/jobs" aria-label="Jobs shortcut"></a>
+</section>
+</main>
+{% endblock %}

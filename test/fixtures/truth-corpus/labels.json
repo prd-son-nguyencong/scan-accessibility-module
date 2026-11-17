@@ -1,0 +1,430 @@
+{
+  "cases": [
+    {
+      "sc": "3.1.1",
+      "name": "lang-missing",
+      "bad": "3.1.1/lang-missing-bad.html",
+      "good": "3.1.1/lang-missing-good.html",
+      "basis": "The <html> element has no lang attribute, so the default human language cannot be programmatically determined."
+    },
+    {
+      "sc": "3.1.1",
+      "name": "lang-invalid",
+      "bad": "3.1.1/lang-invalid-bad.html",
+      "good": "3.1.1/lang-invalid-good.html",
+      "basis": "lang=\"xx-invalid-tag\" is not a valid BCP 47 language tag, so the language cannot be determined."
+    },
+    {
+      "sc": "3.1.1",
+      "name": "lang-xml-mismatch",
+      "bad": "3.1.1/lang-xml-mismatch-bad.html",
+      "good": "3.1.1/lang-xml-mismatch-good.html",
+      "basis": "lang=\"en\" and xml:lang=\"fr\" name two different languages for the page (technique H57 requires them to agree)."
+    },
+    {
+      "sc": "1.1.1",
+      "name": "img-no-alt",
+      "bad": "1.1.1/img-no-alt-bad.html",
+      "good": "1.1.1/img-no-alt-good.html",
+      "basis": "An informative image has no text alternative (no alt attribute)."
+    },
+    {
+      "sc": "1.1.1",
+      "name": "input-image-no-alt",
+      "bad": "1.1.1/input-image-no-alt-bad.html",
+      "good": "1.1.1/input-image-no-alt-good.html",
+      "basis": "An image button has no text alternative."
+    },
+    {
+      "sc": "1.1.1",
+      "name": "role-img-no-name",
+      "bad": "1.1.1/role-img-no-name-bad.html",
+      "good": "1.1.1/role-img-no-name-good.html",
+      "basis": "An element with role=\"img\" carries meaning but has no accessible name."
+    },
+    {
+      "sc": "1.1.1",
+      "name": "svg-img-no-name",
+      "bad": "1.1.1/svg-img-no-name-bad.html",
+      "good": "1.1.1/svg-img-no-name-good.html",
+      "basis": "An SVG exposed as an image has no text alternative."
+    },
+    {
+      "sc": "1.3.1",
+      "name": "list-bad-child",
+      "bad": "1.3.1/list-bad-child-bad.html",
+      "good": "1.3.1/list-bad-child-good.html",
+      "basis": "A ul contains a div child: the list structure is not valid, so the grouping is not conveyed programmatically."
+    },
+    {
+      "sc": "1.3.1",
+      "name": "definition-list-bad-child",
+      "bad": "1.3.1/definition-list-bad-child-bad.html",
+      "good": "1.3.1/definition-list-bad-child-good.html",
+      "basis": "A dl contains p children: term/description relationships are not conveyed."
+    },
+    {
+      "sc": "1.3.1",
+      "name": "td-headers-missing-target",
+      "bad": "1.3.1/td-headers-missing-target-bad.html",
+      "good": "1.3.1/td-headers-missing-target-good.html",
+      "basis": "A td headers attribute points at an id that does not exist, so the cell has no header relationship."
+    },
+    {
+      "sc": "1.3.5",
+      "name": "autocomplete-invalid",
+      "bad": "1.3.5/autocomplete-invalid-bad.html",
+      "good": "1.3.5/autocomplete-invalid-good.html",
+      "basis": "An input for the user email carries autocomplete=\"nope\", which is not a defined input purpose token."
+    },
+    {
+      "sc": "1.4.1",
+      "name": "link-color-only",
+      "bad": "1.4.1/link-color-only-bad.html",
+      "good": "1.4.1/link-color-only-good.html",
+      "basis": "A link inside a paragraph differs from the surrounding text only by an almost identical colour and has no underline."
+    },
+    {
+      "sc": "1.4.3",
+      "name": "low-contrast-text",
+      "bad": "1.4.3/low-contrast-text-bad.html",
+      "good": "1.4.3/low-contrast-text-good.html",
+      "basis": "Normal-size text #aaaaaa on white has a contrast ratio of about 2.3:1, below 4.5:1."
+    },
+    {
+      "sc": "2.1.1",
+      "name": "scroll-region-no-focus",
+      "bad": "2.1.1/scroll-region-no-focus-bad.html",
+      "good": "2.1.1/scroll-region-no-focus-good.html",
+      "basis": "A scrollable region with overflowing text has no focusable content and is not focusable, so keyboard users cannot scroll it."
+    },
+    {
+      "sc": "2.2.2",
+      "name": "marquee",
+      "bad": "2.2.2/marquee-bad.html",
+      "good": "2.2.2/marquee-good.html",
+      "basis": "A marquee scrolls automatically with no way to pause, stop or hide it."
+    },
+    {
+      "sc": "2.4.2",
+      "name": "title-missing",
+      "bad": "2.4.2/title-missing-bad.html",
+      "good": "2.4.2/title-missing-good.html",
+      "basis": "The page has no title element, so it is not titled."
+    },
+    {
+      "sc": "2.4.4",
+      "name": "link-no-name",
+      "bad": "2.4.4/link-no-name-bad.html",
+      "good": "2.4.4/link-no-name-good.html",
+      "basis": "A link has no text, so its purpose cannot be determined."
+    },
+    {
+      "sc": "2.5.3",
+      "name": "label-not-in-name",
+      "bad": "2.5.3/label-not-in-name-bad.html",
+      "good": "2.5.3/label-not-in-name-good.html",
+      "basis": "The button shows \"Search jobs\" but its accessible name is \"Go\", which does not contain the visible label.",
+      "oracle": "labelInName"
+    },
+    {
+      "sc": "3.1.2",
+      "name": "part-lang-invalid",
+      "bad": "3.1.2/part-lang-invalid-bad.html",
+      "good": "3.1.2/part-lang-invalid-good.html",
+      "basis": "A passage has lang=\"zz-bogus\", an invalid tag, so its language cannot be determined."
+    },
+    {
+      "sc": "4.1.2",
+      "name": "button-no-name",
+      "bad": "4.1.2/button-no-name-bad.html",
+      "good": "4.1.2/button-no-name-good.html",
+      "basis": "A button has no accessible name."
+    },
+    {
+      "sc": "4.1.2",
+      "name": "input-no-label",
+      "bad": "4.1.2/input-no-label-bad.html",
+      "good": "4.1.2/input-no-label-good.html",
+      "basis": "A text input has no label or accessible name."
+    },
+    {
+      "sc": "4.1.2",
+      "name": "select-no-name",
+      "bad": "4.1.2/select-no-name-bad.html",
+      "good": "4.1.2/select-no-name-good.html",
+      "basis": "A select has no accessible name."
+    },
+    {
+      "sc": "4.1.2",
+      "name": "invalid-role",
+      "bad": "4.1.2/invalid-role-bad.html",
+      "good": "4.1.2/invalid-role-good.html",
+      "basis": "role=\"foo\" is not a defined ARIA role, so the element role is not determinable."
+    },
+    {
+      "sc": "4.1.2",
+      "name": "checkbox-no-checked",
+      "bad": "4.1.2/checkbox-no-checked-bad.html",
+      "good": "4.1.2/checkbox-no-checked-good.html",
+      "basis": "A role=\"checkbox\" lacks the required aria-checked state."
+    },
+    {
+      "sc": "4.1.2",
+      "name": "nested-interactive",
+      "bad": "4.1.2/nested-interactive-bad.html",
+      "good": "4.1.2/nested-interactive-good.html",
+      "basis": "A link nested in a button makes two interactive controls share one element, so the name and role are unreliable."
+    },
+    {
+      "sc": "4.1.2",
+      "name": "iframe-no-title",
+      "bad": "4.1.2/iframe-no-title-bad.html",
+      "good": "4.1.2/iframe-no-title-good.html",
+      "basis": "An iframe has no title naming its purpose."
+    },
+    {
+      "sc": "4.1.2",
+      "name": "hidden-focusable",
+      "bad": "4.1.2/hidden-focusable-bad.html",
+      "good": "4.1.2/hidden-focusable-good.html",
+      "basis": "A focusable button sits inside aria-hidden=\"true\", so it is focusable but hidden from assistive technology."
+    },
+    {
+      "sc": "1.4.4",
+      "name": "zoom-capped",
+      "bad": "1.4.4/zoom-capped-bad.html",
+      "good": "1.4.4/zoom-capped-good.html",
+      "basis": "The viewport meta caps maximum-scale at 1.0, so the user cannot enlarge the page text to 200% by zooming."
+    },
+    {
+      "sc": "2.2.1",
+      "name": "meta-refresh-timed",
+      "bad": "2.2.1/meta-refresh-timed-bad.html",
+      "good": "2.2.1/meta-refresh-timed-good.html",
+      "basis": "The page redirects itself after 10 minutes (600 seconds, well under the 20 hour limit of 2.2.1) with no way to turn off, adjust or extend the time limit. This is the long-delay case; the 3, 5 and 10 second pairs cover the delays real sites use and fire while the scan is still running."
+    },
+    {
+      "sc": "2.4.11",
+      "name": "fixed-header-covers-link",
+      "bad": "2.4.11/fixed-header-covers-link-bad.html",
+      "good": "2.4.11/fixed-header-covers-link-good.html",
+      "basis": "A 60px fixed header sits over a focusable link placed at the top of the page, so the focused link is entirely hidden by author content."
+    },
+    {
+      "sc": "2.5.8",
+      "name": "small-adjacent-targets",
+      "bad": "2.5.8/small-adjacent-targets-bad.html",
+      "good": "2.5.8/small-adjacent-targets-good.html",
+      "basis": "Two 14px buttons touch each other: each target is smaller than 24 by 24 CSS pixels and no spacing exception applies.",
+      "oracle": "targetSize"
+    },
+    {
+      "sc": "3.2.1",
+      "name": "focus-submits-form",
+      "bad": "3.2.1/focus-submits-form-bad.html",
+      "good": "3.2.1/focus-submits-form-good.html",
+      "basis": "Receiving focus on the input submits the form, a change of context caused by focus alone. No layer has a rule for this, so the miss is recorded as known.",
+      "knownMiss": true
+    },
+    {
+      "sc": "3.2.2",
+      "name": "select-navigates",
+      "bad": "3.2.2/select-navigates-bad.html",
+      "good": "3.2.2/select-navigates-good.html",
+      "basis": "Choosing an option in the select navigates away at once, with no submit control and no prior warning."
+    },
+    {
+      "sc": "2.5.3",
+      "name": "label-reordered",
+      "bad": "2.5.3/label-reordered-bad.html",
+      "good": "2.5.3/label-reordered-good.html",
+      "basis": "The visible label \"Search jobs\" is not a contiguous run of the accessible name \"Jobs search\": the words are reordered, so a speech-input user saying the visible label does not match the name. The clean twin keeps the visible label as a contiguous run inside a longer name.",
+      "oracle": "labelInName"
+    },
+    {
+      "sc": "2.5.7",
+      "name": "sortable-drag-only",
+      "bad": "2.5.7/sortable-drag-only-bad.html",
+      "good": "2.5.7/sortable-drag-only-good.html",
+      "basis": "Items are reordered only by dragging (draggable list items, no other control), so a user who cannot drag has no single-pointer way to reorder. The clean twin offers Up and Down buttons on each item as the single-pointer alternative."
+    },
+    {
+      "sc": "3.2.1",
+      "name": "focus-jumps",
+      "bad": "3.2.1/focus-jumps-bad.html",
+      "good": "3.2.1/focus-jumps-good.html",
+      "basis": "Receiving focus on the first name field moves focus to the last name field: a change of context caused by focus alone. The clean twin only selects the field text on focus, which does not change context.",
+      "knownMiss": "No rule detects a script that moves focus on focus; only the autofocus attribute is checked (WCAG coverage note for 3.2.1)."
+    },
+    {
+      "sc": "2.4.7",
+      "name": "focus-outline-removed",
+      "bad": "2.4.7/focus-outline-removed-bad.html",
+      "good": "2.4.7/focus-outline-removed-good.html",
+      "basis": "Every link and button sets outline:none and box-shadow:none on :focus and :focus-visible, so keyboard focus has no visible indicator. The clean twin removes the ring only for :focus:not(:focus-visible) and draws a 3px ring for keyboard focus.",
+      "oracle": "focusIndicator",
+      "knownMiss": "The registered rule layers have no focus-visible rule; the keyboard probe (not a registered layer, so truth:metrics does not count it) reports it; its verdict tier is in docs/accuracy-measured.md."
+    },
+    {
+      "sc": "2.4.7",
+      "name": "focus-hidden-mobile-toggle",
+      "bad": "2.4.7/focus-hidden-mobile-toggle-bad.html",
+      "good": "2.4.7/focus-hidden-mobile-toggle-good.html",
+      "basis": "Below the 1024px breakpoint the only control is a menu toggle whose :focus and :focus-visible styles remove the outline and shadow, so keyboard focus is invisible at 390px (at 1280px the toggle is hidden and the nav links keep a ring). The clean twin removes the outline but draws a 3px box-shadow ring, so a naive outline:none check is wrong about it.",
+      "oracle": "focusIndicator",
+      "knownMiss": "Not registered, and the keyboard probe walks the loaded desktop viewport only, where the toggle does not exist; nothing flags it today (docs/accuracy-measured.md)."
+    },
+    {
+      "sc": "2.5.8",
+      "name": "icon-row-mobile-gap",
+      "bad": "2.5.8/icon-row-mobile-gap-bad.html",
+      "good": "2.5.8/icon-row-mobile-gap-good.html",
+      "basis": "Three 20px icon buttons sit flush below 768px (no spacing) and 8px apart from 768px up, so the 24px circles of neighbours intersect at 390px and do not at 1280px: a violation that depends on the viewport. The clean twin keeps the 8px gap at every width.",
+      "oracle": "targetSize",
+      "knownMiss": "truth:metrics loads the page at the default 1280px viewport, where the spacing passes; the failure only exists at 390px and is found by the scan pipeline (docs/accuracy-measured.md), not by the engine layers run here."
+    },
+    {
+      "sc": "2.5.8",
+      "name": "stacked-list-pitch",
+      "bad": "2.5.8/stacked-list-pitch-bad.html",
+      "good": "2.5.8/stacked-list-pitch-good.html",
+      "basis": "Three 140x20px links stacked at a 20px pitch: the 24px circles centred on neighbouring targets overlap by 4px at every width. The clean twin stacks the same links at a 24px pitch (4px margin), where the circles only touch, which WCAG 2.5.8 allows.",
+      "oracle": "targetSize"
+    },
+    {
+      "sc": "4.1.2",
+      "name": "duplicate-id-hidden-first",
+      "bad": "4.1.2/duplicate-id-hidden-first-bad.html",
+      "good": "4.1.2/duplicate-id-hidden-first-good.html",
+      "basis": "The id \"email\" is on two inputs and the first one in the document is display:none, so label[for=email] resolves to the hidden copy and the rendered input has no label (getElementById and for= take the first element). The clean twin puts the rendered input first and the hidden copy after it, so the label resolves to the control it sits with.",
+      "knownMiss": "Found by the screen-reader layer (duplicate-id-referenced), which is not a registered rule layer; the engine layers run by truth:metrics do not flag it."
+    },
+    {
+      "sc": "2.2.1",
+      "name": "meta-refresh-3s",
+      "bad": "2.2.1/meta-refresh-3s-bad.html",
+      "good": "2.2.1/meta-refresh-3s-good.html",
+      "basis": "The page redirects itself after 3 seconds with no way to turn off, adjust or extend the time limit (2.2.1 allows no timed refresh under the 20 hour limit). A delay this short fires while a scan is still running, so the tool must read the meta tag before the redirect and keep scanning the requested page."
+    },
+    {
+      "sc": "2.2.1",
+      "name": "meta-refresh-3s-fragment",
+      "bad": "2.2.1/meta-refresh-3s-fragment-bad.html",
+      "good": "2.2.1/meta-refresh-3s-fragment-good.html",
+      "basis": "The page redirects itself after 3 seconds to a URL that carries a #fragment, with no way to turn off, adjust or extend the time limit. The request for the target never carries the fragment, so the tool must strip it to keep the scan on the requested page."
+    },
+    {
+      "sc": "2.2.1",
+      "name": "meta-refresh-5s",
+      "bad": "2.2.1/meta-refresh-5s-bad.html",
+      "good": "2.2.1/meta-refresh-5s-good.html",
+      "basis": "The page redirects itself after 5 seconds with no way to turn off, adjust or extend the time limit (2.2.1 allows no timed refresh under the 20 hour limit). A delay this short fires while a scan is still running, so the tool must read the meta tag before the redirect and keep scanning the requested page."
+    },
+    {
+      "sc": "2.2.1",
+      "name": "meta-refresh-10s",
+      "bad": "2.2.1/meta-refresh-10s-bad.html",
+      "good": "2.2.1/meta-refresh-10s-good.html",
+      "basis": "The page redirects itself after 10 seconds with no way to turn off, adjust or extend the time limit (2.2.1 allows no timed refresh under the 20 hour limit). A delay this short fires while a scan is still running, so the tool must read the meta tag before the redirect and keep scanning the requested page."
+    },
+    {
+      "sc": "1.3.5",
+      "name": "autocomplete-invalid-name",
+      "bad": "1.3.5/autocomplete-invalid-name-bad.html",
+      "good": "1.3.5/autocomplete-invalid-name-good.html",
+      "basis": "A field that collects the user's own name carries an autocomplete token that is not in the WCAG 2.2 input purposes list, so its purpose cannot be programmatically determined."
+    },
+    {
+      "sc": "1.3.5",
+      "name": "autocomplete-invalid-tel",
+      "bad": "1.3.5/autocomplete-invalid-tel-bad.html",
+      "good": "1.3.5/autocomplete-invalid-tel-good.html",
+      "basis": "A phone field uses autocomplete=\"phone\", which is not a valid input purpose token (the token is \"tel\"), so the purpose cannot be programmatically determined."
+    },
+    {
+      "sc": "1.4.1",
+      "name": "link-color-only-inline",
+      "bad": "1.4.1/link-color-only-inline-bad.html",
+      "good": "1.4.1/link-color-only-inline-good.html",
+      "basis": "A link inside a sentence differs from the surrounding text only by a slightly different grey (under 3:1) with no underline, so colour alone identifies it."
+    },
+    {
+      "sc": "1.4.1",
+      "name": "link-color-only-list-text",
+      "bad": "1.4.1/link-color-only-list-text-bad.html",
+      "good": "1.4.1/link-color-only-list-text-good.html",
+      "basis": "A link in running text is a near-identical dark grey with the underline removed, so the link is distinguished from the text by colour alone and not by a 3:1 difference."
+    },
+    {
+      "sc": "1.4.3",
+      "name": "low-contrast-grey-on-white",
+      "bad": "1.4.3/low-contrast-grey-on-white-bad.html",
+      "good": "1.4.3/low-contrast-grey-on-white-good.html",
+      "basis": "Grey #999 text on white is about 2.8:1, under the 4.5:1 minimum for normal-size text."
+    },
+    {
+      "sc": "1.4.3",
+      "name": "low-contrast-white-on-light",
+      "bad": "1.4.3/low-contrast-white-on-light-bad.html",
+      "good": "1.4.3/low-contrast-white-on-light-good.html",
+      "basis": "White text on a light blue #8ab4f8 background is about 2:1, under the 4.5:1 minimum for normal-size text."
+    },
+    {
+      "sc": "1.4.4",
+      "name": "zoom-disabled",
+      "bad": "1.4.4/zoom-disabled-bad.html",
+      "good": "1.4.4/zoom-disabled-good.html",
+      "basis": "The viewport meta sets user-scalable=no, so the user cannot enlarge the page text by zooming."
+    },
+    {
+      "sc": "2.1.1",
+      "name": "scroll-region-no-focus-wide",
+      "bad": "2.1.1/scroll-region-no-focus-wide-bad.html",
+      "good": "2.1.1/scroll-region-no-focus-wide-good.html",
+      "basis": "A scrollable list has no focusable element inside and is not focusable itself, so a keyboard user cannot scroll to the rows that are clipped."
+    },
+    {
+      "sc": "2.2.2",
+      "name": "marquee-news",
+      "bad": "2.2.2/marquee-news-bad.html",
+      "good": "2.2.2/marquee-news-good.html",
+      "basis": "A marquee moves text automatically for more than five seconds with no control to pause, stop or hide it."
+    },
+    {
+      "sc": "2.2.2",
+      "name": "marquee-vertical",
+      "bad": "2.2.2/marquee-vertical-bad.html",
+      "good": "2.2.2/marquee-vertical-good.html",
+      "basis": "A vertical marquee scrolls text continuously with no mechanism to pause, stop or hide it."
+    },
+    {
+      "sc": "3.1.2",
+      "name": "part-lang-invalid-span",
+      "bad": "3.1.2/part-lang-invalid-span-bad.html",
+      "good": "3.1.2/part-lang-invalid-span-good.html",
+      "basis": "A span carries a lang value that is not a valid language tag, so the language of that passage cannot be determined."
+    },
+    {
+      "sc": "3.1.2",
+      "name": "part-lang-invalid-quote",
+      "bad": "3.1.2/part-lang-invalid-quote-bad.html",
+      "good": "3.1.2/part-lang-invalid-quote-good.html",
+      "basis": "A quotation carries lang=\"klingon\", which is not a valid BCP 47 tag, so the language of that passage cannot be determined."
+    },
+    {
+      "sc": "2.4.2",
+      "name": "title-empty",
+      "bad": "2.4.2/title-empty-bad.html",
+      "good": "2.4.2/title-empty-good.html",
+      "basis": "The page has an empty title element, so it has no title that describes its topic or purpose."
+    },
+    {
+      "sc": "2.4.4",
+      "name": "link-icon-only",
+      "bad": "2.4.4/link-icon-only-bad.html",
+      "good": "2.4.4/link-icon-only-good.html",
+      "basis": "A link contains only an empty icon element, so its purpose cannot be determined from its text or accessible name."
+    }
+  ]
+}

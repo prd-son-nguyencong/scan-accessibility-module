@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Third party</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Calibration fixture Third party">
+<link rel="stylesheet" href="/cal.css">
+<style>.cc-window{position:fixed;bottom:0;left:0;right:0;background:#fff;padding:12px}.cc-window p,.cc-window a{color:#aaa}.va-box{position:fixed;right:8px;bottom:80px}</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header><nav aria-label="Primary"><ul><li><a href="/">Home</a></li></ul></nav></header>
+<main id="main">
+<h1>Third party</h1>
+<p>Site content before the injected vendor DOM.</p>
+<noscript><iframe src="https://tags.vendor-a.example/ns.html" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+</main>
+<footer><p>Calibration footer</p></footer>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  var d = document.createElement("div");
+  d.className = "cc-window cc-banner";
+  d.innerHTML = "<span class=\"cc-message\"><p>We use cookies</p></span><a role=\"button\" class=\"cc-btn cc-dismiss\" aria-label=\"Okay\">Got it</a><a class=\"cc-link\" target=\"_blank\" href=\"/\">Privacy</a>";
+  document.body.appendChild(d);
+  var s = document.createElement("script");
+  s.setAttribute("type", "text/plain"); s.setAttribute("id", ""); s.setAttribute("charset", ""); s.text = "/* tag */";
+  document.body.appendChild(s);
+  var v = document.createElement("div");
+  v.className = "va-box";
+  v.innerHTML = "<button class=\"va-launcher\"><svg width=\"20\" height=\"20\" aria-hidden=\"true\"><circle cx=\"10\" cy=\"10\" r=\"8\"/></svg></button>";
+  document.body.appendChild(v);
+});
+</script>
+</body>
+</html>

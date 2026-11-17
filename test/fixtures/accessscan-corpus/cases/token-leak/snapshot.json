@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "1.0.0",
+  "elements": [],
+  "diagnostics": [],
+  "counts": {
+    "frameCount": 0,
+    "shadowRootCount": 0,
+    "closedShadowCount": 0
+  }
+}

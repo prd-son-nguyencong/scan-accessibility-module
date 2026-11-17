@@ -1,0 +1,51 @@
+{
+  "meta": {
+    "provenance": "synthetic-probe",
+    "source": "predictions.bru envelope + OpenAI tools probe field",
+    "note": "Inferred OpenAI-compatible field for pass-through characterization; not present in Bruno collection."
+  },
+  "request": {
+    "method": "POST",
+    "path": "/ml/inference/cis/v1alpha1/predictions",
+    "query": {
+      "bypass_auth": "true"
+    },
+    "headers": {
+      "Content-Type": "application/json",
+      "Wd-PCA-Feature-Key": "<redacted-feature-key>"
+    },
+    "target": {
+      "provider": "aws",
+      "model": "anthropic.claude-sonnet-4-20250514-v1:0"
+    },
+    "task": {
+      "type": "openai-chat-completion-v1",
+      "input": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "What is 2+2?"
+          }
+        ],
+        "max_completion_tokens": 32,
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "add",
+              "description": "add numbers",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "a": { "type": "number" },
+                  "b": { "type": "number" }
+                },
+                "required": ["a", "b"]
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,4 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>resize handler rewrites the control</title><style>body{margin:0;padding:24px;background:#fff;font:16px Arial,sans-serif}
+button{outline:none;width:80px;height:40px;background:#eee;border:0;margin:4px}
+</style></head><body><button id="a" type="button">Alpha</button> <button id="b" type="button">Beta</button><main id="main"><p>Content</p></main>
+<script>addEventListener('resize', () => { for (const b of document.querySelectorAll('button')) b.setAttribute('data-w', innerWidth); });</script></body></html>

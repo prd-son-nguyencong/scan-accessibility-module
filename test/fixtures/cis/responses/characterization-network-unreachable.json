@@ -1,0 +1,16 @@
+{
+  "meta": {
+    "provenance": "observed-environment",
+    "source": "scripts/cis-characterize.js run from characterization environment",
+    "note": "Only the network failure is observed live from this environment; no HTTP response bodies were captured."
+  },
+  "observation": {
+    "reachable": false,
+    "error": "fetch failed",
+    "elapsedMsApprox": 790,
+    "observedAt": "2026-07-14T11:08:00.000Z",
+    "environment": "characterization-agent-sandbox",
+    "probeScript": "scripts/cis-characterize.js",
+    "probesAttempted": ["models", "predictions", "structured-output", "tools", "invalid-model"]
+  }
+}

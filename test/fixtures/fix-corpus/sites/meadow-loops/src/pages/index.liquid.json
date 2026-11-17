@@ -1,0 +1,7 @@
+{
+  "faqs": [
+    { "q": "When do you open?", "a": "We open at nine." },
+    { "q": "Is parking free?", "a": "Yes, on weekends." },
+    { "q": "Can we bring dogs?", "a": "On a lead, please." }
+  ]
+}

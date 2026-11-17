@@ -1,0 +1,4 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>autoplay toggles a class on the dots</title><style>body{margin:0;padding:24px;background:#fff;font:16px Arial,sans-serif}
+button{outline:none;width:80px;height:40px;background:#eee;border:0;margin:4px}
+</style></head><body><div class="dots"><button id="a" type="button" class="dot on">One</button><button id="b" type="button" class="dot">Two</button></div><main id="main"><p>Content</p></main>
+<script>let i = 0; setInterval(() => { document.querySelectorAll('.dot').forEach((d, k) => d.classList.toggle('on', k === i % 2)); i++; }, 300);</script></body></html>

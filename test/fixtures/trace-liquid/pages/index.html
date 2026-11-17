@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Careers</title>
+<meta name="description" content="Careers at Acme">
+</head>
+<body>
+<!-- snippets/header.html -->
+<header class="site-header">
+  <a class="logo-link" href="/"><img class="logo-img" src="/logo.svg" width="120" height="32"></a>
+  <nav class="main-nav" aria-label="Primary">
+    <a class="nav-link" href="/jobs">Jobs</a>
+    <a class="nav-link" href="/teams">Teams</a>
+    <a class="nav-link" href="/benefits">Benefits</a>
+    <a class="nav-link" href="/locations">Locations</a>
+  </nav>
+  <button class="search-toggle" type="button"><svg width="16" height="16" aria-hidden="true"></svg></button>
+</header>
+<!-- /snippets/header.html -->
+<main id="main">
+<section class="hero">
+  <h1 class="hero-title">Build your career at Acme</h1>
+  <img class="hero-image" src="/hero.jpg" width="1200" height="480">
+  <a class="hero-cta" href="/jobs">Search jobs</a>
+</section>
+<section class="job-cards">
+  <article class="job-card">
+    <h3 class="card-title">Store Associate</h3>
+    <a class="card-link" href="/jobs">Explore store roles</a>
+  </article>
+  <article class="job-card">
+    <h3 class="card-title">Delivery Driver</h3>
+    <a class="card-link" href="/jobs">Explore driving roles</a>
+  </article>
+  <article class="job-card">
+    <h3 class="card-title">Kitchen Crew</h3>
+    <a class="card-link" href="/jobs">Explore kitchen roles</a>
+  </article>
+</section>
+<form class="search-form" action="/search">
+  <label for="keyword">Keyword</label>
+  <input id="keyword" class="search-input" type="text" name="q">
+  <input id="location" class="search-input" type="text" name="location">
+  <select id="radius" class="search-select" name="radius"><option value="10">10 miles</option></select>
+  <button class="search-submit" type="submit">Search</button>
+</form>
+<div class="carousel">
+  <button class="carousel-prev" type="button"><svg width="16" height="16" aria-hidden="true"></svg></button>
+  <button class="carousel-dot" type="button"></button>
+  <button class="carousel-dot" type="button"></button>
+  <button class="carousel-next" type="button"><svg width="16" height="16" aria-hidden="true"></svg></button>
+</div>
+<div class="jobs-widget" data-react-component="JobList"></div>
+<p class="stat">1200</p>
+<p class="stat">Updated daily</p>
+</main>
+<!-- snippets/footer.html -->
+<footer class="site-footer">
+  <ul class="footer-links">
+    <li><a href="/privacy">Privacy</a></li>
+    <li><a href="/terms">Terms</a></li>
+    <li><a href="/cookies">Cookies</a></li>
+  </ul>
+  <ul class="social-links">
+    <li><a class="social-icon" href="https://example.com/linkedin"><svg width="20" height="20" aria-hidden="true"></svg></a></li>
+    <li><a class="social-icon" href="https://example.com/instagram"><svg width="20" height="20" aria-hidden="true"></svg></a></li>
+  </ul>
+  <p class="legal">Copyright Acme Corp.</p>
+</footer>
+<!-- /snippets/footer.html -->
+</body>
+</html>

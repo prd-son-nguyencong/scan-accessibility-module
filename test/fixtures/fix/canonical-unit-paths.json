@@ -1,0 +1,45 @@
+{
+  "meta": {
+    "provenance": "synthetic",
+    "note": "Canonical fix unit with path-bearing title and source fields for prompt sanitization tests."
+  },
+  "fixUnit": {
+    "fixUnitId": "sha256:unit-with-paths",
+    "kind": "accessibility",
+    "canonicalRuleId": "select-name",
+    "title": "select-name in src/partials/jobs/sort.liquid",
+    "findingIds": ["sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"],
+    "sourceOwner": {
+      "file": "src/partials/jobs/sort.liquid",
+      "preimageSha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "evidence": [
+      {
+        "layer": "axe",
+        "nativeRuleId": "select-name",
+        "message": "Select element must have an accessible name.",
+        "route": "/",
+        "source": {
+          "file": "src/partials/jobs/sort.liquid",
+          "line": 12
+        }
+      }
+    ],
+    "findings": [
+      {
+        "findingId": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "element": {
+          "selector": "#sort-select",
+          "normalizedHtmlHash": "sha256:dom"
+        }
+      }
+    ]
+  },
+  "forbiddenInPrompt": [
+    "src/partials/jobs/sort.liquid",
+    "sourceOwner",
+    "\"source\"",
+    "normalizedHtmlHash",
+    "selector"
+  ]
+}

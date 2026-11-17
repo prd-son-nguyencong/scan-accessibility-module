@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "1.0.0",
+  "fixture": "neutral-standards-characterization",
+  "digest": "76442ce2b8ce591ad75fe73972cae9f330c41f869cf0bceec60356c5ef38c7d0",
+  "findingCount": 11,
+  "signature": [
+    {
+      "ruleId": "AltMisuse",
+      "violationType": "confirmed",
+      "checkId": "general:alt-misuse"
+    },
+    {
+      "ruleId": "LinkOpensNewWindow",
+      "violationType": "potential",
+      "checkId": "interactive:link-opens-new-window"
+    },
+    {
+      "ruleId": "ListEmpty",
+      "violationType": "confirmed",
+      "checkId": "lists:list-empty"
+    },
+    {
+      "ruleId": "MenuAvoid",
+      "violationType": "potential",
+      "checkId": "interactive:menu-avoid"
+    },
+    {
+      "ruleId": "MenuItemAvoid",
+      "violationType": "potential",
+      "checkId": "interactive:menuitem-avoid"
+    },
+    {
+      "ruleId": "MetaDescription",
+      "violationType": "potential",
+      "checkId": "metadata:meta-description"
+    },
+    {
+      "ruleId": "NavigationMisuse",
+      "violationType": "potential",
+      "checkId": "landmarks:navigation-misuse"
+    },
+    {
+      "ruleId": "NavigationMisuse",
+      "violationType": "potential",
+      "checkId": "landmarks:navigation-misuse"
+    },
+    {
+      "ruleId": "NoRoleApplication",
+      "violationType": "potential",
+      "checkId": "general:no-role-application"
+    },
+    {
+      "ruleId": "RequiredFormFieldAriaRequired",
+      "violationType": "potential",
+      "checkId": "forms:required-visual-indication"
+    },
+    {
+      "ruleId": "VisibleTextPartOfAccessibleName",
+      "violationType": "potential",
+      "checkId": "aria:visible-text-part-of-accessible-name"
+    }
+  ]
+}

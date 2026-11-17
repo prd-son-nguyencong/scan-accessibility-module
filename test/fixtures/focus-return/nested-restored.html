@@ -1,0 +1,8 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>focus return</title><style>body{margin:0;font:16px sans-serif}[hidden]{display:none}</style></head><body><a href="#home">Home</a><nav><button id="t" type="button" aria-expanded="false" aria-controls="p">Brands</button><div id="p" hidden><a href="#a">One</a>
+<button id="n" type="button" aria-expanded="false" aria-controls="np">Career Areas</button><div id="np" hidden><a href="#c">Sub one</a></div></div></nav><main><button id="after" type="button">after</button></main>
+<script>const t=document.getElementById("t"),p=document.getElementById("p"),n=document.getElementById("n"),np=document.getElementById("np");
+t.onclick=()=>{p.hidden=!p.hidden;t.setAttribute("aria-expanded",String(!p.hidden))};
+n.onclick=()=>{np.hidden=!np.hidden;n.setAttribute("aria-expanded",String(!np.hidden))};
+document.addEventListener("keydown",e=>{if(e.key!=="Escape")return;
+if(!np.hidden){np.hidden=true;n.setAttribute("aria-expanded","false");n.focus();}
+else if(!p.hidden){p.hidden=true;t.setAttribute("aria-expanded","false");t.focus()}});</script></body></html>

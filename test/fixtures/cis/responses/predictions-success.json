@@ -1,0 +1,40 @@
+{
+  "meta": {
+    "provenance": "synthetic-inferred",
+    "source": "openai-chat-completion-v1 wrapper inferred from Bruno task type",
+    "note": "Inferred success placeholder. Usage field names and numeric shape are frozen for contract tests."
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-request-id": "<redacted-request-id>"
+    },
+    "body": {
+      "prediction": {
+        "type": "openai-chat-completion-v1",
+        "output": {
+          "id": "<redacted-request-id>",
+          "object": "chat.completion",
+          "created": 1752490000,
+          "model": "anthropic.claude-sonnet-4-20250514-v1:0",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "<redacted-content>"
+              },
+              "finish_reason": "stop"
+            }
+          ],
+          "usage": {
+            "prompt_tokens": 12,
+            "completion_tokens": 8,
+            "total_tokens": 20
+          }
+        }
+      }
+    }
+  }
+}

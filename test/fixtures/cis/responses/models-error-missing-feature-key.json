@@ -1,0 +1,20 @@
+{
+  "meta": {
+    "provenance": "synthetic-inferred",
+    "source": "inferred authentication error envelope",
+    "note": "Inferred error placeholder; status code may differ on-network."
+  },
+  "response": {
+    "status": 401,
+    "headers": {
+      "content-type": "application/json",
+      "x-request-id": "<redacted-request-id>"
+    },
+    "body": {
+      "error": {
+        "type": "authentication_error",
+        "message": "<redacted-content>"
+      }
+    }
+  }
+}

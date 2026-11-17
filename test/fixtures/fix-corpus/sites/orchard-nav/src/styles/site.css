@@ -1,0 +1,11 @@
+body { margin: 0; font: 16px/1.5 sans-serif; color: #222; background: #fff; }
+.site-header { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 12px 24px; background: #f2f4f7; }
+.menu-btn { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; border: 1px solid #888; background: #fff; }
+.menu-icon { display: block; width: 20px; height: 2px; background: #222; }
+.site-nav { display: flex; align-items: center; gap: 12px; }
+.site-nav[hidden], .panel[hidden] { display: none; }
+.disc-btn { min-height: 44px; padding: 0 12px; border: 1px solid #888; background: #fff; }
+.panel { display: flex; gap: 8px; }
+main { padding: 32px 24px; }
+.site-footer { padding: 16px 24px; background: #eee; }
+.footer-nav { display: flex; gap: 16px; }

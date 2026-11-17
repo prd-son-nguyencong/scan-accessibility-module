@@ -1,0 +1,1041 @@
+{
+  "_doc": "Labels for scripts/calibrate.js. kind fp: matching findings must satisfy expect (confirmedSite false = not verdict confirmed with owner site; owner = required owner); no match passes. kind tp: some match must have a verdict in expect.verdict and owner expect.owner. rule is a regex over every rule id of a finding, match a regex over selector/markup/message, max the most findings allowed. Classes N1-N15 and M1-M6 are the false-positive and missed-true-positive classes of two manual reviews; names in the fixture pages are neutral.",
+  "pages": [
+    "/",
+    "/third-party",
+    "/pdk",
+    "/incomplete",
+    "/skip-dead",
+    "/skip-banner",
+    "/hidden-text",
+    "/roles",
+    "/icons",
+    "/contrast",
+    "/focus",
+    "/links",
+    "/embed",
+    "/loop-defects",
+    "/structure",
+    "/500",
+    "/no-main",
+    "/focus-footer",
+    "/consent-a",
+    "/consent-b",
+    "/consent-slow",
+    "/unbound-head",
+    "/static-head",
+    "/focus-obscured",
+    "/focus-obscured-site",
+    "/breadcrumbs",
+    "/measured",
+    "/404",
+    "/job-details",
+    "/sprite-identical",
+    "/sprite-differ"
+  ],
+  "labels": [
+    {
+      "id": "baseline-home-clean",
+      "class": "baseline",
+      "kind": "fp",
+      "route": "/",
+      "rule": "*",
+      "expect": {
+        "confirmedSite": false
+      }
+    },
+    {
+      "id": "N1-injected-banner-and-widget",
+      "class": "N1",
+      "kind": "fp",
+      "route": "/third-party",
+      "rule": "*",
+      "expect": {
+        "confirmedSite": false
+      }
+    },
+    {
+      "id": "N1-banner-contrast-owner",
+      "class": "N1",
+      "kind": "fp",
+      "route": "/third-party",
+      "rule": "color-contrast",
+      "expect": {
+        "confirmedSite": false,
+        "owner": "third-party"
+      },
+      "match": "cc-"
+    },
+    {
+      "id": "N1-gtm-script-owner",
+      "class": "N1",
+      "kind": "fp",
+      "route": "/third-party",
+      "rule": "valid-id|attribute-allowed-values",
+      "expect": {
+        "confirmedSite": false,
+        "owner": "third-party"
+      }
+    },
+    {
+      "id": "N1-vendor-a-widget-owner",
+      "class": "N1",
+      "kind": "fp",
+      "route": "/third-party",
+      "rule": "ButtonDiscernible|button-name",
+      "expect": {
+        "confirmedSite": false,
+        "owner": "third-party"
+      },
+      "match": "va-|button"
+    },
+    {
+      "id": "N2-noscript-iframe",
+      "class": "N2",
+      "kind": "fp",
+      "route": "/third-party",
+      "rule": "element-required-attributes",
+      "expect": {
+        "confirmedSite": false
+      }
+    },
+    {
+      "id": "N3-unbound-platform-data",
+      "class": "N3",
+      "kind": "fp",
+      "route": "/pdk",
+      "rule": "ListEmpty|empty-heading|ButtonMismatch|LinkAnchorAmbiguous|non-descriptive-link-text|color-contrast|dead-link|aria-required-children",
+      "expect": {
+        "confirmedSite": false
+      }
+    },
+    {
+      "id": "N4-axe-incomplete",
+      "class": "N4",
+      "kind": "fp",
+      "route": "/incomplete",
+      "rule": "*",
+      "expect": {
+        "confirmedSite": false
+      }
+    },
+    {
+      "id": "N5-skip-link-behind-consent-links",
+      "class": "N5",
+      "kind": "fp",
+      "route": "/skip-banner",
+      "rule": "*",
+      "expect": {
+        "confirmedSite": false
+      }
+    },
+    {
+      "id": "N6-referenced-or-revealed-hidden-text",
+      "class": "N6",
+      "kind": "fp",
+      "route": "/hidden-text",
+      "rule": "VisibilityMisuse",
+      "expect": {
+        "confirmedSite": false
+      },
+      "match": "ref-link|reveal|#yr1|#d1|#d2|skip"
+    },
+    {
+      "id": "N7-carousel-group-label",
+      "class": "N7",
+      "kind": "fp",
+      "route": "/roles",
+      "rule": "VisibleTextPartOfAccessibleName|label-content-name",
+      "expect": {
+        "confirmedSite": false
+      },
+      "match": "caro"
+    },
+    {
+      "id": "N8-heading-label-and-link-role-button",
+      "class": "N8",
+      "kind": "fp",
+      "route": "/roles",
+      "rule": "aria-label-misuse|prefer-native-element",
+      "expect": {
+        "confirmedSite": false
+      }
+    },
+    {
+      "id": "N9-contrast-over-dark-image",
+      "class": "N9",
+      "kind": "fp",
+      "route": "/contrast",
+      "rule": "color-contrast",
+      "expect": {
+        "confirmedSite": false
+      },
+      "match": "hero-dark"
+    },
+    {
+      "id": "N10-focus-ring-with-offset",
+      "class": "N10",
+      "kind": "fp",
+      "route": "/focus",
+      "rule": "focus-indicator|focus-not-visible",
+      "expect": {
+        "confirmedSite": false
+      },
+      "match": "Apply now"
+    },
+    {
+      "id": "N11-bot-blocked-external-link",
+      "class": "N11",
+      "kind": "fp",
+      "route": "/links",
+      "rule": "dead-link",
+      "expect": {
+        "confirmedSite": false
+      },
+      "match": "li:nth-of-type\\(1\\)"
+    },
+    {
+      "id": "N3-unbound-link-href-not-probed",
+      "class": "N3",
+      "kind": "fp",
+      "route": "/links",
+      "rule": "dead-link",
+      "expect": {
+        "confirmedSite": false
+      },
+      "match": "\\{\\{|li:nth-of-type\\(5\\)"
+    },
+    {
+      "id": "N13-status-page-structure",
+      "class": "N13",
+      "kind": "fp",
+      "route": "/500",
+      "rule": "*",
+      "expect": {
+        "confirmedSite": false
+      }
+    },
+    {
+      "id": "s05-decorative-and-presentation-icons",
+      "class": "s05",
+      "kind": "fp",
+      "route": "/icons",
+      "rule": "VisibilityMismatch|IconDiscernible",
+      "expect": {
+        "confirmedSite": false
+      }
+    },
+    {
+      "id": "s05-heading-style-span-and-pill-link",
+      "class": "s05",
+      "kind": "fp",
+      "route": "/icons",
+      "rule": "StrongMismatch|semantic-emphasis|ButtonMismatch",
+      "expect": {
+        "confirmedSite": false
+      }
+    },
+    {
+      "id": "N1-cross-origin-iframe-content",
+      "class": "N1",
+      "kind": "fp",
+      "route": "/embed",
+      "rule": "button-name|aria-",
+      "expect": {
+        "confirmedSite": false,
+        "owner": "third-party"
+      },
+      "match": "video-frame"
+    },
+    {
+      "id": "M2-slides-are-labelled",
+      "class": "M2",
+      "kind": "fp",
+      "route": "/loop-defects",
+      "rule": "carousel-slides-missing-labels",
+      "expect": {
+        "confirmedSite": false
+      }
+    },
+    {
+      "id": "M1-duplicate-id-in-loop-referenced-by-aria",
+      "class": "M1",
+      "kind": "tp",
+      "route": "/loop-defects",
+      "rule": "duplicate-id-referenced",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "M2-repeated-slide-labels",
+      "class": "M2",
+      "kind": "tp",
+      "route": "/loop-defects",
+      "rule": "repeated-accessible-name-in-loop",
+      "expect": {
+        "verdict": [
+          "confirmed",
+          "likely",
+          "needs-review"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "M3-duplicate-class",
+      "class": "M3",
+      "kind": "tp",
+      "route": "/loop-defects",
+      "rule": "no-dup-class",
+      "expect": {
+        "verdict": [
+          "confirmed",
+          "likely",
+          "needs-review"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "M4-list-role-group-one-finding",
+      "class": "M4",
+      "kind": "tp",
+      "route": "/loop-defects",
+      "rule": "aria-allowed-role|aria-required-children",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      },
+      "max": 1
+    },
+    {
+      "id": "M5-heading-skip",
+      "class": "M5",
+      "kind": "tp",
+      "route": "/loop-defects",
+      "rule": "heading-order",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "M5-landmark-unique",
+      "class": "M5",
+      "kind": "tp",
+      "route": "/structure",
+      "rule": "landmark-unique",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "M5-dangling-aria-labelledby",
+      "class": "M5",
+      "kind": "tp",
+      "route": "/structure",
+      "rule": "AriaLabelledByHasReference|aria-valid-attr-value",
+      "expect": {
+        "verdict": [
+          "confirmed",
+          "likely",
+          "needs-review"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "M5-heading-skip-structure",
+      "class": "M5",
+      "kind": "tp",
+      "route": "/structure",
+      "rule": "heading-order",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "M5-aria-label-on-generic-div",
+      "class": "M5",
+      "kind": "tp",
+      "route": "/structure",
+      "rule": "aria-prohibited-attr",
+      "expect": {
+        "verdict": [
+          "confirmed",
+          "likely",
+          "needs-review"
+        ],
+        "owner": "site"
+      },
+      "match": "generic-label|div"
+    },
+    {
+      "id": "M5-small-targets",
+      "class": "M5",
+      "kind": "tp",
+      "route": "/structure",
+      "rule": "target-size",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "s05-skip-link-target-missing",
+      "class": "s05",
+      "kind": "tp",
+      "route": "/skip-dead",
+      "rule": "skip-link-target-missing|skip-link|bypass",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "s05-inactive-tabpanel-hidden-text",
+      "class": "s05",
+      "kind": "tp",
+      "route": "/hidden-text",
+      "rule": "VisibilityMisuse",
+      "expect": {
+        "verdict": [
+          "confirmed",
+          "likely",
+          "needs-review"
+        ],
+        "owner": "site"
+      },
+      "match": "tp2|orphan|nth-of-type\\(3\\)"
+    },
+    {
+      "id": "s05-tabpanel-without-labelledby",
+      "class": "s05",
+      "kind": "tp",
+      "route": "/hidden-text",
+      "rule": "TabpanelLabelledBy|TabPanelMisuse",
+      "expect": {
+        "verdict": [
+          "confirmed",
+          "likely",
+          "needs-review"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "N6-unreferenced-hidden-text",
+      "class": "N6",
+      "kind": "tp",
+      "route": "/hidden-text",
+      "rule": "VisibilityMisuse",
+      "expect": {
+        "verdict": [
+          "confirmed",
+          "likely",
+          "needs-review"
+        ],
+        "owner": "site"
+      },
+      "match": "nth-of-type\\(3\\)|orphan"
+    },
+    {
+      "id": "N7-control-name-omits-visible-text",
+      "class": "N7",
+      "kind": "tp",
+      "route": "/roles",
+      "rule": "VisibleTextPartOfAccessibleName|accessible-name-mismatch|label-content-name",
+      "expect": {
+        "verdict": [
+          "confirmed",
+          "likely",
+          "needs-review"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "s05-icon-only-button",
+      "class": "s05",
+      "kind": "tp",
+      "route": "/icons",
+      "rule": "button-name",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "s05-empty-button-markup",
+      "class": "s05",
+      "kind": "tp",
+      "route": "/icons",
+      "rule": "text-content",
+      "expect": {
+        "verdict": [
+          "confirmed",
+          "likely",
+          "needs-review"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "N9-contrast-over-pale-image",
+      "class": "N9",
+      "kind": "tp",
+      "route": "/contrast",
+      "rule": "color-contrast",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      },
+      "match": "hero-pale"
+    },
+    {
+      "id": "s05-plain-low-contrast",
+      "class": "s05",
+      "kind": "tp",
+      "route": "/contrast",
+      "rule": "color-contrast",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      },
+      "match": "\\.low"
+    },
+    {
+      "id": "N10-faint-focus-ring",
+      "class": "N10",
+      "kind": "tp",
+      "route": "/focus",
+      "rule": "focus-indicator-low-contrast",
+      "expect": {
+        "verdict": [
+          "confirmed",
+          "likely",
+          "needs-review"
+        ],
+        "owner": "site"
+      },
+      "match": "Save job"
+    },
+    {
+      "id": "N11-external-404",
+      "class": "N11",
+      "kind": "tp",
+      "route": "/links",
+      "rule": "dead-link-404",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      },
+      "match": "li:nth-of-type\\(2\\)"
+    },
+    {
+      "id": "N12-same-origin-missing-route",
+      "class": "N12",
+      "kind": "tp",
+      "route": "/links",
+      "rule": "dead-link-404",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      },
+      "match": "li:nth-of-type\\(3\\)"
+    },
+    {
+      "id": "s05-legacy-iframe-attribute",
+      "class": "s05",
+      "kind": "tp",
+      "route": "/embed",
+      "rule": "no-deprecated-attr",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "N13-normal-page-without-main",
+      "class": "N13",
+      "kind": "tp",
+      "route": "/no-main",
+      "rule": "landmark-one-main",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "N13-normal-page-without-h1",
+      "class": "N13",
+      "kind": "tp",
+      "route": "/no-main",
+      "rule": "page-has-heading-one",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "N3-static-defect-inside-pdk-container",
+      "class": "N3",
+      "kind": "tp",
+      "route": "/pdk",
+      "rule": "image-alt",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "N13-normal-page-content-outside-landmarks",
+      "class": "N13",
+      "kind": "tp",
+      "route": "/no-main",
+      "rule": "^region$",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "R3-unbound-heading-and-labelledby-section",
+      "class": "N3",
+      "kind": "fp",
+      "route": "/pdk",
+      "rule": "empty-heading|AriaLabelledBy|aria-valid-attr-value|landmark|region|aria-allowed",
+      "expect": {
+        "confirmedSite": false
+      },
+      "match": "pdk-sec-h|pdk-named|section\\.title"
+    },
+    {
+      "id": "R3-sticky-footer-without-proof",
+      "class": "R3",
+      "kind": "fp",
+      "route": "/focus-footer",
+      "rule": "FocusNotObscuredFooter|StickyHeaderObscuresFocus|focus-not-obscured",
+      "expect": {
+        "confirmedSite": false
+      }
+    },
+    {
+      "id": "R3-skip-link-one-finding",
+      "class": "R3",
+      "kind": "fp",
+      "route": "/skip-dead",
+      "rule": "skip-link|bypass",
+      "expect": {},
+      "max": 1
+    },
+    {
+      "id": "R3-heading-order-one-finding",
+      "class": "R3",
+      "kind": "fp",
+      "route": "/structure",
+      "rule": "heading-order",
+      "expect": {},
+      "max": 1
+    },
+    {
+      "id": "R3-pdk-empty-heading-not-confirmed-static-still-is",
+      "class": "R3",
+      "kind": "tp",
+      "route": "/pdk",
+      "rule": "image-alt",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "N1-consent-a-owner",
+      "class": "N1",
+      "kind": "fp",
+      "route": "/consent-a",
+      "rule": "*",
+      "expect": {
+        "confirmedSite": false,
+        "owner": "third-party"
+      },
+      "match": "cc-"
+    },
+    {
+      "id": "N1-consent-a-found",
+      "class": "N1",
+      "kind": "tp",
+      "route": "/consent-a",
+      "rule": "*",
+      "expect": {
+        "verdict": [
+          "confirmed",
+          "likely",
+          "needs-review"
+        ],
+        "owner": "third-party"
+      },
+      "match": "cc-"
+    },
+    {
+      "id": "N1-consent-b-owner",
+      "class": "N1",
+      "kind": "fp",
+      "route": "/consent-b",
+      "rule": "*",
+      "expect": {
+        "confirmedSite": false,
+        "owner": "third-party"
+      },
+      "match": "cc-"
+    },
+    {
+      "id": "N1-consent-b-found",
+      "class": "N1",
+      "kind": "tp",
+      "route": "/consent-b",
+      "rule": "*",
+      "expect": {
+        "verdict": [
+          "confirmed",
+          "likely",
+          "needs-review"
+        ],
+        "owner": "third-party"
+      },
+      "match": "cc-"
+    },
+    {
+      "id": "N1-consent-slow-owner",
+      "class": "N1",
+      "kind": "fp",
+      "route": "/consent-slow",
+      "rule": "*",
+      "expect": {
+        "confirmedSite": false,
+        "owner": "third-party"
+      },
+      "match": "cc-"
+    },
+    {
+      "id": "N1-consent-slow-found",
+      "class": "N1",
+      "kind": "tp",
+      "route": "/consent-slow",
+      "rule": "*",
+      "expect": {
+        "verdict": [
+          "confirmed",
+          "likely",
+          "needs-review"
+        ],
+        "owner": "third-party"
+      },
+      "match": "cc-"
+    },
+    {
+      "id": "T1-unbound-head-and-containers",
+      "class": "T1",
+      "kind": "fp",
+      "route": "/unbound-head",
+      "rule": "PageTitle|document-title|page-missing-title|empty-title|MetaDescription|list|color-contrast",
+      "expect": {
+        "confirmedSite": false
+      }
+    },
+    {
+      "id": "T1-static-empty-title",
+      "class": "T1",
+      "kind": "tp",
+      "route": "/static-head",
+      "rule": "PageTitle|document-title",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "T1-static-bad-list",
+      "class": "T1",
+      "kind": "tp",
+      "route": "/static-head",
+      "rule": "^list$|ListEmpty",
+      "expect": {
+        "verdict": [
+          "confirmed",
+          "likely"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "T1-static-low-contrast",
+      "class": "T1",
+      "kind": "tp",
+      "route": "/static-head",
+      "rule": "color-contrast",
+      "match": "static-hero",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "G6-banner-covers-link-is-vendor-fp",
+      "class": "G6",
+      "kind": "fp",
+      "route": "/focus-obscured",
+      "rule": "FocusNotObscuredFooter|StickyHeaderObscuresFocus",
+      "expect": {
+        "confirmedSite": false
+      }
+    },
+    {
+      "id": "G6-banner-covers-link-vendor-owner",
+      "class": "G6",
+      "kind": "tp",
+      "route": "/focus-obscured",
+      "rule": "FocusNotObscuredFooter|StickyHeaderObscuresFocus",
+      "expect": {
+        "owner": "third-party"
+      }
+    },
+    {
+      "id": "G6-site-bar-covers-link-confirmed",
+      "class": "G6",
+      "kind": "tp",
+      "route": "/focus-obscured-site",
+      "rule": "FocusNotObscuredFooter|StickyHeaderObscuresFocus",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "G6-breadcrumb-nav-labelled-with-current-not-confirmed",
+      "class": "G6",
+      "kind": "fp",
+      "route": "/breadcrumbs",
+      "rule": "BreadcrumbsNav",
+      "match": "Breadcrumb A",
+      "expect": {
+        "confirmedSite": false
+      }
+    },
+    {
+      "id": "G6-breadcrumb-nav-without-current-confirmed",
+      "class": "G6",
+      "kind": "tp",
+      "route": "/breadcrumbs",
+      "rule": "BreadcrumbsNav",
+      "match": "Breadcrumb B",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "G7-target-size-footer-links-spaced-not-confirmed",
+      "class": "G7",
+      "kind": "fp",
+      "route": "/measured",
+      "rule": "target-size|TargetSize",
+      "match": "m-foot|About the team|Benefits overview|Office locations",
+      "expect": {
+        "confirmedSite": false
+      }
+    },
+    {
+      "id": "G7-target-size-crowded-dots-confirmed",
+      "class": "G7",
+      "kind": "tp",
+      "route": "/measured",
+      "rule": "target-size|TargetSize",
+      "match": "m-dots|Slide",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "G8-target-size-closed-menu-not-a-target",
+      "class": "G8",
+      "kind": "fp",
+      "route": "/measured",
+      "rule": "target-size|TargetSize",
+      "match": "Closed menu",
+      "expect": {
+        "confirmedSite": false
+      }
+    },
+    {
+      "id": "G8-target-size-crowded-list-confirmed",
+      "class": "G8",
+      "kind": "tp",
+      "route": "/measured",
+      "rule": "target-size|TargetSize",
+      "match": "Crowded (one|two|three)",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "G8-target-size-depends-on-vendor-banner-not-confirmed",
+      "class": "G8",
+      "kind": "fp",
+      "route": "/measured",
+      "rule": "target-size|TargetSize",
+      "match": "Manage cookie choices",
+      "expect": {
+        "confirmedSite": false
+      }
+    },
+    {
+      "id": "G7-label-in-name-logo-without-visible-text-not-confirmed",
+      "class": "G7",
+      "kind": "fp",
+      "route": "/measured",
+      "rule": "label-content-name-mismatch|VisibleTextPartOfAccessibleName",
+      "match": "m-logo",
+      "expect": {
+        "confirmedSite": false
+      }
+    },
+    {
+      "id": "G7-label-in-name-visible-text-missing-confirmed",
+      "class": "G7",
+      "kind": "tp",
+      "route": "/measured",
+      "rule": "label-content-name-mismatch|VisibleTextPartOfAccessibleName",
+      "match": "m-chat",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "G7-contrast-mid-animation-not-confirmed",
+      "class": "G7",
+      "kind": "fp",
+      "route": "/measured",
+      "rule": "color-contrast",
+      "match": "m-fade",
+      "expect": {
+        "confirmedSite": false
+      }
+    },
+    {
+      "id": "G7-label-in-name-digit-versus-word-confirmed",
+      "class": "G7",
+      "kind": "tp",
+      "route": "/structure",
+      "rule": "label-content-name-mismatch|VisibleTextPartOfAccessibleName",
+      "match": "aria-label=\"(One|Two)\"",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      }
+    },
+    {
+      "id": "G7-error-page-mirrored-link-not-dead",
+      "class": "G7",
+      "kind": "fp",
+      "route": "/404",
+      "rule": "dead-link|broken-link",
+      "match": "l-mirror",
+      "expect": {
+        "confirmedSite": false
+      }
+    },
+    {
+      "id": "G9-job-details-shell-structure",
+      "class": "G9",
+      "kind": "fp",
+      "route": "/job-details",
+      "rule": "*",
+      "expect": {
+        "confirmedSite": false
+      }
+    },
+    {
+      "id": "G9-identical-sprite-duplicate-not-confirmed",
+      "class": "G9",
+      "kind": "fp",
+      "route": "/sprite-identical",
+      "rule": "duplicate-id-referenced",
+      "expect": {
+        "confirmedSite": false
+      }
+    },
+    {
+      "id": "G9-differing-sprite-duplicate-confirmed",
+      "class": "G9",
+      "kind": "tp",
+      "route": "/sprite-differ",
+      "rule": "duplicate-id-referenced",
+      "expect": {
+        "verdict": [
+          "confirmed"
+        ],
+        "owner": "site"
+      }
+    }
+  ]
+}

@@ -1,0 +1,315 @@
+[
+ {
+  "id": "r01",
+  "site": "site-A",
+  "route": "/",
+  "rule": "landmark-no-duplicate-main",
+  "selector": "body>main",
+  "html": "<main>",
+  "expected": [
+   "src/partials/jobs/list.liquid:1"
+  ]
+ },
+ {
+  "id": "r02",
+  "site": "site-A",
+  "route": "/",
+  "rule": "landmark-unique",
+  "selector": "body>main",
+  "html": "<main>",
+  "expected": [
+   "src/partials/jobs/list.liquid:1"
+  ]
+ },
+ {
+  "id": "r03",
+  "site": "site-A",
+  "route": "/",
+  "rule": "multiple-main-landmarks",
+  "layer": "screenReader",
+  "expected": [
+   "src/partials/jobs/list.liquid:1"
+  ]
+ },
+ {
+  "id": "r04",
+  "site": "site-A",
+  "route": "/careers",
+  "rule": "landmark-no-duplicate-main",
+  "selector": "body>main",
+  "html": "<main>",
+  "expected": [
+   "src/partials/jobs/list.liquid:1"
+  ]
+ },
+ {
+  "id": "r05",
+  "site": "site-A",
+  "route": "/careers",
+  "rule": "landmark-unique",
+  "selector": "body>main",
+  "html": "<main>",
+  "expected": [
+   "src/partials/jobs/list.liquid:1"
+  ]
+ },
+ {
+  "id": "r06",
+  "site": "site-A",
+  "route": "/careers",
+  "rule": "multiple-main-landmarks",
+  "layer": "screenReader",
+  "expected": [
+   "src/partials/jobs/list.liquid:1"
+  ]
+ },
+ {
+  "id": "r07",
+  "site": "site-A",
+  "route": "/",
+  "rule": "multiple-navs-missing-labels",
+  "layer": "screenReader",
+  "expected": [
+   "src/partials/layout/header.liquid:2"
+  ],
+  "alsoAt": [
+   "src/partials/layout/header.liquid:5"
+  ]
+ },
+ {
+  "id": "r08",
+  "site": "site-A",
+  "route": "/team",
+  "rule": "multiple-navs-missing-labels",
+  "layer": "screenReader",
+  "expected": [
+   "src/partials/layout/header.liquid:2"
+  ],
+  "alsoAt": [
+   "src/partials/layout/header.liquid:5"
+  ]
+ },
+ {
+  "id": "r09",
+  "site": "site-A",
+  "route": "/detail",
+  "rule": "multiple-navs-missing-labels",
+  "layer": "screenReader",
+  "expected": [
+   "src/partials/layout/header.liquid:2"
+  ],
+  "alsoAt": [
+   "src/partials/layout/header.liquid:5"
+  ]
+ },
+ {
+  "id": "r10",
+  "site": "site-A",
+  "route": "/journey",
+  "rule": "multiple-navs-missing-labels",
+  "layer": "screenReader",
+  "expected": [
+   "src/partials/layout/header.liquid:2"
+  ],
+  "alsoAt": [
+   "src/partials/layout/header.liquid:5"
+  ]
+ },
+ {
+  "id": "r11",
+  "site": "site-A",
+  "route": "/home",
+  "rule": "multiple-navs-missing-labels",
+  "layer": "screenReader",
+  "expected": [
+   "src/partials/layout/header.liquid:2"
+  ],
+  "alsoAt": [
+   "src/partials/layout/header.liquid:5"
+  ]
+ },
+ {
+  "id": "r12",
+  "site": "site-A",
+  "route": "/cards",
+  "rule": "multiple-navs-missing-labels",
+  "layer": "screenReader",
+  "expected": [
+   "src/partials/layout/header.liquid:2"
+  ],
+  "alsoAt": [
+   "src/partials/layout/header.liquid:5"
+  ]
+ },
+ {
+  "id": "r13",
+  "site": "site-A",
+  "route": "/links",
+  "rule": "multiple-navs-missing-labels",
+  "layer": "screenReader",
+  "expected": [
+   "src/partials/layout/header.liquid:2"
+  ],
+  "alsoAt": [
+   "src/partials/layout/header.liquid:5"
+  ]
+ },
+ {
+  "id": "r14",
+  "site": "site-A",
+  "route": "/team",
+  "rule": "aria-allowed-role",
+  "selector": "article[aria-label=\"Show slide 2\"]",
+  "html": "<article class=\"team-slide\" data-slide=\"\" role=\"button\" aria-label=\"Show slide 2\" tabindex=\"0\">",
+  "fact": "ARIA role button is not allowed for given element",
+  "expected": [
+   "src/scripts/team-slides.js:6"
+  ]
+ },
+ {
+  "id": "r15",
+  "site": "site-A",
+  "route": "/team",
+  "rule": "aria-allowed-role",
+  "selector": "article[aria-label=\"Show slide 3\"]",
+  "html": "<article class=\"team-slide\" data-slide=\"\" role=\"button\" aria-label=\"Show slide 3\" tabindex=\"0\">",
+  "fact": "ARIA role button is not allowed for given element",
+  "expected": [
+   "src/scripts/team-slides.js:6"
+  ]
+ },
+ {
+  "id": "r16",
+  "site": "site-A",
+  "route": "/team",
+  "rule": "aria-allowed-role",
+  "selector": "article[aria-label=\"Show slide 4\"]",
+  "html": "<article class=\"team-slide\" data-slide=\"\" role=\"button\" aria-label=\"Show slide 4\" tabindex=\"0\">",
+  "fact": "ARIA role button is not allowed for given element",
+  "expected": [
+   "src/scripts/team-slides.js:6"
+  ]
+ },
+ {
+  "id": "r17",
+  "site": "site-A",
+  "route": "/detail",
+  "rule": "color-contrast",
+  "selector": "dl>dt:nth-child(2)",
+  "html": "<dt class=\"body-s text-muted\">Position type</dt>",
+  "fact": "Element has insufficient color contrast of 3.03 (foreground color: #949494, background color: #ffffff, font size: 10.5pt (14px), font weight: normal)",
+  "expected": [
+   "src/pages/detail.liquid:6"
+  ],
+  "alsoAt": [
+   "src/styles/tailwind.css:3"
+  ]
+ },
+ {
+  "id": "r18",
+  "site": "site-A",
+  "route": "/detail",
+  "rule": "color-contrast",
+  "selector": "dl>dt:nth-child(1)",
+  "html": "<dt class=\"body-s text-muted\">Job category</dt>",
+  "fact": "Element has insufficient color contrast of 3.03 (foreground color: #949494, background color: #ffffff, font size: 10.5pt (14px), font weight: normal)",
+  "expected": [
+   "src/pages/detail.liquid:5"
+  ],
+  "alsoAt": [
+   "src/styles/tailwind.css:3"
+  ]
+ },
+ {
+  "id": "r19",
+  "site": "site-A",
+  "route": "/journey",
+  "rule": "color-contrast",
+  "selector": ".text-button.font-bold.text-white",
+  "html": "<p class=\"text-button font-bold text-white\">Working at Acme</p>",
+  "fact": "Element has insufficient color contrast of 1.2 (foreground color: #ffffff, background color: #f0f0f0)",
+  "expected": [
+   "src/partials/journey/intro.liquid:2"
+  ]
+ },
+ {
+  "id": "r20",
+  "site": "site-A",
+  "route": "/home",
+  "rule": "color-contrast",
+  "selector": "section#hero>div.section-container>p.h5",
+  "html": "<p class=\"h5 text-white\">",
+  "fact": "Element has insufficient color contrast of 3.66 (foreground color: #ffffff, background color: #008dd1)",
+  "expected": [
+   "src/partials/home/hero.liquid:3"
+  ]
+ },
+ {
+  "id": "r21",
+  "site": "site-A",
+  "route": "/cards",
+  "rule": "image-alt-missing-sr",
+  "layer": "screenReader",
+  "expected": [
+   "src/partials/cards/finding.liquid:4"
+  ]
+ },
+ {
+  "id": "r22",
+  "site": "site-A",
+  "route": "/cards",
+  "rule": "image-alt",
+  "selector": "a.launch-card>img",
+  "html": "<img data-pdk-bind-src=\"item.image\" src=\"/first.webp\" class=\"absolute inset-0 size-full\">",
+  "expected": [
+   "src/partials/cards/finding.liquid:4"
+  ]
+ },
+ {
+  "id": "r23",
+  "site": "site-A",
+  "route": "/cards",
+  "rule": "image-alt",
+  "selector": "a.launch-card>img",
+  "html": "<img data-pdk-bind-src=\"item.image\" src=\"/second.webp\" class=\"absolute inset-0 size-full\">",
+  "expected": [
+   "src/partials/cards/finding.liquid:4"
+  ]
+ },
+ {
+  "id": "r24",
+  "site": "site-A",
+  "route": "/links",
+  "rule": "dead-link-empty-href",
+  "layer": "links",
+  "html": "<a href=\"#\">here</a>",
+  "expected": [
+   "src/pages/links.liquid:4"
+  ],
+  "alsoAt": [
+   "src/pages/links.liquid:5"
+  ]
+ },
+ {
+  "id": "r25",
+  "site": "site-A",
+  "route": "/rewards",
+  "rule": "dead-link-404",
+  "layer": "links",
+  "html": "<a data-pdk-render=\"button\" data-pdk-param-type=\"'secondary'\" data-pdk-param-text=\"'Total Rewards'\" data-pdk-param-link=\"'https://acme.test/old-page#rewards'\" href=\"https://acme.test/old-page#rewards\">Total Rewards</a>",
+  "expected": [
+   "src/partials/rewards/offer.liquid:4"
+  ]
+ },
+ {
+  "id": "r26",
+  "site": "site-A",
+  "route": "/awards",
+  "rule": "modal-focus-escapes",
+  "layer": "focusTrap",
+  "selector": "button[aria-controls]",
+  "expected": [
+   "src/partials/awards/overlay.liquid:5"
+  ]
+ }
+]

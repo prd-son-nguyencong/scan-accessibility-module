@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "1.0.0",
+  "profile": "standards",
+  "findings": [
+    {
+      "ruleId": "LinkNavigationAmbiguous",
+      "canonicalRuleId": "LinkNavigationAmbiguous",
+      "violationType": "commercial-parity",
+      "evidence": { "checkId": "parity:repeated-link-purpose" },
+      "element": {
+        "semantic": {
+          "tag": "a",
+          "role": null,
+          "attributes": { "href": "//vendor.example/jobs" },
+          "landmarkPath": ["main"],
+          "ordinal": 0,
+          "framePath": [],
+          "shadowPath": []
+        }
+      }
+    }
+  ]
+}

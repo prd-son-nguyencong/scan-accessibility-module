@@ -1,0 +1,178 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ada-scan.invalid/schema/scan-report-v2.schema.json",
+  "title": "ScanReportV2",
+  "description": "Shape of latest.json / history scan.json (schemaVersion 2.0.0). Structure only: canonical hashes, ids and the summary are checked by validateScanReportV2. Unknown extra properties are allowed so additive changes stay compatible.",
+  "type": "object",
+  "required": ["schemaVersion", "reportId", "generatedAt", "producer", "target", "scanners", "pages", "summary"],
+  "properties": {
+    "schemaVersion": { "const": "2.0.0" },
+    "reportId": { "$ref": "#/definitions/sha256" },
+    "generatedAt": { "type": "string" },
+    "producer": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": { "name": { "type": "string" }, "version": { "type": "string", "minLength": 1 }, "nodeVersion": { "type": "string" } }
+    },
+    "target": {
+      "type": "object",
+      "required": ["mode"],
+      "properties": {
+        "mode": { "enum": ["url-only", "local-only", "hybrid"] },
+        "url": { "type": ["string", "null"] },
+        "buildRevision": { "type": ["string", "null"] },
+        "instrumentationDigest": { "type": ["string", "null"] },
+        "deploymentUrl": { "type": ["string", "null"] },
+        "attestationStatus": { "enum": ["complete", "missing", "malformed", "scope-mismatch", null] },
+        "attestationReason": { "type": ["string", "null"] }
+      }
+    },
+    "scanners": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["runId", "route", "layer", "engine", "pageState", "status"],
+        "properties": {
+          "runId": { "$ref": "#/definitions/sha256" },
+          "route": { "type": "string", "pattern": "^/" },
+          "layer": { "type": "string", "minLength": 1 },
+          "engine": { "type": "object", "required": ["name"], "properties": { "name": { "type": "string" }, "version": { "type": ["string", "null"] } } },
+          "pageState": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["complete", "fallback", "error", "timeout", "skipped"] }
+        }
+      }
+    },
+    "pages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["route", "url", "status", "scannerRunIds", "findings"],
+        "properties": {
+          "name": { "type": "string" },
+          "route": { "type": "string", "pattern": "^/" },
+          "url": { "type": ["string", "null"] },
+          "status": { "enum": ["ok", "partial", "failed"] },
+          "failure": { "type": ["object", "null"] },
+          "partialReasons": { "type": "array", "description": "Only on a partial page: one entry per layer that errored, timed out or was skipped. gating false: a supplementary layer (lighthouse, w3c) that does not make the scan exit 2 unless scan.strict.", "items": { "type": "object", "required": ["layer", "reason", "gating"], "properties": { "layer": { "type": "string" }, "reason": { "type": "string" }, "gating": { "type": "boolean" } } } },
+          "scannerRunIds": { "type": "array", "items": { "$ref": "#/definitions/sha256" } },
+          "dependencies": { "type": "array", "items": { "type": "string" } },
+          "findings": { "type": "array", "items": { "$ref": "#/definitions/finding" } }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["pagesScanned", "findingCount", "occurrenceCount", "layerCounts"],
+      "properties": {
+        "pagesScanned": { "type": "integer", "minimum": 0 },
+        "findingCount": { "type": "integer", "minimum": 0 },
+        "occurrenceCount": { "type": "integer", "minimum": 0 },
+        "infoCount": { "type": "integer", "minimum": 0 },
+        "verdictCounts": {
+          "type": "object",
+          "required": ["confirmed", "likely", "needsReview"],
+          "properties": { "confirmed": { "type": "integer" }, "likely": { "type": "integer" }, "needsReview": { "type": "integer" } }
+        },
+        "thirdPartyConfirmed": { "type": "integer", "minimum": 0, "description": "Confirmed occurrences in third-party code (only findings whose evidence.proof is a measured live-DOM fact can be confirmed; others are needs-review); outside the gate unless gate.countThirdParty." },
+        "platformConfirmed": { "type": "integer", "minimum": 0, "description": "Confirmed occurrences in Paradox platform widgets (confirmed only with a measured live-DOM proof, as for third-party); outside the gate unless gate.countPlatform." },
+        "pagesPartialGating": { "type": "integer", "minimum": 0, "description": "Partial pages with at least one gating incomplete layer (all partial pages with scan.strict); only these make the scan exit 2. Absent when equal to pagesPartial." },
+        "layerCounts": { "type": "object", "additionalProperties": { "type": "integer" } }
+      }
+    },
+    "notYourCode": {
+      "type": "array",
+      "description": "Findings in code the site cannot change (vendor scripts, platform widgets, cross-origin iframes), once per site: grouped by owner + vendor/kind + rule + selector across pages. Absent when there are none.",
+      "items": {
+        "type": "object",
+        "required": ["owner", "kind", "label", "rule", "selector", "impact", "verdict", "occurrences", "findings", "pages", "evidence", "suggestedAction"],
+        "properties": {
+          "owner": { "enum": ["platform", "third-party"] },
+          "kind": { "$ref": "#/definitions/originKind" },
+          "vendor": { "type": "string" },
+          "label": { "type": "string" },
+          "rule": { "type": "string" },
+          "selector": { "type": "string" },
+          "impact": { "enum": ["critical", "serious", "moderate", "minor"] },
+          "verdict": { "enum": ["confirmed", "likely", "needs-review"] },
+          "occurrences": { "type": "integer", "minimum": 1 },
+          "findings": { "type": "integer", "minimum": 1 },
+          "pages": { "type": "array", "items": { "type": "string" } },
+          "evidence": { "type": "array", "items": { "type": "string" } },
+          "suggestedAction": { "type": "string" }
+        }
+      }
+    },
+    "runMetadata": { "type": "object" },
+    "comparison": { "type": "object" }
+  },
+  "definitions": {
+    "originKind": { "enum": ["site-source", "react-widget", "platform-component", "vendor-script", "injected-runtime", "unbound-data", "unknown-probe-failed", "iframe"] },
+    "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "finding": {
+      "type": "object",
+      "required": ["findingId", "nativeRuleId", "canonicalRuleId", "layer", "impact", "priority", "count", "route", "element", "source", "evidence", "fix"],
+      "properties": {
+        "findingId": { "$ref": "#/definitions/sha256" },
+        "stableId": { "$ref": "#/definitions/sha256" },
+        "nativeRuleId": { "type": "string", "minLength": 1 },
+        "nativeRuleIds": { "type": "array", "items": { "type": "string" } },
+        "canonicalRuleId": { "type": "string", "minLength": 1 },
+        "layer": { "type": "string" },
+        "layers": { "type": "array", "items": { "type": "string" } },
+        "category": { "type": "string" },
+        "kind": { "enum": ["deterministic", "heuristic", "manual"] },
+        "verdict": { "enum": ["confirmed", "likely", "needs-review"] },
+        "ownership": { "enum": ["source", "platform", "third-party"] },
+        "origin": {
+          "type": "object",
+          "description": "Who owns the element's code and why. owner site: the project source (kind site-source), or DOM a script injected that no vendor claims (injected-runtime) or content bound by the platform (unbound-data), or a node the live probe could not resolve and no vendor token proves injected (unknown-probe-failed), all never confirmed. owner platform: Paradox widgets and components (react-widget, platform-component). owner third-party: vendor-script (vendor = vendors.json id or the script host) or iframe. label is the human text shown in reports; evidence says why. Non-site findings have no source file.",
+          "required": ["owner", "kind", "label", "evidence"],
+          "properties": {
+            "owner": { "enum": ["site", "platform", "third-party"] },
+            "kind": { "$ref": "#/definitions/originKind" },
+            "vendor": { "type": "string" },
+            "label": { "type": "string" },
+            "evidence": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "impact": { "enum": ["critical", "serious", "moderate", "minor", "info"] },
+        "priority": { "type": "integer", "minimum": 1 },
+        "count": { "type": "integer", "minimum": 1 },
+        "pageState": { "type": "string" },
+        "route": { "type": "string", "pattern": "^/" },
+        "wcagRef": { "type": ["string", "null"] },
+        "element": {
+          "type": "object",
+          "required": ["selector", "normalizedHtmlHash", "outerHTML"],
+          "properties": { "selector": { "type": "string" }, "normalizedHtmlHash": { "type": "string" }, "outerHTML": { "type": "string" }, "scanId": { "type": ["string", "null"] } }
+        },
+        "source": {
+          "type": "object",
+          "required": ["method", "confidence"],
+          "properties": {
+            "mode": { "type": "string" },
+            "file": { "anyOf": [{ "type": "null" }, { "type": "string", "not": { "pattern": "^(/|[A-Za-z]:/)" } }] },
+            "line": { "type": ["integer", "null"] },
+            "method": { "type": "string", "minLength": 1 },
+            "confidence": { "enum": ["high", "medium", "low", "none"] },
+            "traceConfidence": { "enum": ["high", "medium", "low", "ambiguous", "untraceable", "stale"] },
+            "traceReason": { "anyOf": [{ "type": "string", "pattern": "^third-party(: .+)?$" }, { "enum": ["no-marker", "no-manifest", "platform-owned", "no-source-project", "unresolved", "preview-without-reference", "scope-mismatch", "no-match", "no-element", "page-source-missing", "multiple-candidates", "source-changed-since-build", "unknown-framework", "unsupported-framework"] }] },
+            "preimageSha256": { "oneOf": [{ "$ref": "#/definitions/sha256" }, { "type": "null" }] }
+          }
+        },
+        "evidence": {
+          "type": "object",
+          "required": ["message", "observations"],
+          "properties": { "message": { "type": "string" }, "observations": { "type": "array" } }
+        },
+        "manualChecks": { "type": "array" },
+        "fix": {
+          "type": "object",
+          "required": ["deterministic", "hint"],
+          "properties": { "deterministic": { "type": "boolean" }, "hint": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

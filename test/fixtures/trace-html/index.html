@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Home</title>
+  <script>
+    var tpl = '<div id="fake">not an element</div>';
+  </script>
+</head>
+<body>
+  <nav id="main-nav" aria-label="Main">
+    <ul>
+      <li><a href="/about.html">About</a></li>
+      <li><a href="/contact.html">Contact</a></li>
+    </ul>
+  </nav>
+  <main>
+    <h1 id="page-title">Careers at Acme</h1>
+    <img src="/img/hero.png" class="hero" alt="">
+    <section class="cards">
+      <div class="card"><a href="/jobs/1.html" class="card-link">Read more</a></div>
+      <div class="card"><a href="/jobs/1.html" class="card-link">Read more</a></div>
+      <div class="card"><a href="/jobs/2.html" class="card-link">Read more</a></div>
+    </section>
+    <table class="outer">
+      <tr><td>
+        <table class="inner"><tr><td><button type="button" class="apply">Apply now</button></td></tr></table>
+      </td></tr>
+    </table>
+    <button type="button" id="dyn"></button>
+  </main>
+  <footer><p>Copyright Acme</p></footer>
+  <script src="/app.js"></script>
+</body>
+</html>

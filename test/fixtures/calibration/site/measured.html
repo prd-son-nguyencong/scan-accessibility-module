@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Measured checks</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Calibration fixture Measured checks">
+<link rel="stylesheet" href="/cal.css">
+<style>
+.m-foot { list-style: none; margin: 0; padding: 0; }
+.m-foot li { margin-bottom: 8px; }
+.m-foot a { display: block; width: 240px; height: 17px; padding: 0; font-size: 14px; line-height: 17px; }
+.m-dots a { display: inline-block; width: 18px; height: 18px; margin: 0 2px; padding: 0; background: #0b4fa8; }
+.m-menu { position: fixed; left: 0; top: 0; width: 100%; opacity: 0; pointer-events: none; }
+.m-menu ul, .m-crowd { list-style: none; margin: 0; padding: 0; }
+.m-menu a, .m-crowd a { display: block; width: 160px; height: 18px; margin-bottom: 2px; padding: 0; font-size: 14px; line-height: 18px; }
+.m-crowd { margin-bottom: 60px; }
+.m-vend { display: block; width: 101px; height: 18px; padding: 0; margin: 0 0 80px; font-size: 14px; line-height: 18px; }
+.m-banner button { display: block; width: 100px; height: 40px; }
+.m-logo { display: inline-block; padding: 0; }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header><nav aria-label="Primary"><ul><li><a href="/">Home</a></li></ul></nav></header>
+<main id="main">
+<h1>Measured checks</h1>
+<p class="m-fade">Fades in on load.</p>
+<p><a class="m-logo" href="/"><span style="font-size:0">Acme home</span><img src="/dark.svg" alt="" width="40" height="40"></a></p>
+<p><button class="m-chat" type="button" aria-label="Open chat">Start your search</button></p>
+<p class="m-dots"><a href="/links#s1" aria-label="Slide 1"></a><a href="/links#s2" aria-label="Slide 2"></a><a href="/links#s3" aria-label="Slide 3"></a></p>
+<ul class="m-crowd"><li><a href="/links#c1">Crowded one</a></li><li><a href="/links#c2">Crowded two</a></li><li><a href="/links#c3">Crowded three</a></li></ul>
+<div class="m-menu"><ul><li><a href="/links#x1">Closed menu one</a></li><li><a href="/links#x2">Closed menu two</a></li></ul></div>
+<a class="m-vend" href="/links#v1">Manage cookie choices</a>
+<div id="onetrust-banner-sdk" class="m-banner" tabindex="0"><button type="button">Accept all</button></div>
+</main>
+<footer><ul class="m-foot"><li><a href="/links">About the team</a></li><li><a href="/roles">Benefits overview</a></li><li><a href="/icons">Office locations</a></li></ul></footer>
+<script>document.querySelector('.m-fade').animate([{ opacity: 0.15 }, { opacity: 1 }], { duration: 600000, fill: 'forwards' });</script>
+</body>
+</html>

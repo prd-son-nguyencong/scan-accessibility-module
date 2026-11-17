@@ -1,0 +1,6 @@
+{
+  "description": "Copy to redaction-tokens.local.json (gitignored). Real customer-name tokens added to the corpus redaction blocklist; src ships only generic tokens.",
+  "forbiddenTokens": [
+    "customer-name-token"
+  ]
+}

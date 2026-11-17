@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Link that blurs itself after focus</title>
+<style>html{background:#111}body{margin:0;padding:24px;font:16px Arial,sans-serif}
+.card{background:#fff;padding:32px;margin:40px 0}
+a{display:inline-block;padding:10px 16px;color:#000;background:#eee}
+a:focus-visible{outline:3px solid #0b57d0;outline-offset:3px}</style></head>
+<body><main id="main"><div class="card"><a href="#main" id="shy">Shy link</a></div></main>
+<script>document.getElementById('shy').addEventListener('focus',function(e){var el=e.target;setTimeout(function(){el.blur()},20)})</script></body></html>

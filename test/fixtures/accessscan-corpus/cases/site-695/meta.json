@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "site-695",
+  "profile": "commercial-parity",
+  "route": "/",
+  "captureState": "initial",
+  "viewport": {
+    "width": 1280,
+    "height": 900
+  },
+  "captureMode": "oracle-evidence-slice",
+  "notes": [
+    "Frozen cross-site accessScan oracle evidence slice seeded from tooling source manifest.",
+    "This case is an evidence slice rather than a whole-page baseline.",
+    "Evidence slice contains 6 uniquely alignable oracle snippets with 2 aligned findings.",
+    "Limitation: VisibilityMisuse: truncated oracle html snippet skipped at index 2",
+    "Limitation: VisibilityMisuse: truncated oracle html snippet skipped at index 3",
+    "Limitation: VisibilityMisuse: truncated oracle html snippet skipped at index 4",
+    "Limitation: VisibilityMisuse: non-replayable document-level snippet skipped at index 5",
+    "Limitation: ButtonMismatch: truncated oracle html snippet skipped at index 6",
+    "Limitation: FocusNotObscuredHeader: truncated oracle html snippet skipped at index 7",
+    "Limitation: NavigationMisuse: truncated oracle html snippet skipped at index 12",
+    "Limitation: NavigationMisuse: truncated oracle html snippet skipped at index 13",
+    "Limitation: SearchFormMismatch: truncated oracle html snippet skipped at index 14",
+    "Limitation: PageMetaViewportValid: non-replayable document-level snippet skipped at index 15",
+    "Limitation: PageTitleValid: non-replayable document-level snippet skipped at index 16",
+    "Limitation: LinkNavigationAmbiguous: oracle snippet bound but not replay-confirmed",
+    "Limitation: LinkNavigationAmbiguous: oracle snippet bound but not replay-confirmed",
+    "Limitation: LinkNavigationAmbiguous: oracle snippet bound but not replay-confirmed",
+    "Limitation: RequiredFormFieldAriaRequired: oracle snippet bound but not replay-confirmed",
+    "Limitation: Reprocess retained 2 replay-confirmed findings after neutralization refresh"
+  ]
+}
